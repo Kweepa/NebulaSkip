@@ -1,0 +1,1564 @@
+; World object meshes — AABB / door / switch / slope / plat wireframes
+!zone mesh
+
+; Line starts, then the matching ends. Same index is one edge.
+box_ea
+	!byte 0,1,2,3, 4,5,6,7, 0,1,2,3
+box_eb
+	!byte 1,2,3,0, 5,6,7,4, 4,5,6,7
+
+; Ramp hypotenuses always; top/bottom caps from slope_flags bits 0/1
+ramp_a00
+	!byte 1,3
+ramp_b00
+	!byte 2,0
+ramp_a01
+	!byte 1,3,0
+ramp_b01
+	!byte 2,0,1
+ramp_a10
+	!byte 1,3,2
+ramp_b10
+	!byte 2,0,3
+ramp_a11
+	!byte 1,3,0,2
+ramp_b11
+	!byte 2,0,1,3
+ramp_ne_tab
+	!byte 2, 3, 3, 4
+ramp_a_lo
+	!byte <ramp_a00, <ramp_a01, <ramp_a10, <ramp_a11
+ramp_a_hi
+	!byte >ramp_a00, >ramp_a01, >ramp_a10, >ramp_a11
+ramp_b_lo
+	!byte <ramp_b00, <ramp_b01, <ramp_b10, <ramp_b11
+ramp_b_hi
+	!byte >ramp_b00, >ramp_b01, >ramp_b10, >ramp_b11
+; Platform quad, switch triangle
+quad_ea
+	!byte 0,1,2,3
+quad_eb
+	!byte 1,2,3,0
+tri_ea
+	!byte 0,1,2
+tri_eb
+	!byte 1,2,0
+
+; Per-vert XZ column ids for mesh_project (verts sharing x,z share a column).
+; box_col doubles as identity for ≤4-vert meshes with distinct columns.
+box_col
+	!byte 0,1,2,3, 0,1,2,3
+ident_col
+	!byte 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15
+
+; Per-vert slots into UX[] / UZ[] (sharing across the mesh)
+box_xid
+	!byte 0,1,1,0, 0,1,1,0
+box_zid
+	!byte 0,0,1,1, 0,0,1,1
+sw_xz_tab				; z-face: xid@0 zid@3; x-face: xid@3 zid@6
+	!byte 1,0,2, 0,0,0, 1,0,2
+slope_x_xid
+	!byte 0,0,1,1
+slope_x_zid
+	!byte 0,1,1,0
+
+; Which faces each edge belongs to (bit0=-X bit1=+X bit2=-Y bit3=+Y bit4=-Z bit5=+Z)
+; Edge kept if either face visible. Matches box_fill_verts corners.
+box_edge_faces
+	!byte $14,$06,$24,$05		; bottom 0-1,1-2,2-3,3-0
+	!byte $18,$0a,$28,$09		; top 4-5,5-6,6-7,7-4
+	!byte $11,$12,$22,$21		; verts 0-4,1-5,2-6,3-7
+
+box_vbit
+	!byte $01,$02,$04,$08,$10,$20,$40,$80
+
+; ------------------------------------------------------------------
+; draw_box — box_* set, box_inside=0/1 (back-face cull)
+; A = 0: cull. A nonzero: stroke all 12 edges (crate_flags).
+; ------------------------------------------------------------------
+draw_box
+	beq .db_cull
+	jsr load_view_trig
+	lda #$ff
+	sta mesh_vmask
+	lda #BOX_NEDGES
+	sta mesh_ne
+	lda #<box_ea
+	sta edge_ptr
+	lda #>box_ea
+	sta edge_ptr+1
+	lda #<box_eb
+	sta edge_b
+	lda #>box_eb
+	sta edge_b+1
+	jmp .db_fill
+.db_cull
+	jsr load_view_trig
+	jsr cull_box_faces
+	jsr box_pack_edges
+	lda mesh_ne
+	bne .db_go
+	rts
+.db_go
+	jsr box_build_vert_mask
+	lda #<box_vis_a
+	sta edge_ptr
+	lda #>box_vis_a
+	sta edge_ptr+1
+	lda #<box_vis_b
+	sta edge_b
+	lda #>box_vis_b
+	sta edge_b+1
+.db_fill
+	jsr box_fill_verts
+	lda #BOX_NVERTS
+	sta mesh_nv
+	jmp stroke_mesh
+
+stroke_mesh
+!if PROFILE = 1 {
+	ldy #PROF_ROT
+	jsr prof_add_bucket
+}
+	jsr mesh_project
+!if PROFILE = 1 {
+	ldy #PROF_PROJ
+	jsr prof_add_bucket
+}
+	jsr mesh_clip			; strokes each edge as it accepts it
+!if PROFILE = 1 {
+	ldy #PROF_CLIP
+	jsr prof_add_bucket
+}
+	lda #$ff
+	sta mesh_vmask
+	rts
+
+; Fill CAM[0..7] from box corners via unique X/Z products
+box_fill_verts
+	jsr aabb_uxuz
+	lda box_y
+	sta VY
+	sta VY+1
+	sta VY+2
+	sta VY+3
+	clc
+	adc box_sy
+	sta VY+4
+	sta VY+5
+	sta VY+6
+	sta VY+7
+	lda #BOX_NVERTS
+	sta mesh_nv
+	jsr set_box_xzid
+	jmp xform_mesh_xz
+
+aabb_uxuz
+	lda box_x
+	sta UX
+	clc
+	adc box_sx
+	sta UX+1
+	lda box_z
+	sta UZ
+	clc
+	adc box_sz
+	sta UZ+1
+	lda #2
+	sta mesh_nx
+	sta mesh_nz
+	rts
+
+set_box_xzid
+	lda #<box_xid
+	sta xid_ptr
+	lda #>box_xid
+	sta xid_ptr+1
+	lda #<box_zid
+	sta zid_ptr
+	lda #>box_zid
+	sta zid_ptr+1
+	lda #<box_col
+	sta col_ptr
+	lda #>box_col
+	sta col_ptr+1
+	rts
+
+; A = exterior keep 0/1, Y = face bit. XOR box_inside into face_bits.
+box_apply_face
+	eor box_inside
+	beq .baf_rts
+	tya
+	ora face_bits
+	sta face_bits
+.baf_rts
+	rts
+
+; 8-bit back-face planes → face_bits (interior inverts via XOR). X preserved.
+cull_box_faces
+	lda #0
+	sta face_bits
+	txa
+	pha
+	ldx #0
+	lda cam_xh
+	ldy #$01
+	jsr cull_axis
+	ldx #1
+	lda cam_yh
+	ldy #$04
+	jsr cull_axis
+	ldx #2
+	lda cam_zh
+	ldy #$10
+	jsr cull_axis
+	pla
+	tax
+	rts
+
+; A = cam coord, X = axis (box_x/y/z + X), Y = -face bit (+face is Y<<1).
+; -face: cam < min. +face: cam >= min+size (a wrapping max is never exterior).
+; box_apply_face keeps X/Y and rot*.
+cull_axis
+	sta rot0
+	sty rot1
+	cmp box_x,x
+	lda #0
+	rol
+	eor #1
+	jsr box_apply_face
+	lda rot1
+	asl
+	tay
+	lda rot0
+	sec
+	sbc box_x,x
+	bcc .ca_no
+	cmp box_sx,x
+	lda #0
+	rol
+	jmp box_apply_face
+.ca_no
+	lda #0
+	jmp box_apply_face
+
+; Pack edges with a visible face into box_vis_a/b; mesh_ne = count
+box_pack_edges
+	ldx #0
+	ldy #0
+.pe
+	lda box_edge_faces,x
+	and face_bits
+	beq .pe_n
+	lda box_ea,x
+	sta box_vis_a,y
+	lda box_eb,x
+	sta box_vis_b,y
+	iny
+.pe_n
+	inx
+	cpx #BOX_NEDGES
+	bne .pe
+	sty mesh_ne
+	rts
+
+; Visible edge list → corner mask + mesh_nwork (1–8 for crates)
+box_build_vert_mask
+	lda #0
+	sta mesh_vmask
+	ldx #0
+.bvm
+	cpx mesh_ne
+	beq .bvm_pop
+	ldy box_vis_a,x
+	lda mesh_vmask
+	ora box_vbit,y
+	sta mesh_vmask
+	ldy box_vis_b,x
+	lda mesh_vmask
+	ora box_vbit,y
+	sta mesh_vmask
+	inx
+	jmp .bvm
+.bvm_pop
+	lda #0
+	sta mesh_nwork
+	ldx #8
+	lda mesh_vmask
+.bvm_cnt
+	asl
+	bcc .bvm_c0
+	inc mesh_nwork
+.bvm_c0
+	dex
+	bne .bvm_cnt
+	rts
+
+; Inward XZ frustum normals: left/right edges at yaw±FOV_HALF, 90° swap-flip
+update_frustum
+	ldy yaw
+	lda SINTAB,y
+	sta fn_fx
+	lda COSTAB,y
+	sta fn_fz
+	clc
+	lda yaw
+	adc #FOV_HALF
+	tay
+	lda COSTAB,y
+	eor #$ff
+	clc
+	adc #1
+	sta fn_lx			; left N = (-Ez, Ex)
+	lda SINTAB,y
+	sta fn_lz
+	sec
+	lda yaw
+	sbc #FOV_HALF
+	tay
+	lda COSTAB,y
+	sta fn_rx			; right N = (Ez, -Ex)
+	lda SINTAB,y
+	eor #$ff
+	clc
+	adc #1
+	sta fn_rz
+	rts
+
+; C=1 if box is not fully outside the view (Y Chebyshev, then XZ planes)
+frustum_hits
+	jsr frustum_y
+	bcc .fh_no
+	lda fn_lx
+	sta rot0
+	lda fn_lz
+	sta rot1
+	jsr plane_pvert
+	bcc .fh_no
+	lda fn_rx
+	sta rot0
+	lda fn_rz
+	sta rot1
+	jsr plane_pvert
+	bcc .fh_no
+	lda fn_fx
+	sta rot0
+	lda fn_fz
+	sta rot1
+	jmp plane_pvert
+.fh_no
+	clc
+	rts
+
+; C=1 unless the whole box is above/below a 45° Y cone (Chebyshev XZ + pad)
+frustum_y
+	jsr box_xz_cheby
+	clc
+	adc #ITEM_CULL_Y
+	bcs .fy_yes
+	sta nhi
+	sec
+	lda box_y
+	sbc cam_yh
+	sta nlo
+	clc
+	adc box_sy
+	sta rot0
+	lda nlo
+	bmi .fy_lo_neg
+	cmp nhi
+	beq .fy_yes
+	bcc .fy_yes
+	clc
+	rts
+.fy_lo_neg
+	lda rot0
+	bpl .fy_yes
+	lda #0
+	sec
+	sbc rot0
+	cmp nhi
+	beq .fy_yes
+	bcc .fy_yes
+	clc
+	rts
+.fy_yes
+	sec
+	rts
+
+; A = max |box XZ corner − cam| (Chebyshev of the four edges)
+box_xz_cheby
+	lda #0
+	sta rot1
+	lda cam_xh
+	sta rot2
+	lda box_x
+	jsr .absmax
+	clc
+	lda box_x
+	adc box_sx
+	bcc +
+	lda #255
++
+	jsr .absmax
+	lda cam_zh
+	sta rot2
+	lda box_z
+	jsr .absmax
+	clc
+	lda box_z
+	adc box_sz
+	bcc +
+	lda #255
++
+	jsr .absmax
+	lda rot1
+	rts
+.absmax
+	sec
+	sbc rot2
+	bcs .pos
+	eor #$ff
+	clc
+	adc #1
+.pos
+	cmp rot1
+	bcc .ret
+	sta rot1
+.ret
+	rts
+
+; rot0=Nx rot1=Nz. C=1 if N·(p-vertex − cam) >= 0 (p-vertex = box corner
+; furthest along N). |d|·|N| via set A (Nx) / set B (Nz): 8x8 products, halved,
+; mixed signs compare magnitudes instead of negating. Clobbers sets A/B.
+plane_pvert
+	lda rot0
+	jsr mulset_a
+	lda rot1
+	jsr mulset_b
+	lda rot0
+	bmi .pp_minx
+	clc
+	lda box_x
+	adc box_sx
+	bcc .pp_x
+	lda #255
+	jmp .pp_x
+.pp_minx
+	lda box_x
+.pp_x
+	sec
+	sbc cam_xh
+	jsr .pp_absd
+	eor rot0			; bit7 = sign of Nx·dx
+	sta rot2
+	jsr umul8a
+	lsr prod_h
+	ror prod_l
+	lda prod_l
+	sta pv0
+	lda prod_h
+	sta pv1
+	lda rot1
+	bmi .pp_minz
+	clc
+	lda box_z
+	adc box_sz
+	bcc .pp_z
+	lda #255
+	jmp .pp_z
+.pp_minz
+	lda box_z
+.pp_z
+	sec
+	sbc cam_zh
+	jsr .pp_absd
+	eor rot1			; bit7 = sign of Nz·dz
+	eor rot2			; bit7 = signs differ
+	bmi .pp_mixed
+	lda rot2			; same sign: sum >= 0 only if positive, or both zero
+	bpl .pp_yes
+	jsr umul8b
+	lsr prod_h
+	ror prod_l
+	lda prod_l
+	ora prod_h
+	ora pv0
+	ora pv1
+	beq .pp_yes
+.pp_no
+	clc
+	rts
+.pp_yes
+	sec
+	rts
+.pp_mixed
+	jsr umul8b
+	lsr prod_h
+	ror prod_l
+	lda rot2			; sign of the first term
+	bmi .pp_p2pos			; first negative → second positive
+	; first positive (pv), second negative (prod): visible iff pv >= prod
+	lda pv1
+	cmp prod_h
+	bne .pp_cmp
+	lda pv0
+	cmp prod_l
+.pp_cmp
+	rts				; C = pv >= prod
+.pp_p2pos
+	lda prod_h
+	cmp pv1
+	bne .pp_cmp
+	lda prod_l
+	cmp pv0
+	rts				; C = prod >= pv
+
+; A = d mod 256, C = no borrow → Y = |d|, A = $80 if d < 0
+.pp_absd
+	bcs .pp_dpos
+	eor #$ff
+	adc #1
+	tay
+	lda #$80
+	rts
+.pp_dpos
+	tay
+	lda #0
+	rts
+
+; ------------------------------------------------------------------
+; FACE_PZ/MZ/PX/MX → yaw so local +Z points out of the door face
+door_face_rot
+	!byte 0, 128, 192, 64
+
+draw_door_mesh
+	jsr load_view_trig
+	jsr fill_door_type_verts
+	jmp stroke_mesh
+
+stroke_tri
+	lda #3
+	sta mesh_nv
+	sta mesh_ne
+	lda #<tri_ea
+	sta edge_ptr
+	lda #>tri_ea
+	sta edge_ptr+1
+	lda #<tri_eb
+	sta edge_b
+	lda #>tri_eb
+	sta edge_b+1
+	lda #<ident_col
+	sta col_ptr
+	lda #>ident_col
+	sta col_ptr+1
+	lda #$ff
+	sta mesh_vmask
+	jmp stroke_mesh
+
+draw_switch_mesh
+	jsr load_view_trig
+	jsr fill_switch_verts
+	jmp stroke_tri
+
+draw_slope_mesh
+	jsr load_view_trig
+	jsr fill_slope_verts
+	lda #4
+	sta mesh_nv
+	ldx obj_i
+	+lda_mx slope_flags
+	and #3
+	tax
+	lda ramp_ne_tab,x
+	sta mesh_ne
+	lda ramp_a_lo,x
+	sta edge_ptr
+	lda ramp_a_hi,x
+	sta edge_ptr+1
+	lda ramp_b_lo,x
+	sta edge_b
+	lda ramp_b_hi,x
+	sta edge_b+1
+	jmp stroke_mesh
+
+draw_plat_mesh
+	jsr load_view_trig
+	jsr fill_plat_verts
+	lda #4
+	sta mesh_nv
+	lda #4
+	sta mesh_ne
+	lda #<quad_ea
+	sta edge_ptr
+	lda #>quad_ea
+	sta edge_ptr+1
+	lda #<quad_eb
+	sta edge_b
+	lda #>quad_eb
+	sta edge_b+1
+	jmp stroke_mesh
+
+; Pickup mesh: type in A (TH_*). nv=0 → backpack mesh.
+draw_thing_mesh
+	ldx obj_i
+	+lda_mx th_type
+draw_pickup_mesh
+	pha
+	jsr load_view_trig
+	pla
+	jsr fill_item_verts
+	jmp stroke_mesh
+
+fill_item_verts
+	cmp #TH_NTYPES
+	bcc +
+	lda #0
++
+	tay
+	lda item_nv,y
+	bne +
+	ldy #TH_BACKPACK
++
+	lda #0
+	sta rot1				; no door scale
+	jsr fill_item_slot
+	; Props stay put. Other pickups yaw-spin about box+ITEM_BIAS.
+	ldy rot0
+	lda item_spin
+	cpy #TH_LIGHTPOST
+	beq .fi_still
+	cpy #TH_BARREL
+	bne .fi_spin
+.fi_still
+	lda #0
+.fi_spin
+	sta ent_rot
+	jmp xform_item_spin
+
+; Y = door type. rot1 = scale (0 ×1, 1 ×3/2, 2 ×2). Door meshes follow the TH_* slots.
+fill_door_slot
+	tya
+	clc
+	adc #ITEM_DOOR_BASE
+	tay
+; Y = slot. rot1 = U/VY scale (0 for items). Fills mesh tables, rot0 = slot.
+fill_item_slot
+	lda item_nv,y
+	sta mesh_nv
+	lda item_ne,y
+	sta mesh_ne
+	lda item_nx,y
+	sta mesh_nx
+	lda item_nz,y
+	sta mesh_nz
+	sty rot0
+	; UX/UZ stay local (editor 0 = spin centre). World centre is box+ITEM_BIAS.
+	clc
+	lda #<item_ux
+	adc item_uo,y
+	sta src_ptr
+	lda #>item_ux
+	adc #0
+	sta src_ptr+1
+	ldy #0
+.fi_ux
+	cpy mesh_nx
+	bcs .fi_uz
+	lda (src_ptr),y
+	jsr scale_door_u
+	sta UX,y
+	iny
+	bne .fi_ux
+.fi_uz
+	ldy rot0
+	clc
+	lda #<item_uz
+	adc item_zo,y
+	sta src_ptr
+	lda #>item_uz
+	adc #0
+	sta src_ptr+1
+	ldy #0
+.fi_uzl
+	cpy mesh_nz
+	bcs .fi_vy
+	lda (src_ptr),y
+	sta UZ,y
+	iny
+	bne .fi_uzl
+.fi_vy
+	ldy rot0
+	clc
+	lda #<item_vy
+	adc item_vo,y
+	sta src_ptr
+	lda #>item_vy
+	adc #0
+	sta src_ptr+1
+	ldy #0
+.fi_vyl
+	cpy mesh_nv
+	bcs .fi_ptr
+	lda (src_ptr),y
+	jsr scale_door_u
+	sta VY,y
+	iny
+	bne .fi_vyl
+.fi_ptr
+	ldy rot0
+	clc
+	lda #<item_xid
+	adc item_vo,y
+	sta xid_ptr
+	lda #>item_xid
+	adc #0
+	sta xid_ptr+1
+	clc
+	lda #<item_zid
+	adc item_vo,y
+	sta zid_ptr
+	lda #>item_zid
+	adc #0
+	sta zid_ptr+1
+	clc
+	lda #<item_col
+	adc item_vo,y
+	sta col_ptr
+	lda #>item_col
+	adc #0
+	sta col_ptr+1
+	clc
+	lda #<item_ea
+	adc item_eo,y
+	sta edge_ptr
+	lda #>item_ea
+	adc #0
+	sta edge_ptr+1
+	clc
+	lda #<item_eb
+	adc item_eo,y
+	sta edge_b
+	lda #>item_eb
+	adc #0
+	sta edge_b+1
+	rts
+
+; Face width 4/6/8 → rot1 = ×1 / ×1.5 / ×2 (nearest bucket).
+door_mesh_scale
+	ldx obj_i
+	+lda_mx door_face
+	cmp #FACE_PX
+	bcc .dms_z
+	+lda_mx door_sz
+	jmp .dms_w
+.dms_z
+	+lda_mx door_sx
+.dms_w
+	ldx #0
+	cmp #5
+	bcc .dms_set
+	inx
+	cmp #7
+	bcc .dms_set
+	inx
+.dms_set
+	stx rot1
+	rts
+
+; A = signed local coord. rot1: 0=×1, 1=×3/2, 2=×2. Y preserved.
+scale_door_u
+	ldx rot1
+	beq .sdu_rts
+	dex
+	beq .sdu_15
+	asl
+	rts
+.sdu_15
+	sta pv4
+	asl
+	clc
+	adc pv4
+	cmp #$80
+	ror
+.sdu_rts
+	rts
+
+; Door type mesh: local X across, Y up, Z thickness. Origin = face bottom-centre.
+fill_door_type_verts
+	ldx obj_i
+	+lda_mx door_type
+	and #($ff - DOOR_HIDDEN)
+	cmp #DOOR_NTYPES
+	bcc +
+	lda #0
++
+	tay
+	jsr door_mesh_scale
+	jsr fill_door_slot
+	jsr fill_door_origin
+	jmp xform_item_at
+
+
+
+; ent_wx/wy/wz = door AABB bottom-centre on the outward face; ent_rot from face.
+fill_door_origin
+	ldx obj_i
+	+lda_mx door_face
+	cmp #FACE_PX
+	bcc .fdo_z
+	cmp #FACE_MX
+	beq .fdo_mx
+	clc
+	lda box_x
+	adc box_sx
+	sta ent_wx
+	jmp .fdo_zmid
+.fdo_mx
+	lda box_x
+	sta ent_wx
+.fdo_zmid
+	lda box_sz
+	lsr
+	clc
+	adc box_z
+	sta ent_wz
+	jmp .fdo_y
+.fdo_z
+	cmp #FACE_MZ
+	beq .fdo_mz
+	clc
+	lda box_z
+	adc box_sz
+	sta ent_wz
+	jmp .fdo_xmid
+.fdo_mz
+	lda box_z
+	sta ent_wz
+.fdo_xmid
+	lda box_sx
+	lsr
+	clc
+	adc box_x
+	sta ent_wx
+.fdo_y
+	lda box_y
+	sta ent_wy
+	ldx obj_i
+	+lda_mx door_face
+	and #3
+	tay
+	lda door_face_rot,y
+	sta ent_rot
+	rts
+
+; One bump crack. ×1 DOOR_CRACK at the stored face point. Current room only.
+draw_crack
+	lda crack_ms_l
+	ora crack_ms_h
+	beq .dc_rts
+	lda crack_room
+	cmp room_idx
+	bne .dc_rts
+	jsr crack_cull_box
+	lda crack_face
+	jsr check_face_front
+	bcc .dc_rts
+	jsr frustum_hits
+	bcc .dc_rts
+	jsr load_view_trig
+	lda #0
+	sta rot1
+	ldy #DOOR_CRACK
+	jsr fill_door_slot
+	jsr crack_xform
+	jmp stroke_mesh
+.dc_rts
+	rts
+
+; 4×5×1 cull box. Outward plane sits on the stored face point.
+; Face axis a = (face>>1) eor 1, plus-bit p = face&1.
+; Along-face: max(hi−2, 0), size 4. Face: max(hi−(p eor 1), 0), size 1.
+crack_cull_box
+	lda crack_y
+	sta box_y
+	lda #5
+	sta box_sy
+	lda crack_face
+	lsr
+	eor #1
+	sta pv0			; 0 = X is the face, 1 = Z
+	ldx #1
+.cc_i
+	lda #2
+	sta pv2
+	lda #4
+	sta pv1
+	cpx pv0
+	bne .cc_put
+	lda #1
+	sta pv1
+	lda crack_face
+	and #1
+	eor #1
+	sta pv2
+.cc_put
+	txa
+	asl
+	tay			; box_x/box_z and box_sx/box_sz are stride 2
+	sec
+	lda crack_x,x
+	sbc pv2
+	bcs .cc_ok
+	lda #0
+.cc_ok
+	sta box_x,y
+	lda pv1
+	sta box_sx,y
+	dex
+	bpl .cc_i
+	rts
+
+; 8.8 origin so +axis and −axis both sit PLAYER_R from the player, not on a grid line.
+crack_xform
+	lda crack_face
+	and #3
+	tay
+	lda door_face_rot,y
+	sta ent_rot
+	lda crack_xl
+	sta org_xl
+	lda crack_x
+	sta org_xh
+	lda #0
+	sta org_yl
+	lda crack_y
+	sta org_yh
+	lda crack_zl
+	sta org_zl
+	lda crack_z
+	sta org_zh
+	ldx #0
+	jsr xform_world_vert88
+	jmp xform_item_cam
+
+; dt<<4 as 8.8 → ~1 rev / 4s
+update_item_spin
+	lda dt_ms
+	sta nlo
+	lda dt_msh
+	sta nhi
+	asl nlo
+	rol nhi
+	asl nlo
+	rol nhi
+	asl nlo
+	rol nhi
+	asl nlo
+	rol nhi
+	clc
+	lda item_spin_l
+	adc nlo
+	sta item_spin_l
+	lda item_spin
+	adc nhi
+	sta item_spin
+	rts
+
+fill_plat_verts
+	jsr aabb_uxuz
+	lda box_y
+	sta VY
+	sta VY+1
+	sta VY+2
+	sta VY+3
+	lda #4
+	sta mesh_nv
+	jsr set_box_xzid
+	jmp xform_mesh_xz
+
+; Up-pointing triangle on the switch face
+fill_switch_verts
+	lda #<box_col			; 3 distinct columns → identity
+	sta col_ptr
+	lda #>box_col
+	sta col_ptr+1
+	ldx obj_i
+	+lda_mx sw_face
+	cmp #FACE_PX
+	bcc .fsz
+	jmp .fsx
+.fsz
+	cmp #FACE_MZ
+	beq .fsmz
+	clc
+	lda box_z
+	adc box_sz
+	jmp .fszp
+.fsmz
+	lda box_z
+.fszp
+	sta UZ
+	lda #1
+	sta mesh_nz
+	lda box_x
+	sta UX
+	lda box_sx
+	lsr
+	clc
+	adc box_x
+	sta UX+1
+	clc
+	lda box_x
+	adc box_sx
+	sta UX+2
+	lda #3
+	sta mesh_nx
+	ldx #0
+	beq .fs_tail
+.fsx
+	cmp #FACE_MX
+	beq .fsmx
+	clc
+	lda box_x
+	adc box_sx
+	jmp .fsxp
+.fsmx
+	lda box_x
+.fsxp
+	sta UX
+	lda #1
+	sta mesh_nx
+	lda box_z
+	sta UZ
+	lda box_sz
+	lsr
+	clc
+	adc box_z
+	sta UZ+1
+	clc
+	lda box_z
+	adc box_sz
+	sta UZ+2
+	lda #3
+	sta mesh_nz
+	ldx #3
+; X = offset into sw_xz_tab: xid at X, zid at X+3
+.fs_tail
+	clc
+	lda box_y
+	adc box_sy
+	sta VY
+	lda box_sy
+	lsr
+	clc
+	adc box_y
+	sta VY+1
+	sta VY+2
+	clc
+	txa
+	adc #<sw_xz_tab
+	sta xid_ptr
+	lda #>sw_xz_tab
+	adc #0
+	sta xid_ptr+1
+	clc
+	lda xid_ptr
+	adc #3
+	sta zid_ptr
+	lda xid_ptr+1
+	adc #0
+	sta zid_ptr+1
+	lda #3
+	sta mesh_nv
+	jmp xform_mesh_xz
+
+; Four ramp corners; stroke uses hypotenuses plus optional top/bottom
+fill_slope_verts
+	ldx obj_i
+	+lda_mx slope_axis
+	bne .slz
+	+lda_mx slope_dir
+	beq .slxn
+	lda box_x
+	sta pv0
+	clc
+	adc box_sx
+	sta pv1
+	jmp .slxgo
+.slxn
+	clc
+	lda box_x
+	adc box_sx
+	sta pv0
+	lda box_x
+	sta pv1
+.slxgo
+	lda box_y
+	sta pv2
+	clc
+	adc box_sy
+	sta pv3
+	lda pv0
+	sta UX
+	lda pv1
+	sta UX+1
+	lda box_z
+	sta UZ
+	clc
+	adc box_sz
+	sta UZ+1
+	lda #<slope_x_xid
+	sta xid_ptr
+	lda #>slope_x_xid
+	sta xid_ptr+1
+	lda #<slope_x_zid
+	sta zid_ptr
+	lda #>slope_x_zid
+	sta zid_ptr+1
+	jmp .sl_emit
+.slz
+	ldx obj_i
+	+lda_mx slope_dir
+	beq .slzn
+	lda box_z
+	sta pv0
+	clc
+	adc box_sz
+	sta pv1
+	jmp .slzgo
+.slzn
+	clc
+	lda box_z
+	adc box_sz
+	sta pv0
+	lda box_z
+	sta pv1
+.slzgo
+	lda box_y
+	sta pv2
+	clc
+	adc box_sy
+	sta pv3
+	lda box_x
+	sta UX
+	clc
+	adc box_sx
+	sta UX+1
+	lda pv0
+	sta UZ
+	lda pv1
+	sta UZ+1
+	jsr set_box_xzid
+.sl_emit
+	lda #<box_col			; 4 distinct columns → identity
+	sta col_ptr
+	lda #>box_col
+	sta col_ptr+1
+	lda #2
+	sta mesh_nx
+	sta mesh_nz
+	lda pv2
+	sta VY
+	sta VY+1
+	lda pv3
+	sta VY+2
+	sta VY+3
+	lda #4
+	sta mesh_nv
+	jmp xform_mesh_xz
+
+; ------------------------------------------------------------------
+; Tetromino hull: unique UX/UZ * sin/cos, then verts by xid/zid/VY.
+; The baked edge list strokes in place (room_e0/e1 + room_eo), no culling:
+; the eye is always inside the outer box, so every edge would be kept.
+; EDGE_VIS/CLIP_* are 32-wide (MESH_MAX_EDGES).
+; ------------------------------------------------------------------
+draw_room_mesh
+	jsr load_view_trig
+	lda #$ff
+	sta mesh_vmask
+	ldx room_idx
+	+lda_mx room_eo
+	sta pv3
+	+lda_mx room_nv
+	sta mesh_nv
+	+lda_mx room_nx
+	sta mesh_nx
+	+lda_mx room_nz
+	sta mesh_nz
+	+lda_mx room_uo
+	sta pv0
+	+lda_mx room_zo
+	sta pv1
+	+lda_mx room_vo
+	sta pv2
+	ldy #0
+.drm_ux
+	cpy mesh_nx
+	beq .drm_uz
+	tya
+	clc
+	adc pv0
+	tax
+	+lda_mx room_ux
+	sta UX,y
+	iny
+	bne .drm_ux
+.drm_uz
+	ldy #0
+.drm_uzl
+	cpy mesh_nz
+	beq .drm_vy
+	tya
+	clc
+	adc pv1
+	tax
+	+lda_mx room_uz
+	sta UZ,y
+	iny
+	bne .drm_uzl
+.drm_vy
+	ldy #0
+.drm_vyl
+	cpy mesh_nv
+	beq .drm_ptr
+	tya
+	clc
+	adc pv2
+	tax
+	+lda_mx room_vy
+	sta VY,y
+	iny
+	bne .drm_vyl
+.drm_ptr
+	clc
+	lda	room_xid
+	adc pv2
+	sta xid_ptr
+	lda	room_xid+1
+	adc #0
+	sta xid_ptr+1
+	clc
+	lda	room_zid
+	adc pv2
+	sta zid_ptr
+	lda	room_zid+1
+	adc #0
+	sta zid_ptr+1
+	clc
+	lda	room_col
+	adc pv2
+	sta col_ptr
+	lda	room_col+1
+	adc #0
+	sta col_ptr+1
+	jsr xform_mesh_xz
+	clc
+	lda room_e0
+	adc pv3
+	sta edge_ptr
+	lda room_e0+1
+	adc #0
+	sta edge_ptr+1
+	clc
+	lda room_e1
+	adc pv3
+	sta edge_b
+	lda room_e1+1
+	adc #0
+	sta edge_b+1
+	ldx room_idx
+	+lda_mx room_ne
+	sta mesh_ne
+	jmp stroke_mesh
+
+; ------------------------------------------------------------------
+draw_world
+	jsr update_frustum
+	ldx room_idx
+	+lda_mx room_nv
+	beq .dw_box
+	jsr draw_room_mesh
+	jmp .dw_items
+.dw_box
+	; active room (inside cull) — not frustum-culled
+	ldx room_idx
+	+lda_mx room_x
+	sta box_x
+	+lda_mx room_y
+	sta box_y
+	+lda_mx room_z
+	sta box_z
+	+lda_mx room_sx
+	sta box_sx
+	+lda_mx room_sy
+	sta box_sy
+	+lda_mx room_sz
+	sta box_sz
+	lda #1
+	sta box_inside
+	lda #0
+	jsr draw_box
+	; crates
+.dw_items
+	ldx #0
+.dw_c
+	cpx	map_ncrates
+	bcs .dw_d
+	+lda_mx crate_room
+	cmp room_idx
+	bne .dw_cn
+	stx obj_i
+	+lda_mx crate_x
+	sta box_x
+	+lda_mx crate_y
+	sta box_y
+	+lda_mx crate_z
+	sta box_z
+	+lda_mx crate_sx
+	sta box_sx
+	+lda_mx crate_sy
+	sta box_sy
+	+lda_mx crate_sz
+	sta box_sz
+	jsr frustum_hits
+	bcc .dw_cr
+	lda #0
+	sta box_inside
+	ldx obj_i
+	+lda_mx crate_flags
+	jsr draw_box
+.dw_cr
+	ldx obj_i
+.dw_cn
+	inx
+	beq .dw_d
+	jmp .dw_c
+.dw_d
+	; doors: static type mesh on the outward face (this room's slice)
+	jsr door_slice
+	ldx door_i0
+.dw_door
+	cpx door_i1
+	bcs .dw_sw
+	stx obj_i
+	+lda_mx door_type
+	bmi .dw_dn0
+	+lda_mx door_x
+	sta box_x
+	+lda_mx door_y
+	sta box_y
+	+lda_mx door_z
+	sta box_z
+	+lda_mx door_sx
+	sta box_sx
+	+lda_mx door_sy
+	sta box_sy
+	+lda_mx door_sz
+	sta box_sz
+	+lda_mx door_face
+	jsr check_face_front
+	bcc .dw_dn0
+	jsr frustum_hits
+	bcc .dw_dn0
+	jsr draw_door_mesh
+.dw_dn0
+	ldx obj_i
+	inx
+	beq .dw_sw
+	jmp .dw_door
+.dw_sw
+	jsr draw_crack
+	ldx #0
+.dw_s
+	cpx	map_nswitches
+	bcs .dw_e
+	+lda_mx sw_room
+	cmp room_idx
+	bne .dw_sn
+	stx obj_i
+	+lda_mx sw_x
+	sta box_x
+	+lda_mx sw_y
+	sta box_y
+	+lda_mx sw_z
+	sta box_z
+	+lda_mx sw_sx
+	sta box_sx
+	+lda_mx sw_sy
+	sta box_sy
+	+lda_mx sw_sz
+	sta box_sz
+	ldx obj_i
+	+lda_mx sw_face
+	jsr check_face_front
+	; Face id points at the wall. The camera stands on the other side of that plane.
+	bcs .dw_sr
+	jsr frustum_hits
+	bcc .dw_sr
+	jsr draw_switch_mesh
+.dw_sr
+	ldx obj_i
+.dw_sn
+	inx
+	beq .dw_e
+	jmp .dw_s
+.dw_e
+	ldx #0
+.dw_el
+	cpx	map_nelevs
+	bcs .dw_sl
+	+lda_mx elev_room
+	cmp room_idx
+	bne .dw_eln
+	stx obj_i
+	+lda_mx elev_x
+	sta box_x
+	clc
+	lda elev_y,x
+	+adc_mx elev_sy
+	sta box_y			; top plane
+	+lda_mx elev_z
+	sta box_z
+	+lda_mx elev_sx
+	sta box_sx
+	lda #1
+	sta box_sy
+	+lda_mx elev_sz
+	sta box_sz
+	jsr frustum_hits
+	bcc .dw_er
+	jsr draw_plat_mesh
+.dw_er
+	ldx obj_i
+.dw_eln
+	inx
+	beq .dw_sl
+	jmp .dw_el
+.dw_sl
+	ldy room_idx
+	+slice_x room_slope_o
+.dw_slope
+	cpx sl_end
+	bcs .dw_pl
+	stx obj_i
+	+lda_mx slope_x
+	sta box_x
+	+lda_mx slope_y
+	sta box_y
+	+lda_mx slope_z
+	sta box_z
+	+lda_mx slope_sx
+	sta box_sx
+	+lda_mx slope_sy
+	sta box_sy
+	+lda_mx slope_sz
+	sta box_sz
+	jsr frustum_hits
+	bcc .dw_slr
+	jsr draw_slope_mesh
+.dw_slr
+	ldx obj_i
+.dw_sln
+	inx
+	jmp .dw_slope
+.dw_pl
+	ldy room_idx
+	+slice_x room_plat_o
+.dw_plat
+	cpx sl_end
+	bcs .dw_bp
+	stx obj_i
+	+lda_mx plat_x
+	sta box_x
+	+lda_mx plat_y
+	sta box_y
+	+lda_mx plat_z
+	sta box_z
+	+lda_mx plat_sx
+	sta box_sx
+	lda #1
+	sta box_sy
+	+lda_mx plat_sz
+	sta box_sz
+	+lda_mx plat_solid
+	bne .dw_pl_fr
+	lda box_sx
+	cmp #5
+	bcs .dw_pl_fr
+	lda box_sz
+	cmp #5
+	bcs .dw_pl_fr
+	lda cam_yh
+	cmp box_y
+	bcs .dw_pl_fr			; eye at or above the plane
+	jmp .dw_pln			; small non-solid, viewed from below
+.dw_pl_fr
+	jsr frustum_hits
+	bcc .dw_plr
+	jsr draw_plat_mesh
+.dw_plr
+	ldx obj_i
+.dw_pln
+	inx
+	jmp .dw_plat
+	; things
+.dw_bp
+	ldy room_idx
+	+slice_x room_th_o
+.dw_bpl
+	cpx sl_end
+	bcs .dw_drops
+	lda th_taken,x
+	bne .dw_bpn
+	stx obj_i
+	+lda_mx th_x
+	sta box_x
+	+lda_mx th_y
+	sta box_y
+	+lda_mx th_z
+	sta box_z
+	jsr set_th_foot_box
+	jsr frustum_hits
+	bcc .dw_bpr
+	jsr draw_thing_mesh
+.dw_bpr
+	ldx obj_i
+.dw_bpn
+	inx
+	jmp .dw_bpl
+	; death drops
+.dw_drops
+	ldx #0
+.dw_dpl
+	cpx	map_nenemies
+	bcs .dw_rts
+	lda drop_taken,x
+	bne .dw_dpn
+	lda drop_room,x
+	cmp room_idx
+	bne .dw_dpn
+	stx obj_i
+	lda drop_x,x
+	sta box_x
+	lda drop_y,x
+	sta box_y
+	lda drop_z,x
+	sta box_z
+	jsr set_th_foot_box
+	jsr frustum_hits
+	bcc .dw_dpr
+	ldx obj_i
+	lda drop_type,x
+	jsr draw_pickup_mesh
+.dw_dpr
+	ldx obj_i
+.dw_dpn
+	inx
+	beq .dw_rts
+	jmp .dw_dpl
+.dw_rts
+	rts

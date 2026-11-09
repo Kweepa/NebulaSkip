@@ -1,0 +1,235 @@
+#!/usr/bin/env python3
+"""Bundle the editor into a single self-contained HTML file (no server)."""
+
+from __future__ import annotations
+
+import base64
+import re
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+OUT = ROOT / "index.html"
+
+JS_ORDER = [
+    "js/roomGeom.js",
+    "js/fontModel.js",
+    "js/model.js",
+  "js/math3d.js",
+  "js/gizmo.js",
+  "js/io.js",
+    "js/pak.js",
+    "js/mdl.js",
+    "js/layoutView.js",
+    "js/overheadView.js",
+    "js/previewView.js",
+    "js/animView.js",
+    "js/weaponView.js",
+    "js/itemView.js",
+    "js/fontView.js",
+    "js/buildView.js",
+    "js/wadSprites.js",
+    "js/stickOrtho.js",
+    "js/main.js",
+]
+
+
+def strip_module(src: str) -> str:
+    src = re.sub(r"^import\s+[\s\S]*?;\s*\n", "", src, flags=re.M)
+    src = re.sub(r"^export\s*\{[\s\S]*?\};\s*\n", "", src, flags=re.M)
+    src = re.sub(r"^export\s+default\s+", "", src, flags=re.M)
+    src = re.sub(r"^export\s+", "", src, flags=re.M)
+    return src
+
+
+def main() -> None:
+    css = (ROOT / "styles.css").read_text(encoding="utf-8")
+    parts = []
+    for rel in JS_ORDER:
+        raw = (ROOT / rel).read_text(encoding="utf-8")
+        parts.append(f"// ---- {rel} ----\n{strip_module(raw)}")
+    js = "\n\n".join(parts)
+
+    icon_path = ROOT / "icon.png"
+    favicon_link = ""
+    if icon_path.exists():
+        b64 = base64.b64encode(icon_path.read_bytes()).decode("ascii")
+        favicon_link = f'  <link rel="icon" type="image/png" href="data:image/png;base64,{b64}" />\n'
+
+    pistol_path = ROOT.parent / "assets" / "weapons" / "pistol_lines.png"
+    pistol_img = ""
+    if pistol_path.is_file():
+        pistol_b64 = base64.b64encode(pistol_path.read_bytes()).decode("ascii")
+        pistol_img = (
+            f'      <img id="preview-pistol-png" width="24" height="32" hidden alt="" '
+            f'src="data:image/png;base64,{pistol_b64}" />\n'
+        )
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Nebula Skip Editor</title>
+{favicon_link}  <style>
+{css}
+  </style>
+</head>
+<body>
+  <header class="toolbar">
+    <h1>Nebula Skip</h1>
+    <div class="toolbar-actions" role="group" aria-label="Editor mode">
+      <button type="button" id="btn-mode-layout" class="active">Maps</button>
+      <button type="button" id="btn-mode-anim">Enemies</button>
+      <button type="button" id="btn-mode-weapons">Weapons</button>
+      <button type="button" id="btn-mode-items">Items</button>
+      <button type="button" id="btn-mode-font">Font</button>
+      <button type="button" id="btn-mode-build">Build</button>
+    </div>
+    <div class="toolbar-actions" id="draw-mode-group" role="group" aria-label="Draw mode">
+      <button type="button" id="btn-draw-all" class="active">All</button>
+      <button type="button" id="btn-draw-local">Local</button>
+      <button type="button" id="btn-draw-neighbours" class="toggle" title="Door-linked rooms (when Local is on)">Neighbours</button>
+      <button type="button" id="btn-draw-rooms-only" class="toggle" title="Hide contents; rooms and doors only">Rooms Only</button>
+    </div>
+    <div class="toolbar-actions">
+      <button type="button" id="btn-undo" title="Ctrl+Z" disabled>Undo</button>
+      <button type="button" id="btn-redo" title="Ctrl+Y" disabled>Redo</button>
+      <button type="button" id="btn-save">Save</button>
+      <button type="button" id="btn-load">Load</button>
+    </div>
+    <p id="status" class="status" role="status"></p>
+  </header>
+
+  <main class="layout">
+    <aside class="left">
+      <section id="layout-left">
+        <div class="layout-left-fixed">
+          <input
+            type="search"
+            id="layout-search"
+            class="layout-search"
+            placeholder="items, enemies, rooms"
+            spellcheck="false"
+            autocomplete="off"
+          />
+          <section id="level-list"></section>
+          <h2>Place</h2>
+          <div id="item-palette" class="item-palette"></div>
+        </div>
+        <div class="layout-left-scroll">
+          <h2>Objects</h2>
+          <ul id="object-list" class="object-list"></ul>
+        </div>
+      </section>
+      <section id="anim-left" hidden>
+        <h2>Enemies</h2>
+        <ul id="enemy-list" class="object-list"></ul>
+        <div class="toolbar-actions mdl-overlay-row">
+          <button type="button" id="btn-mdl-overlay" class="toggle active">Ref sprite</button>
+          <button type="button" id="btn-collision-overlay" class="toggle active" title="Player-vs-enemy block volume (ENEMY_BLOCK_R x ENEMY_CULL_H)">Collision</button>
+        </div>
+        <div class="btn-row">
+          <button type="button" id="btn-anim-folder">Open shareware folder</button>
+        </div>
+      </section>
+      <section id="weapons-left" hidden>
+        <h2>Weapons</h2>
+        <ul id="weapon-list" class="object-list"></ul>
+        <label class="field mdl-scale-field">
+          <span>Global scale</span>
+          <input type="range" id="weapon-scale" min="0.05" max="4" step="0.01" value="0.4" />
+          <input type="number" id="weapon-scale-num" min="0.05" max="8" step="0.01" value="0.4" />
+        </label>
+        <div class="btn-row">
+          <button type="button" id="btn-weapon-folder">Open shareware folder</button>
+        </div>
+        <div class="btn-row">
+          <button type="button" id="btn-weapon-export">Export PNGs</button>
+        </div>
+      </section>
+      <section id="items-left" hidden>
+        <table id="item-budget" class="item-budget">
+          <tbody>
+            <tr><th colspan="2">Items</th></tr>
+            <tr><td>verts</td><td id="bud-item-nv"></td></tr>
+            <tr><td>unique X</td><td id="bud-item-nx"></td></tr>
+            <tr><td>unique Z</td><td id="bud-item-nz"></td></tr>
+            <tr><td>lines</td><td id="bud-item-ne"></td></tr>
+            <tr><th colspan="2">Doors</th></tr>
+            <tr><td>verts</td><td id="bud-door-nv"></td></tr>
+            <tr><td>unique X</td><td id="bud-door-nx"></td></tr>
+            <tr><td>unique Z</td><td id="bud-door-nz"></td></tr>
+            <tr><td>lines</td><td id="bud-door-ne"></td></tr>
+          </tbody>
+        </table>
+        <h2>Items</h2>
+        <ul id="item-mesh-list" class="object-list"></ul>
+        <h2>Doors</h2>
+        <ul id="door-mesh-list" class="object-list"></ul>
+      </section>
+      <section id="font-left" hidden></section>
+    </aside>
+
+    <section class="center">
+      <div class="center-heading">
+        <h2 id="center-title">Map</h2>
+        <p id="map-stats" class="map-stats" aria-live="polite"></p>
+      </div>
+      <div class="map-stage" id="map-stage">
+        <div class="stick-pane" id="stick-left" hidden>
+          <canvas id="stick-left-canvas"></canvas>
+          <span class="stick-label">Left</span>
+        </div>
+        <div class="stick-pane" id="stick-front" hidden>
+          <canvas id="stick-front-canvas"></canvas>
+          <span class="stick-label">Front</span>
+        </div>
+        <canvas id="view-canvas" tabindex="0"></canvas>
+      </div>
+      <p class="hint" id="hint"></p>
+      <div id="build-panel" class="build-panel" hidden></div>
+      <div id="font-panel" class="font-panel" hidden></div>
+    </section>
+
+    <aside class="right">
+      <div class="right-editors" id="right-editors"></div>
+      <div id="preview-panel" class="preview-panel panel">
+        <h2>Preview</h2>
+        <div class="preview-frame preview-3d-frame">
+          <canvas id="preview-canvas"></canvas>
+        </div>
+        <p class="muted" id="preview-hint">Drag L/R to rotate · U/D to walk</p>
+{pistol_img}      </div>
+      <div id="overhead-panel" class="preview-panel panel">
+        <div class="toolbar-actions ortho-tabs" role="group" aria-label="Ortho view">
+          <button type="button" id="btn-ortho-top" class="active">Top</button>
+          <button type="button" id="btn-ortho-left">Left</button>
+          <button type="button" id="btn-ortho-forward">Forward</button>
+        </div>
+        <div class="preview-frame">
+          <canvas id="overhead-canvas"></canvas>
+        </div>
+        <p class="muted" id="ortho-hint">XZ · +Z up · camera arrow</p>
+      </div>
+      <div id="weapon-preview-panel" class="preview-panel panel" hidden>
+        <h2>48×42 sprite</h2>
+        <div class="preview-frame weapon-preview-frame">
+          <canvas id="weapon-preview-canvas"></canvas>
+        </div>
+        <p class="muted" id="weapon-preview-hint">C64 2×2 hi-res</p>
+      </div>
+    </aside>
+  </main>
+
+  <script>
+{js}
+  </script>
+</body>
+</html>
+"""
+    OUT.write_text(html, encoding="utf-8")
+    print(f"Wrote {OUT} ({OUT.stat().st_size} bytes)")
+
+
+if __name__ == "__main__":
+    main()

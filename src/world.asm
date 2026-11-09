@@ -1,0 +1,2883 @@
+; Room physics, proximity triggers, floor / eye sync
+!zone world
+
+!if TRIG_ROOM_MAX > 8 {
+	!error "trig_inside is 8 bits; TRIG_ROOM_MAX must be <= 8"
+}
+
+; ------------------------------------------------------------------
+world_init
+	lda spawn_room
+	jsr set_room_idx
+	lda #0
+	sta cam_xl
+	sta cam_yl
+	sta cam_zl
+	sta pitch
+	sta msg_on
+	sta status_ms_l
+	sta status_ms_h
+	lda #$ff
+	sta pl_on_elev
+	lda #0
+	sta pl_falling
+	sta fall_vl
+	sta fall_vh
+	sta fall_y0
+	sta fall_acc
+	sta hurt_flash_l
+	sta hurt_flash_h
+	sta hurt_ms_l
+	sta hurt_ms_h
+	sta pickup_ms_l
+	sta pickup_ms_h
+	sta item_spin
+	sta item_spin_l
+	sta crack_ms_l
+	sta crack_ms_h
+	sta crack_flags
+	; spawn eye at spawn_x+1 (center-ish), spawn_y+EYE, spawn_z+1
+	clc
+	lda spawn_x
+	adc #1
+	sta cam_xh
+	clc
+	lda spawn_y
+	adc #EYE_HEIGHT
+	sta cam_yh
+	clc
+	lda spawn_z
+	adc #1
+	sta cam_zh
+	; yaw from rot octant * 32
+	lda spawn_rot
+	asl
+	asl
+	asl
+	asl
+	asl
+	sta yaw
+	jsr proc_init
+	jsr init_things
+	jsr init_enemies
+	jsr init_rockets
+	jsr init_drops
+	lda spawn_y
+	sta floor_y
+	jsr update_floor
+	jsr sync_eye
+	lda #$ff
+	sta palette_room
+	jmp apply_room_palette
+
+; Clear th_taken[0..MAP_NTHINGS)
+init_things
+	lda #0
+	sta rune_taken
+	sta doom_anim_ph
+	sta barrel_ch_l
+	sta barrel_ch_h
+	sta shot_abs
+	ldx #3
+.ib_pend
+	sta barrel_pend,x
+	dex
+	bpl .ib_pend
+	ldx #0
+.ib_lp
+	cpx	map_nthings
+	bcs .ib_rts
+	lda #0
+	sta th_taken,x
+	inx
+	beq .ib_rts
+	jmp .ib_lp
+.ib_rts
+	rts
+
+; All enemies idle, HP from type, frame 0
+init_enemies
+	lda #$a5
+	sta random8
+	lda #0
+	sta gunshot_wake
+	ldx #0
+.ie_lp
+	cpx	map_nenemies
+	bcs .ie_rts
+	lda #EN_IDLE
+	sta en_state,x
+	lda #0
+	sta en_frame,x
+	sta en_timer,x
+	sta en_timer_h,x
+	sta en_step,x
+	sta en_step_h,x
+	sta en_pain_i,x
+	+lda_mx en_rot			; map rot = editor octant (0=+Z)
+	sta en_dir,x
+	asl
+	asl
+	asl
+	asl
+	asl
+	+sta_mx en_rot
+	+ldy_mx en_type
+	lda enemy_hp_init,y
+	sta en_hp,x
+	+lda_mx en_tag			; tagged = hidden until a spawn trigger fires
+	beq .ie_nx
+	lda #EN_GONE
+	sta en_state,x
+.ie_nx
+	inx
+	beq .ie_rts
+	jmp .ie_lp
+.ie_rts
+	rts
+
+; Drop slots inactive (taken=1)
+init_drops
+	ldx #0
+	lda #1
+.id_lp
+	cpx	map_nenemies
+	bcs .id_rts
+	sta drop_taken,x
+	inx
+	beq .id_rts
+	jmp .id_lp
+.id_rts
+	rts
+
+; ------------------------------------------------------------------
+; point_in_box_xz — col_x/col_z vs box_*  C=1 inside (exclusive max)
+; point_in_floor_xz — same, inclusive max (walkables; T-junction seams)
+; ------------------------------------------------------------------
+point_in_box_xz
+	lda col_x
+	cmp box_x
+	bcc .pib_no
+	clc
+	lda box_x
+	adc box_sx
+	cmp col_x
+	bcc .pib_no
+	beq .pib_no
+	lda col_z
+	cmp box_z
+	bcc .pib_no
+	clc
+	lda box_z
+	adc box_sz
+	cmp col_z
+	bcc .pib_no
+	beq .pib_no
+	sec
+	rts
+point_in_floor_xz
+	lda col_x
+	cmp box_x
+	bcc .pib_no
+	clc
+	lda box_x
+	adc box_sx
+	cmp col_x
+	bcc .pib_no
+	lda col_z
+	cmp box_z
+	bcc .pib_no
+	clc
+	lda box_z
+	adc box_sz
+	cmp col_z
+	bcc .pib_no
+	sec
+	rts
+.pib_no
+	clc
+	rts
+
+; ------------------------------------------------------------------
+; player_overlaps_y — [feet, feet+PLAYER_H) vs [box_y, box_y+box_sy)
+; C=1 overlap
+; ------------------------------------------------------------------
+player_overlaps_y
+	clc
+	lda box_y
+	adc box_sy
+	sta col_y			; exclusive max of box
+	sec
+	lda cam_yh
+	sbc #EYE_HEIGHT			; feet
+	cmp col_y
+	bcs .poy_no			; feet >= y+sy
+	clc
+	adc #PLAYER_H			; exclusive head
+	sta col_y
+	lda box_y
+	cmp col_y
+	bcs .poy_no			; y >= head
+	sec
+	rts
+.poy_no
+	clc
+	rts
+
+; X = enemy. box_x/box_z = test point.
+; C=1 if Chebyshev vs en_x/en_z < box_sx (set_blk_lim). Preserves X.
+body_vs_en
+	+lda_mx en_x
+	sec
+	sbc box_x
+	bcs +
+	eor #$ff
+	clc
+	adc #1
++
+	cmp box_sx
+	bcs .bve_no
+	+lda_mx en_z
+	sec
+	sbc box_z
+	bcs +
+	eor #$ff
+	clc
+	adc #1
++
+	cmp box_sx
+	bcs .bve_no
+	sec
+	rts
+.bve_no
+	clc
+	rts
+
+; box_x/box_z = test point.
+; C=1 if Chebyshev vs cam_xh/cam_zh < box_sx (set_blk_lim).
+body_vs_cam
+	lda cam_xh
+	sec
+	sbc box_x
+	bcs +
+	eor #$ff
+	clc
+	adc #1
++
+	cmp box_sx
+	bcs .bvc_no
+	lda cam_zh
+	sec
+	sbc box_z
+	bcs +
+	eor #$ff
+	clc
+	adc #1
++
+	cmp box_sx
+	bcs .bvc_no
+	sec
+	rts
+.bvc_no
+	clc
+	rts
+
+; X = enemy. box_sx := enemy_block_r[slot] + 1 (body_vs_en / body_vs_cam limit).
+; Preserves X. Clobbers A, Y.
+set_blk_lim
+	jsr ldy_slot
+	lda enemy_block_r,y
+	clc
+	adc #1
+	sta box_sx
+	rts
+
+; col_x/col_z dest vs alive same-room enemies. C=1 ok, C=0 newly overlapping.
+; Enter-only: start save_xh/save_zh already overlapping that body → allow.
+; Does not use rot*.
+enemies_block_player
+	ldx #0
+.ebp_lp
+	cpx	map_nenemies
+	bcs .ebp_ok
+	lda en_state,x
+	cmp #EN_DYING
+	bcs .ebp_n
+	+lda_mx en_room
+	cmp room_idx
+	bne .ebp_n
+	+lda_mx en_y
+	sta box_y
+	lda #ENEMY_CULL_H
+	sta box_sy
+	stx obj_i
+	jsr player_overlaps_y
+	ldx obj_i
+	bcc .ebp_n
+	jsr set_blk_lim
+	lda col_x
+	sta box_x
+	lda col_z
+	sta box_z
+	jsr body_vs_en
+	bcc .ebp_n
+	lda save_xh
+	sta box_x
+	lda save_zh
+	sta box_z
+	jsr body_vs_en
+	bcs .ebp_n
+	clc
+	rts
+.ebp_n
+	inx
+	beq .ebp_ok
+	jmp .ebp_lp
+.ebp_ok
+	sec
+	rts
+
+; X = collider; C=1 if player Y overlaps [rc_y, rc_y+rc_sy). Preserve X.
+rc_overlaps_player_y
+	+lda_mx rc_y
+	sta box_y
+	+lda_mx rc_sy
+	sta box_sy
+	jmp player_overlaps_y
+
+; If col_x/z in collider X, set proc_tmp2 to rc_y (proc_tmp0 = found).
+; Several colliders may overlap in XZ when an L/T/S is rotated so one
+; arm is vertical (lid over a shaft). The union hull leaves a hole;
+; use the lowest floor so you drop, not the lid.
+uf_rc_floor
+	+lda_mx rc_sx
+	beq .urf_rts
+	jsr point_in_rc_xz
+	bcc .urf_rts
+	lda proc_tmp0
+	bne .urf_min
+	+lda_mx rc_y
+	sta proc_tmp2
+	lda #1
+	sta proc_tmp0
+	rts
+.urf_min
+	+lda_mx rc_y
+	cmp proc_tmp2
+	bcs .urf_rts
+	sta proc_tmp2
+.urf_rts
+	rts
+
+; Y = room. col_x/col_z set. C=1 found; proc_tmp0=1, proc_tmp2=lowest rc_y.
+peek_rc_floor
+	tya
+	jsr room_mul3
+	tax
+	lda #0
+	sta proc_tmp0
+	jsr uf_rc_floor
+	inx
+	jsr uf_rc_floor
+	inx
+	jsr uf_rc_floor
+	lda proc_tmp0
+	beq .prf_no
+	sec
+	rts
+.prf_no
+	clc
+	rts
+
+; col_x/col_z set. Y = room (floor_below uses room_idx).
+; fb_probe_y = probe Y inclusive.
+; C=1, proc_tmp2 = highest walkable ≤ fb_probe_y (rc floor, crate top, solid plat, elev top).
+floor_below
+	ldy room_idx
+floor_below_y
+	sty col_room
+	jsr peek_rc_floor
+	bcc .fb_surf
+	lda proc_tmp2
+	cmp fb_probe_y
+	beq .fb_surf
+	bcc .fb_surf
+	lda #0
+	sta proc_tmp0
+.fb_surf
+	ldx #0
+.fb_c
+	cpx	map_ncrates
+	bcs .fb_p
+	+lda_mx crate_room
+	cmp col_room
+	bne .fb_cn
+	+lda_mx crate_x
+	sta box_x
+	+lda_mx crate_z
+	sta box_z
+	+lda_mx crate_sx
+	sta box_sx
+	+lda_mx crate_sz
+	sta box_sz
+	jsr point_in_box_xz
+	bcc .fb_cn
+	clc
+	+lda_mx crate_y
+	+adc_mx crate_sy
+	jsr .fb_cand
+.fb_cn
+	inx
+	bne .fb_c
+.fb_p
+	ldy col_room
+	+slice_x room_plat_o
+.fb_pl
+	cpx sl_end
+	bcs .fb_e
+	+lda_mx plat_solid
+	beq .fb_pn
+	+lda_mx plat_x
+	sta box_x
+	+lda_mx plat_z
+	sta box_z
+	+lda_mx plat_sx
+	sta box_sx
+	+lda_mx plat_sz
+	sta box_sz
+	jsr point_in_box_xz
+	bcc .fb_pn
+	+lda_mx plat_y
+	jsr .fb_cand
+.fb_pn
+	inx
+	bne .fb_pl			; sl_end <= 255; X wraps only after the slice
+.fb_e
+	ldx #0
+.fb_el
+	cpx	map_nelevs
+	bcs .fb_done
+	+lda_mx elev_room
+	cmp col_room
+	bne .fb_en
+	+lda_mx elev_x
+	sta box_x
+	+lda_mx elev_z
+	sta box_z
+	+lda_mx elev_sx
+	sta box_sx
+	+lda_mx elev_sz
+	sta box_sz
+	jsr point_in_floor_xz
+	bcc .fb_en
+	clc
+	lda elev_y,x
+	+adc_mx elev_sy
+	jsr .fb_cand
+.fb_en
+	inx
+	bne .fb_el
+.fb_done
+	lda proc_tmp0
+	beq .fb_no
+	sec
+	rts
+.fb_no
+	clc
+	rts
+.fb_cand
+	cmp fb_probe_y
+	beq .fb_ok
+	bcs .fb_skip
+.fb_ok
+	ldy proc_tmp0
+	beq .fb_take
+	cmp proc_tmp2
+	bcc .fb_skip
+	beq .fb_skip
+.fb_take
+	sta proc_tmp2
+	lda #1
+	sta proc_tmp0
+.fb_skip
+	rts
+
+; ------------------------------------------------------------------
+update_floor
+	lda pl_on_elev
+	sta obj_i			; prior elev (rider), before clear
+	lda #$ff
+	sta pl_on_elev
+	lda #0
+	sta floor_yl			; integer floors; ramp fills 8.8
+	sta floor_slope
+	lda cam_xh
+	sta col_x
+	lda cam_zh
+	sta col_z
+	ldy room_idx
+	jsr peek_rc_floor
+	bcc .uf_c0
+	lda proc_tmp2
+	sta floor_y
+.uf_c0
+	ldx #0
+	; crate tops (walkable)
+.uf_c
+	cpx	map_ncrates
+	bcs .uf_p
+	+lda_mx crate_room
+	cmp room_idx
+	bne .uf_cn
+	+lda_mx crate_x
+	sta box_x
+	+lda_mx crate_z
+	sta box_z
+	+lda_mx crate_sx
+	sta box_sx
+	+lda_mx crate_sz
+	sta box_sz
+	lda cam_xh
+	sta col_x
+	lda cam_zh
+	sta col_z
+	jsr point_in_floor_xz
+	bcc .uf_cn
+	clc
+	+lda_mx crate_y
+	+adc_mx crate_sy
+	cmp floor_y
+	bcc .uf_cn
+	beq .uf_cn
+	sta col_y			; crate_top
+	sec
+	lda cam_yh
+	sbc #EYE_HEIGHT			; feet
+	cmp col_y
+	beq .uf_c_adopt			; same height
+	bcs .uf_c_adopt			; feet > top — standing on it
+	sta proc_tmp0			; feet
+	lda col_y
+	sec
+	sbc proc_tmp0			; rise
+	cmp #STEP_UP + 1
+	bcs .uf_cn			; too high — walk under
+.uf_c_adopt
+	lda col_y
+	sta floor_y
+.uf_cn
+	inx
+	beq .uf_p
+	jmp .uf_c
+.uf_p
+	; platforms (walkable if solid)
+	ldy room_idx
+	+slice_x room_plat_o
+.uf_pl
+	cpx sl_end
+	bcs .uf_plats_done
+	+lda_mx plat_solid
+	beq .uf_pn
+	+lda_mx plat_x
+	sta box_x
+	+lda_mx plat_z
+	sta box_z
+	+lda_mx plat_sx
+	sta box_sx
+	+lda_mx plat_sz
+	sta box_sz
+	lda cam_xh
+	sta col_x
+	lda cam_zh
+	sta col_z
+	jsr point_in_floor_xz
+	bcc .uf_pn
+	+lda_mx plat_y
+	cmp floor_y
+	bcc .uf_pn
+	beq .uf_pn
+	sta col_y			; plat plane
+	sec
+	lda cam_yh
+	sbc #EYE_HEIGHT			; feet
+	cmp col_y
+	beq .uf_pl_adopt		; same height
+	bcs .uf_pl_adopt		; feet > plane — standing on it
+	sta proc_tmp0			; feet
+	lda col_y
+	sec
+	sbc proc_tmp0			; rise
+	cmp #STEP_UP + 1
+	bcs .uf_pn			; too high — walk under
+.uf_pl_adopt
+	lda col_y
+	sta floor_y
+.uf_pn
+	inx
+	jmp .uf_pl
+.uf_plats_done
+	jsr elev_update_floor
+.uf_slope
+	ldy room_idx
+	+slice_x room_slope_o
+.uf_s
+	cpx sl_end
+	bcc .uf_sroom
+	jmp .uf_done
+.uf_sroom
+	+lda_mx slope_x
+	sta box_x
+	+lda_mx slope_z
+	sta box_z
+	+lda_mx slope_sx
+	sta box_sx
+	+lda_mx slope_sz
+	sta box_sz
+	lda cam_xh
+	sta col_x
+	lda cam_zh
+	sta col_z
+	jsr point_in_floor_xz
+	bcs .uf_sxz
+	jmp .uf_sn
+.uf_sxz
+	+lda_mx slope_axis
+	bne .uf_szf
+	lda cam_xl
+	jmp .uf_sfrac
+.uf_szf
+	lda cam_zl
+.uf_sfrac
+	sta ylo
+	jsr slope_height
+	jmp .uf_scheck
+.uf_scheck
+	lda col_y
+	cmp floor_y
+	bcc .uf_sn			; below current floor
+	sec
+	lda cam_yh
+	sbc #EYE_HEIGHT			; feet
+	sta proc_tmp0
+	lda col_y
+	cmp proc_tmp0
+	beq .uf_sadopt			; same height
+	bcc .uf_sadopt			; ramp below — landing / walk down
+	sec
+	sbc proc_tmp0			; rise
+	cmp #STEP_UP + 1
+	bcs .uf_sn			; too high — walk under
+.uf_sadopt
+	lda col_y
+	sta floor_y
+	lda div_n0
+	sta floor_yl
+	lda #0
+	sta floor_slope
+	lda proc_tmp0
+	cmp col_y
+	bcc .uf_sn			; step-up — .ufl_up snaps
+	sbc col_y			; downward gap (C=1)
+	cmp #FALL_LEDGE + 1
+	bcs .uf_sn			; start fall; .ufl_air lands
+	lda #1
+	sta floor_slope
+	jmp .uf_sn
+.uf_sn
+	inx
+	jmp .uf_s
+.uf_done
+	rts
+
+; X = slope index. col_x/col_z = world cell. ylo = run-axis fraction.
+; col_y = integer surface, div_n0 = fraction. X preserved.
+slope_height
+	+lda_mx slope_axis
+	bne .sh_z
+	sec
+	lda col_x
+	+sbc_mx slope_x
+	sta yhi
+	+lda_mx slope_dir
+	bne .sh_xgo
+	lda #0
+	sec
+	sbc ylo
+	sta ylo
+	+lda_mx slope_sx
+	sbc yhi
+	sta yhi
+.sh_xgo
+	+lda_mx slope_sx
+	jmp .sh_interp
+.sh_z
+	sec
+	lda col_z
+	+sbc_mx slope_z
+	sta yhi
+	+lda_mx slope_dir
+	bne .sh_zgo
+	lda #0
+	sec
+	sbc ylo
+	sta ylo
+	+lda_mx slope_sz
+	sbc yhi
+	sta yhi
+.sh_zgo
+	+lda_mx slope_sz
+.sh_interp
+	sta dlo
+	beq .sh_flat
+	txa
+	pha
+	+ldy_mx slope_sy
+	lda ylo
+	jsr umul8j
+	lda prod_l
+	sta div_n0
+	lda prod_h
+	sta div_n1
+	lda #0
+	sta div_n2
+	pla
+	tax
+	pha
+	+ldy_mx slope_sy
+	lda yhi
+	jsr umul8j
+	clc
+	lda div_n1
+	adc prod_l
+	sta div_n1
+	lda div_n2
+	adc prod_h
+	sta div_n2
+	jsr div24u8
+	pla
+	tax
+	clc
+	+lda_mx slope_y
+	adc div_n1
+	sta col_y
+	rts
+.sh_flat
+	+lda_mx slope_y
+	sta col_y
+	lda #0
+	sta div_n0
+	rts
+
+sync_eye
+	clc
+	lda floor_y
+	adc #EYE_HEIGHT
+	sta cam_yh
+	lda floor_yl
+	sta cam_yl
+	rts
+
+; ------------------------------------------------------------------
+; ledge_unstick — landed eye is inside a room box but outside PLAYER_R.
+; A vertical L/T/S lip is one cell deep; step to a cardinal that is inset
+; at floor_y. A pit slab corner violates two walls at once, so the four
+; diagonals are tried after the cardinals.
+; cam_yh restored so fall_y0 stays the height the drop started.
+; X/Z fraction parks on the near edge of the new cell ($ff down, 0 up).
+; ------------------------------------------------------------------
+ledge_unstick
+	lda cam_yh
+	pha
+	clc
+	lda floor_y
+	adc #EYE_HEIGHT
+	sta cam_yh
+	lda cam_xh
+	sta col_x
+	lda cam_zh
+	sta col_z
+	jsr in_room_inset
+	bcs .lu_out
+	ldx #0
+.lu_n
+	cpx #8
+	bcs .lu_out
+	stx ledge_i
+	lda .lu_dx,x
+	ldy #0
+	jsr .lu_ax
+	bcs .lu_sk
+	ldx ledge_i
+	lda .lu_dz,x
+	ldy #1
+	jsr .lu_ax
+	bcs .lu_sk
+	jsr in_room_inset
+	bcc .lu_sk
+	jsr step_up_ok
+	bcc .lu_sk
+	jsr enemies_block_player
+	bcc .lu_sk
+	ldy #1
+	jsr solid_at
+	bcs .lu_sk
+	jmp .lu_take
+.lu_sk
+	ldx ledge_i
+	inx
+	jmp .lu_n
+.lu_take
+	lda col_x
+	cmp cam_xh
+	beq .lu_tz
+	sta cam_xh
+	lda #$ff
+	bcc .lu_fx			; col < cam — decreased
+	lda #0
+.lu_fx
+	sta cam_xl
+.lu_tz
+	lda col_z
+	cmp cam_zh
+	beq .lu_out
+	sta cam_zh
+	lda #$ff
+	bcc .lu_fz
+	lda #0
+.lu_fz
+	sta cam_zl
+.lu_out
+	pla
+	sta cam_yh
+	rts
+
+; A = delta (-1/0/+1). Y = axis (0 x, 1 z). C=1 if the add would wrap.
+; col_x,y set on success. Clobbers X.
+.lu_ax
+	cmp #0
+	beq .lu_cp
+	bmi .lu_sub
+	ldx cam_xh,y
+	cpx #$ff
+	beq .lu_no
+	inx
+	txa
+	sta col_x,y
+	clc
+	rts
+.lu_sub
+	ldx cam_xh,y
+	beq .lu_no
+	dex
+	txa
+	sta col_x,y
+	clc
+	rts
+.lu_cp
+	lda cam_xh,y
+	sta col_x,y
+	clc
+	rts
+.lu_no
+	sec
+	rts
+
+; -x, +x, -z, +z, then -x-z, +x-z, -x+z, +x+z
+.lu_dx	!byte $ff, 1, 0, 0, $ff, 1, $ff, 1
+.lu_dz	!byte 0, 0, $ff, 1, $ff, $ff, 1, 1
+
+; ------------------------------------------------------------------
+; update_fall — snap if gap <= FALL_LEDGE; else accelerate down (no WASD).
+; Call after update_floor. Landing: snap, maybe take_damage(FALL_DAMAGE).
+; Step-up: rise <= STEP_UP snaps (SOUND_OOF at exactly 2, unless elevator).
+; ------------------------------------------------------------------
+update_fall
+	lda pl_falling
+	bne .ufl_air
+	lda floor_slope
+	bne .ufl_sync			; on ramp — snap 8.8, skip gap
+	sec
+	lda cam_yh
+	sbc #EYE_HEIGHT			; feet
+	cmp floor_y
+	beq .ufl_sync			; on floor
+	bcc .ufl_up			; floor above feet
+	sec
+	sbc floor_y			; gap
+	cmp #FALL_LEDGE + 1
+	bcs .ufl_start
+.ufl_sync
+	jsr ledge_unstick
+	jmp sync_eye
+
+.ufl_up
+	lda pl_on_elev
+	cmp #$ff
+	bne .ufl_sync			; elevator — always snap
+	sec
+	lda cam_yh
+	sbc #EYE_HEIGHT			; feet
+	sta proc_tmp0
+	lda floor_y
+	sec
+	sbc proc_tmp0			; rise
+	cmp #STEP_UP + 1
+	bcc .ufl_riseok
+	rts				; too high — pos_ok should have blocked
+.ufl_riseok
+	cmp #STEP_UP
+	bne .ufl_sync			; 1-unit ledge: silent
+	lda #SOUND_OOF
+	jsr play_sound
+	jmp .ufl_sync
+
+.ufl_start
+	jsr ledge_unstick
+	lda #1
+	sta pl_falling
+	lda #0
+	sta fall_vl
+	sta fall_vh
+	sta fall_acc
+	lda cam_yh
+	sta fall_y0
+
+.ufl_air
+	; acc16 = fall_acc + dt_ms
+	clc
+	lda fall_acc
+	adc dt_ms
+	sta proc_tmp0
+	lda #0
+	adc dt_msh
+	sta proc_tmp1
+.ufl_tick
+	lda proc_tmp1
+	bne .ufl_step
+	lda proc_tmp0
+	cmp #FALL_TICK_MS
+	bcc .ufl_ticks_done
+.ufl_step
+	sec
+	lda proc_tmp0
+	sbc #FALL_TICK_MS
+	sta proc_tmp0
+	lda proc_tmp1
+	sbc #0
+	sta proc_tmp1
+	clc
+	lda fall_vl
+	adc #<FALL_ACCEL
+	sta fall_vl
+	lda fall_vh
+	adc #>FALL_ACCEL
+	sta fall_vh
+	sec
+	lda cam_yl
+	sbc fall_vl
+	sta cam_yl
+	lda cam_yh
+	sbc fall_vh
+	sta cam_yh
+	sec
+	lda cam_yh
+	sbc #EYE_HEIGHT			; feet
+	cmp floor_y
+	beq .ufl_land
+	bcc .ufl_land
+	jmp .ufl_tick
+
+.ufl_ticks_done
+	lda proc_tmp0
+	sta fall_acc
+	; overshoot / floor rose to meet us
+	sec
+	lda cam_yh
+	sbc #EYE_HEIGHT
+	cmp floor_y
+	beq .ufl_land
+	bcc .ufl_land
+	rts
+
+.ufl_land
+	jsr sync_eye
+	lda #0
+	sta pl_falling
+	sta fall_vl
+	sta fall_vh
+	sta fall_acc
+	sec
+	lda fall_y0
+	sbc cam_yh			; eye drop
+	cmp #FALL_SAFE + 1
+	bcc .ufl_rts
+	lda #FALL_DAMAGE
+	jsr take_damage
+.ufl_rts
+	rts
+
+; ------------------------------------------------------------------
+; crates_block — col_x/col_z inside a same-room crate?
+; Y=1: rise <= STEP_UP is a step, not a wall. Y=0: volume always solid.
+; col_room set. C=1 blocked and box_* is that crate. X = index.
+; ------------------------------------------------------------------
+crates_block
+	ldx #0
+.cb_c
+	cpx	map_ncrates
+	bcs .cb_no
+	+lda_mx crate_room
+	cmp col_room
+	bne .cb_n
+	+lda_mx crate_y
+	sta box_y
+	+lda_mx crate_sy
+	sta box_sy
+	jsr player_overlaps_y
+	bcc .cb_n
+	cpy #0
+	beq .cb_wall			; rocket — volume wall
+	sec
+	lda cam_yh
+	sbc #EYE_HEIGHT			; feet
+	sta col_y
+	clc
+	lda box_y
+	adc box_sy			; crate_top
+	sec
+	sbc col_y			; rise (overlap => top > feet)
+	cmp #STEP_UP + 1
+	bcc .cb_n			; step-up — not a wall
+.cb_wall
+	+lda_mx crate_x
+	sta box_x
+	+lda_mx crate_z
+	sta box_z
+	+lda_mx crate_sx
+	sta box_sx
+	+lda_mx crate_sz
+	sta box_sz
+	jsr point_in_box_xz
+	bcs .cb_yes
+.cb_n
+	inx
+	beq .cb_no
+	jmp .cb_c
+.cb_no
+	clc
+	rts
+.cb_yes
+	sec
+	rts
+
+; ------------------------------------------------------------------
+; solid_at — col_x/col_z blocked by crate, solid platform, or closed door?
+; C=1 blocked. Y=1: crate rise <= STEP_UP is not a wall (player/enemy).
+; Y=0: crate volume always solid (rocket).
+; solid_at uses room_idx; solid_at_col uses col_room (already set).
+; ------------------------------------------------------------------
+solid_at
+	lda room_idx
+	sta col_room
+solid_at_col
+	jsr crates_block
+	bcs .sa_yes
+	; platforms — solid on Y overlap (plane as sy=0); rise <= STEP_UP is a step-up
+	ldy col_room			; Y flag is dead past the crates
+	+slice_x room_plat_o
+.sa_pl
+	cpx sl_end
+	bcs .sa_d
+	+lda_mx plat_solid
+	beq .sa_pn
+	+lda_mx plat_y
+	sta box_y
+	lda #0
+	sta box_sy
+	jsr player_overlaps_y
+	bcc .sa_pn
+	sec
+	lda cam_yh
+	sbc #EYE_HEIGHT			; feet
+	sta col_y
+	lda box_y
+	sec
+	sbc col_y			; rise (overlap => plat_y > feet)
+	cmp #STEP_UP + 1
+	bcc .sa_pn			; step-up — not a wall
+	+lda_mx plat_x
+	sta box_x
+	+lda_mx plat_z
+	sta box_z
+	+lda_mx plat_sx
+	sta box_sx
+	+lda_mx plat_sz
+	sta box_sz
+	jsr point_in_box_xz
+	bcs .sa_yes
+.sa_pn
+	inx
+	jmp .sa_pl
+.sa_d
+	ldy col_room
+	jmp door_blocks_y
+.sa_yes
+	sec
+	rts
+
+; ------------------------------------------------------------------
+; point_in_rc_xz — col_x/col_z vs collider X (exclusive max). C=1 inside
+; ------------------------------------------------------------------
+point_in_rc_xz
+	+lda_mx rc_sx
+	beq .prc_no
+	lda col_x
+	+cmp_mx rc_x
+	bcc .prc_no
+	clc
+	+lda_mx rc_x
+	+adc_mx rc_sx
+	cmp col_x
+	bcc .prc_no
+	beq .prc_no
+	lda col_z
+	+cmp_mx rc_z
+	bcc .prc_no
+	clc
+	+lda_mx rc_z
+	+adc_mx rc_sz
+	cmp col_z
+	bcc .prc_no
+	beq .prc_no
+	sec
+	rts
+.prc_no
+	clc
+	rts
+
+; X = collider index. C=1 inside inset by PLAYER_R.
+; Faces shared with another collider in this room are not inset, so L/T/S joins stay walkable.
+; proc_tmp5 = room*3 (group base).
+rc_inset_ok
+	+lda_mx rc_sx
+	bne .rio_go
+	jmp .rio_no
+.rio_go
+	jsr rc_overlaps_player_y
+	bcc .rio_no
+	stx proc_tmp3
+	lda col_x
+	jsr .rio_join_xmin
+	bcs .rio_x0
+	sec
+	sbc #PLAYER_R
+	bcc .rio_no
+.rio_x0
+	+cmp_mx rc_x
+	bcc .rio_no
+	clc
+	+lda_mx rc_x
+	+adc_mx rc_sx
+	jsr .rio_join_xmax
+	bcs .rio_x1
+	sec
+	sbc #PLAYER_R
+.rio_x1
+	cmp col_x
+	bcc .rio_no
+	beq .rio_no
+	lda col_z
+	jsr .rio_join_zmin
+	bcs .rio_z0
+	sec
+	sbc #PLAYER_R
+	bcc .rio_no
+.rio_z0
+	+cmp_mx rc_z
+	bcc .rio_no
+	clc
+	+lda_mx rc_z
+	+adc_mx rc_sz
+	jsr .rio_join_zmax
+	bcs .rio_z1
+	sec
+	sbc #PLAYER_R
+.rio_z1
+	cmp col_z
+	bcc .rio_no
+	beq .rio_no
+	sec
+	rts
+.rio_no
+	clc
+	rts
+
+; C=1 skip inset (shared face with any sibling). A preserved.
+.rio_join_xmin
+	pha
+	ldy proc_tmp5
+	jsr .rio_xmin_one
+	bcs .rj_xmin_y
+	iny
+	jsr .rio_xmin_one
+	bcs .rj_xmin_y
+	iny
+	jsr .rio_xmin_one
+	bcs .rj_xmin_y
+	pla
+	clc
+	rts
+.rj_xmin_y
+	pla
+	sec
+	rts
+.rio_xmin_one
+	tya
+	cmp proc_tmp3
+	beq .rio_xmin_n
+	+lda_my rc_sx
+	beq .rio_xmin_n
+	clc
+	+lda_my rc_x
+	+adc_my rc_sx
+	+cmp_mx rc_x
+	bne .rio_xmin_n
+	jmp .rio_ovz
+.rio_xmin_n
+	clc
+	rts
+.rio_join_xmax
+	pha
+	ldy proc_tmp5
+	jsr .rio_xmax_one
+	bcs .rj_xmax_y
+	iny
+	jsr .rio_xmax_one
+	bcs .rj_xmax_y
+	iny
+	jsr .rio_xmax_one
+	bcs .rj_xmax_y
+	pla
+	clc
+	rts
+.rj_xmax_y
+	pla
+	sec
+	rts
+.rio_xmax_one
+	tya
+	cmp proc_tmp3
+	beq .rio_xmax_n
+	+lda_my rc_sx
+	beq .rio_xmax_n
+	clc
+	+lda_mx rc_x
+	+adc_mx rc_sx
+	+cmp_my rc_x
+	bne .rio_xmax_n
+	jmp .rio_ovz
+.rio_xmax_n
+	clc
+	rts
+.rio_join_zmin
+	pha
+	ldy proc_tmp5
+	jsr .rio_zmin_one
+	bcs .rj_zmin_y
+	iny
+	jsr .rio_zmin_one
+	bcs .rj_zmin_y
+	iny
+	jsr .rio_zmin_one
+	bcs .rj_zmin_y
+	pla
+	clc
+	rts
+.rj_zmin_y
+	pla
+	sec
+	rts
+.rio_zmin_one
+	tya
+	cmp proc_tmp3
+	beq .rio_zmin_n
+	+lda_my rc_sx
+	beq .rio_zmin_n
+	clc
+	+lda_my rc_z
+	+adc_my rc_sz
+	+cmp_mx rc_z
+	bne .rio_zmin_n
+	jmp .rio_ovx
+.rio_zmin_n
+	clc
+	rts
+.rio_join_zmax
+	pha
+	ldy proc_tmp5
+	jsr .rio_zmax_one
+	bcs .rj_zmax_y
+	iny
+	jsr .rio_zmax_one
+	bcs .rj_zmax_y
+	iny
+	jsr .rio_zmax_one
+	bcs .rj_zmax_y
+	pla
+	clc
+	rts
+.rj_zmax_y
+	pla
+	sec
+	rts
+.rio_zmax_one
+	tya
+	cmp proc_tmp3
+	beq .rio_zmax_n
+	+lda_my rc_sx
+	beq .rio_zmax_n
+	clc
+	+lda_mx rc_z
+	+adc_mx rc_sz
+	+cmp_my rc_z
+	bne .rio_zmax_n
+	jmp .rio_ovx
+.rio_zmax_n
+	clc
+	rts
+
+.rio_ovx
+	clc
+	+lda_my rc_x
+	+adc_my rc_sx
+	+cmp_mx rc_x
+	beq .rovx_no
+	bcc .rovx_no
+	clc
+	+lda_mx rc_x
+	+adc_mx rc_sx
+	+cmp_my rc_x
+	beq .rovx_no
+	bcc .rovx_no
+	jmp .rio_sib_y
+.rovx_no
+	clc
+	rts
+.rio_ovz
+	clc
+	+lda_my rc_z
+	+adc_my rc_sz
+	+cmp_mx rc_z
+	beq .rovz_no
+	bcc .rovz_no
+	clc
+	+lda_mx rc_z
+	+adc_mx rc_sz
+	+cmp_my rc_z
+	beq .rovz_no
+	bcc .rovz_no
+.rio_sib_y
+	+lda_my rc_y
+	sta box_y
+	+lda_my rc_sy
+	sta box_sy
+	jmp player_overlaps_y
+.rovz_no
+	clc
+	rts
+
+; Y = room. C=1 if col_x/z is inside a collider the enemy can stand in.
+; Shared faces are not inset (rc_inset_ok), so L/T/S joins stay walkable
+; for every walker. cam_yh is the enemy eye for that Y test, then restored.
+; pla does not touch C. enemy_idx is live. X restored from pv4.
+room_cols_inset1
+	stx pv4
+	lda cam_yh
+	pha
+	ldx enemy_idx
+	+lda_mx en_y
+	clc
+	adc #EYE_HEIGHT
+	sta cam_yh
+	tya
+	jsr room_mul3
+	tax
+	jsr rc_inset_ok
+	bcs .rci_yes
+	inx
+	jsr rc_inset_ok
+	bcs .rci_yes
+	inx
+	jsr rc_inset_ok
+.rci_yes
+	pla
+	sta cam_yh
+	ldx pv4
+	rts
+
+; ------------------------------------------------------------------
+; in_room_inset — col_x/col_z inside room_idx colliders (PLAYER_R inset)?
+; in_room_inset_a — A = room. C=1 yes.
+; ------------------------------------------------------------------
+in_room_inset
+	lda room_idx
+in_room_inset_a
+	jsr room_mul3
+	tax
+	jsr rc_inset_ok
+	bcs .iri_yes
+	inx
+	jsr rc_inset_ok
+	bcs .iri_yes
+	inx
+	jsr rc_inset_ok
+.iri_yes
+	rts
+
+; ------------------------------------------------------------------
+; pos_ok — cam would be ok at col_x/col_z
+; ------------------------------------------------------------------
+pos_ok
+	jsr in_room_inset
+	bcc .po_no
+	jsr enemies_block_player
+	bcc .po_no
+	ldy #1
+	jsr solid_at
+	bcs .po_no
+	jmp step_up_ok
+.po_no
+	clc
+	rts
+
+; Dest room floor vs feet. C=1 ok (no floor, lower, or rise <= STEP_UP).
+step_up_ok
+	ldy room_idx
+	jsr peek_rc_floor
+	bcc .suo_yes			; no collider
+	sec
+	lda cam_yh
+	sbc #EYE_HEIGHT			; feet
+	sta proc_tmp1
+	lda proc_tmp2			; dest floor
+	cmp proc_tmp1
+	beq .suo_yes
+	bcc .suo_yes			; dest lower — fall later
+	sec
+	sbc proc_tmp1			; rise
+	cmp #STEP_UP + 1
+	bcc .suo_yes
+	clc
+	rts
+.suo_yes
+	sec
+	rts
+
+; ------------------------------------------------------------------
+; Horizontal move from IRQ hold-ms wish (8 units/s). Slide on X then Z.
+; ------------------------------------------------------------------
+apply_move_world
+	lda pl_falling
+	beq .am_go
+	rts
+.am_go
+	ldy yaw
+	lda SINTAB,y
+	sta rot0
+	ldy yaw
+	lda COSTAB,y
+	sta rot1
+
+	lda hold_fwd
+	ora hold_fwd + 1
+	beq .am_now
+	lda hold_fwd
+	sta vel_ms
+	lda hold_fwd + 1
+	sta vel_msh
+	lda rot0
+	jsr wish_add_x
+	lda rot1
+	jsr wish_add_z
+.am_now
+	lda hold_back
+	ora hold_back + 1
+	beq .am_nos
+	lda hold_back
+	sta vel_ms
+	lda hold_back + 1
+	sta vel_msh
+	lda rot0
+	jsr neg_a
+	jsr wish_add_x
+	lda rot1
+	jsr neg_a
+	jsr wish_add_z
+.am_nos
+	lda hold_strafer
+	ora hold_strafer + 1
+	beq .am_nod
+	lda hold_strafer
+	sta vel_ms
+	lda hold_strafer + 1
+	sta vel_msh
+	lda rot1
+	jsr wish_add_x
+	lda rot0
+	jsr neg_a
+	jsr wish_add_z
+.am_nod
+	lda hold_strafel
+	ora hold_strafel + 1
+	beq .am_noa
+	lda hold_strafel
+	sta vel_ms
+	lda hold_strafel + 1
+	sta vel_msh
+	lda rot1
+	jsr neg_a
+	jsr wish_add_x
+	lda rot0
+	jsr wish_add_z
+.am_noa
+	lda cam_xl
+	sta mv0_xl
+	lda cam_xh
+	sta mv0_xh
+	lda cam_zl
+	sta mv0_zl
+	lda cam_zh
+	sta mv0_zh
+	lda cam_xl
+	sta save_xl
+	lda cam_xh
+	sta save_xh
+	lda cam_zl
+	sta save_zl
+	lda cam_zh
+	sta save_zh
+	lda #0
+	sta door_blk
+
+	lda wish_dx			; no wish on an axis: position is unchanged, skip pos_ok
+	ora wish_dxh
+	beq .am_zx
+	clc
+	lda cam_xl
+	adc wish_dx
+	sta cam_xl
+	lda cam_xh
+	adc wish_dxh
+	sta cam_xh
+	lda cam_xh
+	sta col_x
+	lda cam_zh
+	sta col_z
+	jsr pos_ok
+	bcs .am_zx
+	lda #0
+	jsr note_bump
+	lda save_xl
+	sta cam_xl
+	lda save_xh
+	sta cam_xh
+	inc door_blk			; bit0 = X blocked
+.am_zx
+	lda cam_xh
+	sta save_xh
+	lda cam_xl
+	sta save_xl
+	lda wish_dz
+	ora wish_dzh
+	beq .am_done
+	clc
+	lda cam_zl
+	adc wish_dz
+	sta cam_zl
+	lda cam_zh
+	adc wish_dzh
+	sta cam_zh
+	lda cam_xh
+	sta col_x
+	lda cam_zh
+	sta col_z
+	jsr pos_ok
+	bcs .am_done
+	lda #1
+	jsr note_bump
+	lda save_zl
+	sta cam_zl
+	lda save_zh
+	sta cam_zh
+	lda #2
+	ora door_blk
+	sta door_blk
+.am_done
+	jsr try_door_wish
+	bcc .am_walk
+	jsr crack_suppress_born		; drop a mark born this frame
+	jsr crack_clear_hold		; transit ended the contact
+	jmp .am_hydro
+.am_walk
+	lda door_blk
+	bne .am_still
+	jsr crack_clear_hold
+.am_still
+	lda wish_dx
+	ora wish_dxh
+	ora wish_dz
+	ora wish_dzh
+	beq .am_rts
+	lda cam_xl
+	cmp mv0_xl
+	bne .am_rts
+	lda cam_xh
+	cmp mv0_xh
+	bne .am_rts
+	lda cam_zl
+	cmp mv0_zl
+	bne .am_rts
+	lda cam_zh
+	cmp mv0_zh
+	bne .am_rts
+	rts
+.am_hydro
+	lda #SOUND_DOROPN
+	jsr play_sound
+.am_rts
+	rts
+
+; ------------------------------------------------------------------
+; note_bump — A = 0 X reject, 1 Z reject. col_* is the failed cell.
+; save_* is the legal pose on both axes. Arms one crack on a wall or crate.
+; A live timer or CRACK_HOLD skips the probe, so a later axis cannot move it.
+; ------------------------------------------------------------------
+note_bump
+	pha
+	lda crack_ms_l
+	ora crack_ms_h
+	bne .ck_pop
+	lda crack_flags
+	and #CRACK_HOLD
+	bne .ck_pop
+	jsr in_room_inset
+	bcc .ck_wall
+	jsr enemies_block_player
+	bcc .ck_pop
+	lda room_idx
+	sta col_room
+	ldy #1
+	jsr crates_block
+	bcs .ck_crate
+.ck_pop
+	pla
+	rts
+.ck_wall
+	clc
+	bcc .ck_go
+.ck_crate
+	sec
+.ck_go
+	pla
+	tay				; axis. C = crate (pla/tay keep C)
+	php
+	ldx #1
+.ck_cp
+	lda save_xh,x
+	sta crack_x,x
+	lda save_xl,x
+	sta crack_xl,x
+	dex
+	bpl .ck_cp
+	lda wish_dxh,y
+	php
+	tya
+	eor #1
+	asl				; ((axis eor 1) << 1) | positive → FACE_*
+	plp
+	bmi .ck_face
+	ora #1
+.ck_face
+	sta crack_face
+	plp
+	php				; crate carry still needed at the feet
+	bcs .ck_box
+	lda wish_dxh,y
+	bmi .ck_sub
+	clc
+	lda crack_x,y
+	adc #PLAYER_R
+	bcc .ck_st
+	lda #$ff
+	bne .ck_sat			; clamp the +side
+.ck_sub
+	sec
+	lda crack_x,y
+	sbc #PLAYER_R
+	bcs .ck_st
+	lda #0
+.ck_sat
+	sta crack_x,y
+	lda #0
+	sta crack_xl,y
+	beq .ck_feet
+.ck_st
+	sta crack_x,y
+	jmp .ck_feet
+.ck_box
+	lda #0
+	sta crack_xl,y
+	tya
+	asl
+	tax				; box_x/box_z and box_sx/box_sz are stride 2
+	lda wish_dxh,y
+	bmi .ck_bneg
+	lda box_x,x
+	sta crack_x,y
+	jmp .ck_feet
+.ck_bneg
+	clc
+	lda box_x,x
+	adc box_sx,x
+	sta crack_x,y
+.ck_feet
+	sec
+	lda cam_yh
+	sbc #EYE_HEIGHT			; feet
+	sta crack_y
+	plp
+	bcc .ck_arm			; wall
+	lda box_y
+	cmp crack_y
+	bcc .ck_arm
+	beq .ck_arm
+	sta crack_y
+.ck_arm
+	lda room_idx
+	sta crack_room
+	lda #<CRACK_MS
+	sta crack_ms_l
+	lda #>CRACK_MS
+	sta crack_ms_h
+	lda crack_flags
+	ora #CRACK_BORN
+	sta crack_flags
+	rts
+
+; Contact ended (released, or the door wish consumed the bump).
+crack_clear_hold
+	lda crack_flags
+	and #$ff - CRACK_HOLD
+	sta crack_flags
+	rts
+
+; Player switch used this bump. Drop a same-frame mark and hold the contact.
+crack_suppress_born
+	lda crack_flags
+	and #CRACK_BORN
+	beq .csb_rts
+	lda #0
+	sta crack_ms_l
+	sta crack_ms_h
+	lda crack_flags
+	ora #CRACK_HOLD
+	sta crack_flags
+.csb_rts
+	rts
+
+; One second, same subtract as the hurt flash. Underflow clears the mark.
+tick_crack
+	lda crack_ms_l
+	ora crack_ms_h
+	beq .tc_rts
+	sec
+	lda crack_ms_l
+	sbc dt_ms
+	sta crack_ms_l
+	lda crack_ms_h
+	sbc dt_msh
+	sta crack_ms_h
+	bcs .tc_rts
+	lda #0
+	sta crack_ms_l
+	sta crack_ms_h
+.tc_rts
+	rts
+
+; A = signed sintab → add (A * vel_ms)>>6 into wish X 8.8
+wish_add_x
+	jsr scale_vel_7
+	clc
+	lda wish_dx
+	adc nlo
+	sta wish_dx
+	lda wish_dxh
+	adc nhi
+	sta wish_dxh
+	rts
+
+wish_add_z
+	jsr scale_vel_7
+	clc
+	lda wish_dz
+	adc nlo
+	sta wish_dz
+	lda wish_dzh
+	adc nhi
+	sta wish_dzh
+	rts
+
+; A signed, vel_ms:vel_msh → nlo:nhi = (A * vel) >> 6  (~8 units/s)
+scale_vel_7
+	sta scale_s
+	bpl .svabs
+	eor #$ff
+	clc
+	adc #1
+.svabs
+	sta hud_n			; |A|
+	tay
+	lda vel_ms
+	jsr umul8j
+	lda prod_l
+	sta nlo
+	lda prod_h
+	sta nhi
+	lda vel_msh
+	beq .svsh
+	ldy hud_n
+	jsr umul8j			; |A| * vel_hi
+	clc
+	lda nhi
+	adc prod_l
+	sta nhi
+	lda prod_h
+	adc #0
+	sta pp_tmp_h			; product bits 16–23
+	ldx #6
+.svsh24
+	lsr pp_tmp_h
+	ror nhi
+	ror nlo
+	dex
+	bne .svsh24
+	jmp .svsign
+.svsh
+	lda nhi
+	ldx #6
+.svsh16
+	lsr
+	ror nlo
+	dex
+	bne .svsh16
+	sta nhi
+.svsign
+	lda scale_s
+	bpl .svok
+	sec
+	lda #0
+	sbc nlo
+	sta nlo
+	lda #0
+	sbc nhi
+	sta nhi
+.svok
+	rts
+
+neg_a
+	eor #$ff
+	clc
+	adc #1
+	rts
+
+; ------------------------------------------------------------------
+; Proximity: a blocked move into a use switch. Backpacks every frame.
+; The block has to be on the face axis, from the air side of that face,
+; so a door transit or an enemy beside the pad does not throw it.
+; ------------------------------------------------------------------
+SW_USE_RANGE	= 4			; max XZ distance to switch AABB
+
+try_proximity
+	; door_blk rising edge — one fire while the block holds
+	lda door_blk
+	bne .tp_kd
+	sta key_use_was			; A = 0
+	jmp .tp_el
+.tp_kd
+	lda key_use_was
+	bne .tp_el			; still blocked
+	lda #1
+	sta key_use_was
+	ldx #0
+.tp_s
+	cpx	map_nswitches
+	bcs .tp_el
+	stx obj_i
+	+lda_mx sw_room
+	cmp room_idx
+	bne .tp_sn
+	jsr .prox_switch
+	bcc .tp_sn
+	+lda_mx sw_kind
+	bpl .tp_go
+	and #$7f
+	cmp #SW_DEST_END + 1
+	bcs .tp_go			; $ff: no dest
+	jmp .tp_sn			; shootable: bump does not fire it
+.tp_go
+	jsr .sw_push
+	bcc .tp_sn
+	jsr fire_switch
+	jsr crack_suppress_born
+	jmp .tp_el			; one switch per press
+.tp_sn
+	ldx obj_i
+	inx
+	bne .tp_s
+.tp_el
+	jsr try_thing_pickup
+	lda crack_flags
+	and #$ff - CRACK_BORN
+	sta crack_flags
+.tp_rts
+	rts
+
+; X = switch. Low 7 bits of sw_kind are the dest. SW_SHOOT is ignored.
+; Switch sound unless the dest is none, end-of-level, or elev_activate refuses (C=1).
+; A door-unlock switch that unlocks a door plays SOUND_DOROPN instead.
+fire_switch
+	+lda_mx sw_kind
+	and #$7f
+	bne .fs_nk
+	+lda_mx sw_tag
+	jsr door_unlock_tag
+	bcc .fs_sfx			; nothing newly unlocked: plain switch sound
+	lda #SOUND_DOROPN
+	jsr play_sound
+	rts
+.fs_nk
+	cmp #SW_DEST_ELEV
+	beq .fs_elev
+	cmp #SW_DEST_TRIG
+	beq .fs_trig
+	cmp #SW_DEST_END
+	bne .fs_rts
+	pla				; drop this jsr
+	pla				; next_level returns to the bump or shot caller
+	jmp next_level
+.fs_trig
+	+lda_mx sw_tag
+	jsr trig_arm_tag
+	jmp .fs_sfx
+.fs_elev
+	+ldy_mx sw_tag
+	tya
+	tax
+	jsr elev_activate
+	bcs .fs_rts
+.fs_sfx
+	lda #SOUND_SWTCHN
+	jsr play_sound
+.fs_rts
+	rts
+
+; box_sx/sy/sz = TH_FOOT_*. Extents are equal (asserted in mem.asm).
+set_th_foot_box
+	lda #TH_FOOT_SX
+	sta box_sx
+	sta box_sy
+	sta box_sz
+	rts
+
+; After a grab: ignore further pickups for PICKUP_HOLD_MS.
+set_pickup_hold
+	lda #<PICKUP_HOLD_MS
+	sta pickup_ms_l
+	lda #>PICKUP_HOLD_MS
+	sta pickup_ms_h
+	rts
+
+; Walk-over things: grant if not full / not already owned
+try_thing_pickup
+	lda pickup_ms_l
+	ora pickup_ms_h
+	beq .tth_go
+	sec
+	lda pickup_ms_l
+	sbc dt_ms
+	sta pickup_ms_l
+	lda pickup_ms_h
+	sbc dt_msh
+	sta pickup_ms_h
+	bcs .tth_held			; still > 0 (or exactly 0: next frame is free)
+	lda #0
+	sta pickup_ms_l
+	sta pickup_ms_h
+	beq .tth_go			; expired this frame
+.tth_held
+	rts
+.tth_go
+	ldy room_idx
+	+slice_x room_th_o
+.tth_lp
+	cpx sl_end
+	bcc .tth_body
+	jmp .tth_rts
+.tth_body
+	stx obj_i
+	lda th_taken,x
+	bne .tth_n
+	+lda_mx th_x
+	sta box_x
+	+lda_mx th_y
+	sta box_y
+	+lda_mx th_z
+	sta box_z
+	jsr set_th_foot_box
+	lda cam_xh
+	sta col_x
+	lda cam_zh
+	sta col_z
+	lda #TH_GRAB_R
+	jsr near_box_xz
+	bcc .tth_n
+	jsr player_overlaps_y
+	bcc .tth_n
+	ldx obj_i
+	+lda_mx th_type
+	cmp #TH_LIGHTPOST
+	beq .tth_n
+	cmp #TH_BARREL
+	beq .tth_n
+	jsr grant_thing
+	bcc .tth_n
+	jsr hud_ammo
+	ldx obj_i
+	+lda_mx th_type
+	jsr hud_got
+	ldx obj_i
+	+lda_mx th_type
+	jsr pickup_sound
+	jsr set_pickup_hold
+	ldx obj_i
+	lda #1
+	sta th_taken,x
+	rts				; one grab per hold; skip the rest of this frame's scan
+.tth_n
+	ldx obj_i
+	inx
+	jmp .tth_lp
+.tth_rts
+	; death-drop things
+	ldx #0
+.tdp_lp
+	cpx	map_nenemies
+	bcs .tdp_rts
+	stx obj_i
+	lda drop_taken,x
+	bne .tdp_n
+	lda drop_room,x
+	cmp room_idx
+	bne .tdp_n
+	lda drop_x,x
+	sta box_x
+	lda drop_y,x
+	sta box_y
+	lda drop_z,x
+	sta box_z
+	jsr set_th_foot_box
+	lda cam_xh
+	sta col_x
+	lda cam_zh
+	sta col_z
+	lda #TH_GRAB_R
+	jsr near_box_xz
+	bcc .tdp_n
+	jsr player_overlaps_y
+	bcc .tdp_n
+	ldx obj_i
+	lda drop_type,x
+	jsr grant_th_type
+	bcc .tdp_n
+	jsr hud_ammo
+	ldx obj_i
+	lda drop_type,x
+	jsr hud_got
+	ldx obj_i
+	lda #1
+	sta drop_taken,x
+	lda #SOUND_WPNUP
+	jsr play_sound
+	jmp set_pickup_hold		; one grab per hold; ends the scan
+.tdp_n
+	ldx obj_i
+	inx
+	beq .tdp_rts
+	jmp .tdp_lp
+.tdp_rts
+	rts
+
+; X = thing index; C=1 granted
+grant_thing
+	+lda_mx th_type
+; A = TH_* type; C=1 granted
+grant_th_type
+	cmp #TH_NTYPES
+	bcs .gb_bad
+	cmp #TH_LIGHTPOST
+	bcs .gb_bad
+	tay
+	lda gb_mode,y
+	asl
+	tax
+	lda gb_mh,x
+	sta rot0
+	lda gb_mh+1,x
+	sta rot1
+	jmp (rot0)
+.gb_bad
+	clc
+	rts
+
+GB_ADD = 0
+GB_GUN = 1
+GB_ARM = 2
+GB_PU  = 3
+GB_KEY = 4
+GB_PACK = 5
+
+PS_HP = 0
+PS_AMMO = 1
+PS_BONUS = 2
+PS_KEY = 3
+
+gb_mh
+	!word gb_do_add, gb_do_gun, gb_do_arm, gb_do_pu, gb_do_key, gb_do_pack
+
+; Row = TH_*. gb_max is the add cap, or the armor value set for GB_ARM.
+; gb_dbl = 1: have_pack doubles that cap (byte saturates at 255).
+gb_mode
+	!byte GB_ADD, GB_ADD, GB_ARM, GB_ARM, GB_ADD
+	!byte GB_ADD, GB_ADD, GB_GUN, GB_GUN, GB_GUN
+	!byte GB_GUN, GB_PACK, GB_KEY, GB_KEY, GB_KEY
+	!byte GB_ADD, GB_PU, GB_ADD, GB_ADD
+
+gb_ptr_lo
+	!byte <player_hp, <player_hp, 0, 0, <ammo_bullets
+	!byte <ammo_shells, <ammo_rockets, <ammo_shells, <ammo_bullets, 0
+	!byte <ammo_rockets, 0, 0, 0, 0
+	!byte <player_hp, 0, 0, 0
+gb_ptr_hi
+	!byte >player_hp, >player_hp, 0, 0, >ammo_bullets
+	!byte >ammo_shells, >ammo_rockets, >ammo_shells, >ammo_bullets, 0
+	!byte >ammo_rockets, 0, 0, 0, 0
+	!byte >player_hp, 0, 0, 0
+
+gb_add
+	!byte HP_STIM, HP_MEDIKIT, 0, 0, AMMO_BULLETS_BOX
+	!byte AMMO_SHELLS_BOX, AMMO_GRENADES_BOX, AMMO_SHELLS_BOX, AMMO_CHAINGUN, 0
+	!byte AMMO_GRENADES_GUN, 0, 0, 0, 0
+	!byte HP_SOUL, 0, 0, 0
+
+gb_max
+	!byte PLAYER_HP_MAX, PLAYER_HP_MAX, ARMOR_GREEN, ARMOR_BLUE, AMMO_BULLETS_MAX
+	!byte AMMO_SHELLS_MAX, AMMO_GRENADES_MAX, AMMO_SHELLS_MAX, AMMO_BULLETS_MAX, 0
+	!byte AMMO_GRENADES_MAX, 0, 0, 0, 0
+	!byte HP_SOUL_MAX, 0, 0, 0
+
+gb_dbl
+	!byte 0, 0, 0, 0, 1
+	!byte 1, 1, 1, 1, 0
+	!byte 1, 0, 0, 0, 0
+	!byte 0, 0, 0, 0
+
+gb_bits
+	!byte 0, 0, 0, 0, 0
+	!byte 0, 0, HAVE_SHOT, HAVE_CHAIN, HAVE_SAW
+	!byte HAVE_ROCKET, 0, HAVE_RED, HAVE_YELLOW, HAVE_BLUE
+	!byte 0, 0, 0, 0
+
+gb_wpn
+	!byte 0, 0, 0, 0, 0
+	!byte 0, 0, WPN_SHOT, WPN_CHAIN, WPN_SAW
+	!byte WPN_ROCKET, 0, 0, 0, 0
+	!byte 0, 0, 0, 0
+
+gb_snd
+	!byte PS_HP, PS_HP, PS_AMMO, PS_AMMO, PS_AMMO
+	!byte PS_AMMO, PS_AMMO, PS_AMMO, PS_AMMO, PS_AMMO
+	!byte PS_AMMO, PS_BONUS, PS_KEY, PS_KEY, PS_KEY
+	!byte PS_HP, PS_BONUS, PS_AMMO, PS_AMMO
+
+; Y = TH_*. rot2=0 fail if at cap, 1 always add+clamp. C=1 stored. Restores Y.
+gb_add_amt
+	lda gb_ptr_lo,y
+	sta rot0
+	lda gb_ptr_hi,y
+	sta rot1
+	tya
+	tax
+	jsr gb_load_cap
+	ldy #0
+	lda (rot0),y
+	ldy rot2
+	bne .ga_add
+	cmp gb_cap
+	bcc .ga_add
+	jmp gb_no
+.ga_add
+	clc
+	adc gb_add,x
+	bcs .ga_cap
+	cmp gb_cap
+	bcc .ga_ok
+	beq .ga_ok
+.ga_cap
+	lda gb_cap
+.ga_ok
+	ldy #0
+	sta (rot0),y
+	txa
+	tay
+	sec
+	rts
+
+; X = TH_*. gb_cap = gb_max, doubled when have_pack and gb_dbl (saturate 255).
+gb_load_cap
+	lda gb_max,x
+	sta gb_cap
+	lda have_pack
+	beq .glc_rts
+	lda gb_dbl,x
+	beq .glc_rts
+	asl gb_cap
+	bcc .glc_rts
+	lda #255
+	sta gb_cap
+.glc_rts
+	rts
+
+gb_do_add
+	lda #0
+	sta rot2
+	jmp gb_add_amt
+
+gb_do_gun
+	lda have_wpn
+	and gb_bits,y
+	beq .gg_new
+	lda gb_add,y
+	beq gb_no
+	lda #0
+	sta rot2
+	jmp gb_add_amt
+.gg_new
+	lda have_wpn
+	ora gb_bits,y
+	sta have_wpn
+	lda gb_add,y
+	beq .gg_sw
+	lda #1
+	sta rot2
+	jsr gb_add_amt
+.gg_sw
+	ldx gb_wpn,y
+	jsr switch_weapon
+	sec
+	rts
+
+gb_do_arm
+	lda player_armour
+	cmp gb_max,y
+	bcc .gar_ok
+	jmp gb_no
+.gar_ok
+	lda gb_max,y
+	sta player_armour
+	lda #0
+	sta combat_armor
+	cpy #TH_ARMOR_B
+	bne +
+	lda #1
+	sta combat_armor
++
+	sec
+	rts
+
+gb_do_pu
+	sty pu_kind
+	lda #<POWERUP_MS
+	sta pu_ms_l
+	lda #>POWERUP_MS
+	sta pu_ms_h
+	sec
+	rts
+
+gb_do_key
+	lda have_keys
+	and gb_bits,y
+	beq .gk_new
+	jmp gb_no
+.gk_new
+	lda have_keys
+	ora gb_bits,y
+	sta have_keys
+	jsr hud_keys
+	sec
+	rts
+
+gb_do_pack
+	lda have_pack
+	bne gb_no
+	lda #1
+	sta have_pack
+	sec
+	rts
+
+gb_no
+	clc
+	rts
+
+; A = TH_* — health / ammo / bonus / key
+pickup_sound
+	cmp #TH_NTYPES
+	bcc .ps_ok
+	rts
+.ps_ok
+	tay
+	lda gb_snd,y
+	cmp #PS_AMMO
+	beq .ps_ammo
+	lda #SOUND_ITEMUP
+	jmp play_sound
+.ps_ammo
+	lda #SOUND_WPNUP
+	jmp play_sound
+
+; C=1 if door_blk pushes into sw_face from the air side. X preserved.
+; The slab cell counts: a crate stops the center on the face, a wall outside it.
+; box_* is the switch (left by .prox_switch). wish_* is this frame's wish.
+; sw_face bit1 = X axis, bit0 = min-side face. Y = 0 or 2 indexes box_x/box_z.
+.sw_push
+	+lda_mx sw_face
+	pha
+	and #2
+	beq .sp_z
+	lda door_blk
+	lsr
+	bcc .sp_pop
+	lda wish_dx
+	ora wish_dxh
+	beq .sp_pop
+	lda wish_dxh
+	ldy #0
+	jmp .sp_sgn
+.sp_z
+	lda door_blk
+	and #2
+	beq .sp_pop
+	lda wish_dz
+	ora wish_dzh
+	beq .sp_pop
+	lda wish_dzh
+	ldy #2
+.sp_sgn
+	asl				; C = wish sign
+	pla				; face. C kept
+	bcs .sp_neg
+	lsr				; C = min-side face
+	bcs .sp_no			; +wish into a min face
+	clc
+	lda box_x,y
+	adc box_sx,y			; exclusive plane
+	pha
+	tya
+	lsr
+	tax				; 0 = X, 1 = Z
+	pla
+	cmp cam_xh,x
+	beq .sp_no			; cam == plane is past the face
+	ldx obj_i
+	rts				; C=1 if cam < plane
+.sp_neg
+	lsr
+	bcc .sp_no			; -wish into a max face
+	tya
+	lsr
+	tax
+	lda cam_xh,x
+	cmp box_x,y			; C=1 if cam >= plane
+	ldx obj_i
+	rts
+.sp_pop
+	pla
+.sp_no
+	clc
+	ldx obj_i
+	rts
+
+; X=switch; C=1 if within SW_USE_RANGE of pad XZ, Y overlaps, facing the face
+.prox_switch
+	stx obj_i
+	+lda_mx sw_x
+	sta box_x
+	+lda_mx sw_z
+	sta box_z
+	+lda_mx sw_sx
+	sta box_sx
+	+lda_mx sw_sz
+	sta box_sz
+	lda cam_xh
+	sta col_x
+	lda cam_zh
+	sta col_z
+	lda #SW_USE_RANGE
+	jsr near_box_xz
+	bcc .ps_no
+	ldx obj_i
+	+lda_mx sw_y
+	sta box_y
+	+lda_mx sw_sy
+	sta box_sy
+	jsr player_overlaps_y
+	bcc .ps_no
+	ldx obj_i
+	jsr .switch_facing
+	ldx obj_i
+	rts
+.ps_no
+	clc
+	ldx obj_i
+	rts
+
+; A = Chebyshev range. C=1 if col_x/col_z are within A of
+; [box_x, box_x+sx) × [box_z, box_z+sz). Scratch is nb_hi / nb_lim.
+near_box_xz
+	sta nb_lim
+	lda col_x
+	cmp box_x
+	bcc .nb_xlo
+	clc
+	lda box_x
+	adc box_sx
+	sta nb_hi
+	lda col_x
+	cmp nb_hi
+	bcs .nb_xhi
+	lda #0
+	beq .nb_xd
+.nb_xlo
+	lda box_x
+	sec
+	sbc col_x
+	jmp .nb_xd
+.nb_xhi
+	lda col_x
+	sec
+	sbc nb_hi
+.nb_xd
+	cmp nb_lim
+	bcc .nb_z
+	bne .nb_no
+.nb_z
+	lda col_z
+	cmp box_z
+	bcc .nb_zlo
+	clc
+	lda box_z
+	adc box_sz
+	sta nb_hi
+	lda col_z
+	cmp nb_hi
+	bcs .nb_zhi
+	lda #0
+	beq .nb_zd
+.nb_zlo
+	lda box_z
+	sec
+	sbc col_z
+	jmp .nb_zd
+.nb_zhi
+	lda col_z
+	sec
+	sbc nb_hi
+.nb_zd
+	cmp nb_lim
+	bcc .nb_yes
+	bne .nb_no
+.nb_yes
+	sec
+	rts
+.nb_no
+	clc
+	rts
+
+; X=switch; C=1 if yaw within ±90° of sw_face (0=+Z, 64=+X, 128=-Z, 192=-X)
+.switch_facing
+	+lda_mx sw_face
+	cmp #FACE_PX
+	bcs .sf_x
+	cmp #FACE_MZ
+	beq .sf_mz
+	; FACE_PZ: yaw < 64 or >= 192
+	lda yaw
+	cmp #64
+	bcc .sf_yes
+	cmp #192
+	bcs .sf_yes
+	clc
+	rts
+.sf_mz
+	lda yaw
+	cmp #64
+	bcc .sf_no
+	cmp #192
+	bcc .sf_yes
+.sf_no
+	clc
+	rts
+.sf_x
+	cmp #FACE_MX
+	beq .sf_mx
+	; FACE_PX: 0..127
+	lda yaw
+	cmp #128
+	bcc .sf_yes
+	clc
+	rts
+.sf_mx
+	lda yaw
+	cmp #128
+	bcs .sf_yes
+	clc
+	rts
+.sf_yes
+	sec
+	rts
+
+; ------------------------------------------------------------------
+; A = cooked enable-tag id (1..15). Clear tr_purpose bits 4–7 on matches.
+; ------------------------------------------------------------------
+trig_arm_tag
+	sta sw_match
+	ldx #0
+.tat
+	cpx	map_ntrigs
+	bcs .tat_done
+	+lda_mx tr_purpose
+	lsr
+	lsr
+	lsr
+	lsr
+	cmp sw_match
+	bne .tat_n
+	+lda_mx tr_purpose
+	and #TRIG_PURPOSE_MASK
+	+sta_mx tr_purpose
+.tat_n
+	inx
+	bne .tat
+.tat_done
+	rts
+
+; ------------------------------------------------------------------
+; update_triggers — every same-room volume: XZ plus
+; [box_y, box_y+sy) vs the player feet–eye line (player_overlaps_y).
+; Bit N = Nth trigger in this room (SoA order). Enter fires per bit;
+; stay = hold (msg HUD / hurt tick); leave clears the bit.
+; tr_purpose bits 4–7 = enable-tag id (0 = live). Nonzero = gated until
+; a matching switch jsr trig_arm_tag (clears those bits).
+; End: jmp (do not continue the scan).
+; ------------------------------------------------------------------
+update_triggers
+	lda #0
+	sta trig_seen
+	ldy room_idx
+	+lda_my room_trig_o
+	tax
+	iny
+	+lda_my room_trig_o
+	sta ut_end
+	ldy #0				; room-local bit (slice <= TRIG_ROOM_MAX, genmap)
+.ut
+	cpx ut_end
+	bcc .ut_bit
+	jmp .ut_fin
+.ut_bit
+	lda ut_bits,y
+	sta pv1				; mask
+	+lda_mx tr_purpose
+	and #TRIG_GATED_MASK
+	beq .ut_live
+	jmp .ut_out			; gated: clear occupancy, no fire
+.ut_live
+	+lda_mx tr_x
+	sta box_x
+	+lda_mx tr_y
+	sta box_y
+	+lda_mx tr_z
+	sta box_z
+	+lda_mx tr_sx
+	sta box_sx
+	+lda_mx tr_sy
+	sta box_sy
+	+lda_mx tr_sz
+	sta box_sz
+	lda cam_xh
+	sta col_x
+	lda cam_zh
+	sta col_z
+	jsr point_in_box_xz
+	bcs .ut_xzok
+	jmp .ut_out
+.ut_xzok
+	jsr player_overlaps_y
+	bcs .ut_yok
+	jmp .ut_out
+.ut_yok
+	+lda_mx tr_purpose
+	cmp #TRIG_MSG
+	bne .ut_nmsg
+	lda trig_seen
+	ora #2
+	sta trig_seen
+.ut_nmsg
+	lda trig_inside
+	and pv1
+	bne .ut_hold
+	lda trig_inside
+	ora pv1
+	sta trig_inside
+	+lda_mx tr_purpose
+	cmp #TRIG_END
+	beq .ut_jmp
+	txa
+	pha
+	tya
+	pha
+	jsr trig_enter
+	pla
+	tay
+	pla
+	tax
+	jmp .ut_adv
+.ut_jmp
+	jmp trig_enter
+.ut_hold
+	+lda_mx tr_purpose
+	cmp #TRIG_MSG
+	beq .ut_msghold
+	cmp #TRIG_HURT
+	beq .ut_hurt
+	cmp #TRIG_HURT_SM
+	bne .ut_adv
+.ut_hurt
+	lda trig_seen
+	lsr
+	bcs .ut_adv
+	lda trig_seen
+	ora #1
+	sta trig_seen
+	txa
+	pha
+	tya
+	pha
+	sec
+	lda hurt_ms_l
+	sbc dt_ms
+	sta hurt_ms_l
+	lda hurt_ms_h
+	sbc dt_msh
+	sta hurt_ms_h
+	bcs .ut_hn
+	lda #<HURT_MS
+	sta hurt_ms_l
+	lda #>HURT_MS
+	sta hurt_ms_h
+	lda pu_kind			; radsuit: floor hurt does nothing
+	bne .ut_hn
+	jsr hurt_amount
+	jsr take_damage
+.ut_hn
+	pla
+	tay
+	pla
+	tax
+	jmp .ut_adv
+.ut_out
+	lda pv1
+	eor #$ff
+	and trig_inside
+	sta trig_inside
+.ut_adv
+	iny
+	inx
+	jmp .ut
+.ut_msghold
+	lda msg_on
+	cmp #1
+	bne .ut_msgdraw
+	+lda_mx tr_arg
+	cmp msg_off
+	beq .ut_adv
+.ut_msgdraw
+	lda #1
+	sta msg_on
+	+lda_mx tr_arg
+	sta msg_off
+	txa
+	pha
+	tya
+	pha
+	jsr hud_message
+	pla
+	tay
+	pla
+	tax
+	jmp .ut_adv
+.ut_fin
+	lda trig_seen
+	and #2
+	bne .ut_rts
+	lda msg_on
+	beq .ut_rts
+	lda #0
+	sta msg_on
+	jmp hud_msg_blank
+.ut_rts
+	rts
+ut_bits
+	!byte $01,$02,$04,$08,$10,$20,$40,$80
+
+; A = HP for the hurt trigger in X. Small is TRIG_HURT_SM, else large.
+hurt_amount
+	+lda_mx tr_purpose
+	cmp #TRIG_HURT_SM
+	beq .ha_sm
+	lda #HURT_LG_HP
+	rts
+.ha_sm
+	lda #HURT_SM_HP
+	rts
+
+; X = trigger SoA. On-entry dispatch.
+trig_enter
+	+lda_mx tr_purpose
+	cmp #TRIG_MSG
+	beq .te_msg
+	lda msg_on
+	beq .te_act
+	lda #0
+	sta msg_on
+	stx obj_i
+	jsr hud_msg_blank
+	ldx obj_i
+.te_act
+	+lda_mx tr_purpose
+	cmp #TRIG_HURT
+	beq .te_hurt
+	cmp #TRIG_HURT_SM
+	beq .te_hurt
+	cmp #TRIG_ELEV
+	beq .te_elev
+	cmp #TRIG_SUMMON
+	beq .te_summon
+	cmp #TRIG_UNLOCK
+	beq .te_unlock
+	cmp #TRIG_UNHIDE
+	beq .te_unhide
+	cmp #TRIG_SPAWN
+	beq .te_spawn
+	cmp #TRIG_END
+	bne .te_rts
+	jmp next_level
+.te_rts
+	rts
+.te_msg
+	lda #1
+	sta msg_on
+	+lda_mx tr_arg
+	sta msg_off
+	jmp hud_message
+.te_hurt
+	lda #<HURT_MS
+	sta hurt_ms_l
+	lda #>HURT_MS
+	sta hurt_ms_h
+	lda pu_kind			; radsuit: floor hurt does nothing
+	bne .teh_rts
+	jsr hurt_amount
+	jmp take_damage
+.teh_rts
+	rts
+; Group id does not say how many cars share it. Count starts; two or more
+; is a stair, so latch gate id 15. Cook never assigns 15, so nothing re-arms it.
+; One car stays a toggle. X is the trigger index on entry.
+.te_elev
+	+lda_mx tr_arg
+	sta elev_match
+	lda #0
+	sta elev_hits
+	txa
+	pha
+	ldx #0
+.te_el
+	cpx map_nelevs
+	beq .te_el_done
+	+lda_mx elev_grp
+	cmp elev_match
+	bne .te_eln
+	jsr elev_activate
+	bcs .te_eln
+	inc elev_hits
+.te_eln
+	inx
+	jmp .te_el
+.te_el_done
+	pla
+	tax
+	lda elev_hits
+	cmp #2
+	bcc .te_el_rts
+	+lda_mx tr_purpose
+	ora #$f0
+	+sta_mx tr_purpose
+.te_el_rts
+	rts
+.te_summon
+	+lda_mx tr_arg
+	tax
+	jmp elev_summon
+.te_unlock
+	+lda_mx tr_arg
+	jmp door_unlock_tag
+.te_unhide
+	+lda_mx tr_arg
+	jmp door_unhide_tag
+; One-shot: latch gate 15 (as .te_elev), wake every EN_GONE enemy with this tag,
+; then force a stream recheck so their pose banks load.
+.te_spawn
+	+lda_mx tr_arg
+	sta spawn_match
+	+lda_mx tr_purpose
+	ora #$f0
+	+sta_mx tr_purpose
+	ldx #0
+.tsp_lp
+	cpx map_nenemies
+	bcs .tsp_done
+	+lda_mx en_tag
+	cmp spawn_match
+	bne .tsp_nx
+	lda en_state,x
+	cmp #EN_GONE
+	bne .tsp_nx
+	lda #EN_IDLE
+	sta en_state,x
+.tsp_nx
+	inx
+	bne .tsp_lp
+.tsp_done
+	lda #$ff
+	sta stream_room
+	rts

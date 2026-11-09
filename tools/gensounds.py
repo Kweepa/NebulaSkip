@@ -1,0 +1,194 @@
+#!/usr/bin/env python3
+"""Build src/pcsounds.asm from a fixed Doom DP* list.
+
+Every effect is resident. Conversion is the existing path: DP* pitch bytes
+decimated 3x, then Wolf byte to POKEY AUDF. Channel and priority are baked
+into the header by who plays the sound.
+"""
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+from pcsrc import resolve
+
+ROOT = Path(__file__).resolve().parents[1]
+OUT = ROOT / "src" / "pcsounds.asm"
+ENEMY_DIR = ROOT / "enemies"
+PAYLOAD_MAX = 4096
+MAX_TICKS = 255
+
+# id, DP lump, voice (0 player / 1 enemy / 2 world), priority.
+# Same lump can ship twice when two callers need different channels.
+EFFECTS = [
+    ("SHOTGN", "DPSHOTGN", 0, 50),
+    ("PISTOL", "DPPISTOL", 0, 50),
+    ("RLAUNC", "DPRLAUNC", 0, 50),
+    ("PUNCH", "DPPUNCH", 0, 50),
+    ("OOF", "DPOOF", 0, 50),
+    ("PLPAIN", "DPPLPAIN", 0, 90),
+    ("PLDETH", "DPPLDETH", 0, 99),
+    ("DOROPN", "DPDOROPN", 2, 20),
+    ("SWTCHN", "DPSWTCHN", 2, 1),
+    ("ITEMUP", "DPITEMUP", 2, 85),
+    ("WPNUP", "DPWPNUP", 2, 80),
+    ("RXPLOD", "DPRXPLOD", 2, 80),
+    ("POSIT1", "DPPOSIT1", 1, 50),
+    ("POPAIN", "DPPOPAIN", 1, 90),
+    ("PISTOL_E", "DPPISTOL", 1, 50),
+    ("PODTH1", "DPPODTH1", 1, 99),
+    ("BGSIT1", "DPBGSIT1", 1, 50),
+    ("CLAW", "DPCLAW", 1, 50),
+    ("BGDTH1", "DPBGDTH1", 1, 99),
+    ("SGTSIT", "DPSGTSIT", 1, 50),
+    ("DMPAIN", "DPDMPAIN", 1, 90),
+    ("SGTATK", "DPSGTATK", 1, 50),
+    ("SGTDTH", "DPSGTDTH", 1, 99),
+    ("BRSSIT", "DPBRSSIT", 1, 50),
+    ("BRSDTH", "DPBRSDTH", 1, 99),
+    ("RLAUNC_E", "DPRLAUNC", 1, 50),
+    ("SGCOCK", "DPSGCOCK", 0, 50),
+    ("DORCLS", "DPDORCLS", 2, 20),
+]
+
+# Cue idents for the four shipped types. melee/shoot are what a clip sound frame plays.
+ENEMY_CUES = {
+    "Possessed": {"sight": "POSIT1", "wince": "POPAIN", "shoot": "PISTOL_E", "death": "PODTH1"},
+    "Imp": {"sight": "BGSIT1", "wince": "POPAIN", "shoot": "CLAW", "death": "BGDTH1"},
+    "Pinky": {"sight": "SGTSIT", "wince": "DMPAIN", "melee": "SGTATK", "death": "SGTDTH"},
+    "Baron": {"sight": "BRSSIT", "wince": "DMPAIN", "melee": "CLAW", "death": "BRSDTH"},
+}
+
+SID_PHI2_NTSC = 1022727.0
+PC_TIMER = 1193181
+POKEY_64K_NTSC = 63921.0
+
+
+def emit_bytes(arr: list[int], per_line: int = 16) -> str:
+    lines = []
+    for i in range(0, len(arr), per_line):
+        chunk = arr[i : i + per_line]
+        lines.append("\t!byte " + ", ".join(str(int(b) & 255) for b in chunk))
+    return "\n".join(lines)
+
+
+def fn_hi(pc_byte: int) -> int:
+    """Wolf PC inverse-freq byte -> SID Fn hi (Fn lo is fixed at $80 in the player).
+
+    0 stays 0 (silence). Every other byte maps to a nonzero hi (>= 4), so the
+    player can write the data byte straight to the voice.
+    """
+    if pc_byte <= 0:
+        return 0
+    hz = PC_TIMER / (pc_byte * 60)
+    fn = hz * 16777216 / SID_PHI2_NTSC
+    return min(255, int(fn) >> 8)
+
+
+def audf_from_fn_hi(fn: int) -> int:
+    """SID Fn hi (Fn lo fixed at $80) -> POKEY AUDF, NTSC 64 kHz pure tone."""
+    if fn <= 0:
+        return 0
+    sid = (fn << 8) | 0x80
+    hz = sid * SID_PHI2_NTSC / 16777216.0
+    if hz < 1.0:
+        return 255
+    n = int(round(POKEY_64K_NTSC / (2.0 * hz) - 1.0))
+    if n < 0:
+        return 0
+    if n > 255:
+        return 255
+    return n
+
+
+def stream_freq(pc_byte: int) -> int:
+    """PC inverse-freq byte -> POKEY AUDF. 0 stays silence so the player can beq."""
+    fn = fn_hi(pc_byte)
+    if fn <= 0:
+        return 0
+    n = audf_from_fn_hi(fn)
+    return n if n else 1
+
+
+def main() -> None:
+    seen: set[str] = set()
+    equates: list[str] = []
+    block_of: dict[tuple[int, ...], list[str]] = {}
+    block_order: list[tuple[list[str], list[int]]] = []
+    res_words: list[str] = []
+    ids: dict[str, int] = {}
+    total = 0
+
+    for i, (name, lump, voice, priority) in enumerate(EFFECTS):
+        if name in seen:
+            raise SystemExit(f"duplicate sound id {name}")
+        seen.add(name)
+        freq = resolve(lump)
+        if len(freq) > MAX_TICKS:
+            raise SystemExit(f"{name}: {len(freq)} ticks > {MAX_TICKS}")
+        body = [len(freq), voice & 3, priority & 255, *[stream_freq(f) for f in freq]]
+        label = "pc_" + name.lower()
+        equates.append(f"SOUND_{name}\t= {i}")
+        # Byte-identical blocks (header included) share one copy.
+        key = tuple(body)
+        if key in block_of:
+            labels = block_of[key]
+            labels.append(label)
+        else:
+            labels = [label]
+            block_of[key] = labels
+            block_order.append((labels, body))
+            total += len(body)
+        res_words.append(label)
+        ids[name] = i
+
+    blocks = [
+        "\n".join(labels) + "\n" + emit_bytes(body) for labels, body in block_order
+    ]
+
+    if total > PAYLOAD_MAX:
+        raise SystemExit(f"resident sound payload {total} bytes > {PAYLOAD_MAX}")
+
+    for name, cues in ENEMY_CUES.items():
+        for cue, ident in cues.items():
+            if ident not in ids:
+                raise SystemExit(f"{name} {cue}: SOUND_{ident} is not in EFFECTS")
+
+    n = len(EFFECTS)
+    header = (
+        "; Autogenerated by tools/gensounds.py from ref/DOOM.WAD DP* lumps.\n"
+        "; Each effect: N, AD|voice (attack<<4, decay 0, voice in bits 0-1), priority, audf[0..N-1].\n"
+        "; audf is POKEY AUDF baked from the decimated Wolf PC byte (0 = silence).\n"
+        "; Voice is player 0 / enemy 1 / world 2. All ids are resident.\n"
+        "; sound_table is BSS (SOUND_TABLE): resident words copied by play_sound_init.\n"
+        "\n"
+    )
+    asm = (
+        header
+        + "!zone pcsounds\n\n"
+        + "\n".join(equates)
+        + "\n"
+        + f"SOUND_COUNT\t= {n}\n"
+        + f"SOUND_RESIDENT_N\t= {n}\n"
+        + "!if SOUND_COUNT * 2 > SOUND_TABLE_MAX {\n\t!error \"sound_table does not fit its BSS window\"\n}\n"
+        + "\n"
+        + "\n".join(blocks)
+        + "\n\n"
+        + f"; resident sound payload {total} bytes\n"
+        + "; copied into sound_table[0..SOUND_RESIDENT_N-1] by play_sound_init\n"
+        + "sound_res_words\n"
+        + "\n".join(f"\t!word {w}" for w in res_words)
+        + "\n"
+    )
+    OUT.write_text(asm, encoding="utf-8", newline="\n")
+    ENEMY_DIR.mkdir(parents=True, exist_ok=True)
+    (ENEMY_DIR / "sound_ids.json").write_text(json.dumps(ids, indent=2) + "\n", encoding="utf-8")
+    print(f"wrote {OUT.relative_to(ROOT)} ({n} effects, {total} resident bytes, wrote enemies/sound_ids.json)")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except BrokenPipeError:
+        sys.exit(0)

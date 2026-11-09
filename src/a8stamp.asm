@@ -1,0 +1,383 @@
+; One rect per graphic: x_byte, y, width, height, then row-major bytes.
+; Bodies are inverted (ink %00, clear %11) and ANDed, so the gun is black.
+; Flashes, splats, and the enemy muzzle are ink %11. ORA paints line colour;
+; red writes pixel %10 (COLPF1). X is phase 0 (a multiple of 8 hires).
+!zone a8stamp
+
+stamp_x		!byte 0
+stamp_xh	!byte 0
+stamp_y		!byte 0
+stamp_w		!byte 0
+stamp_h		!byte 0
+stamp_xb	!byte 0
+stamp_and	!byte 0			; 1 = AND the plane (black body)
+stamp_red	!byte 0			; 1 = pixel %10
+stamp_bl	!byte 0			; world-sprite byte column, signed
+stamp_bh	!byte 0
+stamp_tmp	!byte 0
+stamp_y0	!byte 0			; viewport Y restored by stamp_at_x
+
+stamp_view
+	jsr wpn_y_bob
+	jsr saw_dy
+	sec
+	sbc #VIEW_SPR_Y0
+	sta stamp_y0
+	ldx cur_weapon
+	cpx #WPN_FIST
+	beq .sv_fist
+	lda wpn_x
+	jsr stamp_at_x
+	lda wpn_fr_base,x
+	clc
+	adc wpn_fr
+	tax
+	lda wpn_fr_lo,x
+	ldy wpn_fr_hi,x
+	jsr stamp_body
+	jmp .sv_flash
+.sv_fist
+	lda wpn_x
+	jsr stamp_at_x
+	lda wpn_pose
+	bne .sv_punch
+	lda #<spr_hand_b
+	ldy #>spr_hand_b
+	bne .sv_fist_body
+.sv_punch
+	lda #<spr_fist_b
+	ldy #>spr_fist_b
+.sv_fist_body
+	jsr stamp_body
+.sv_flash
+	lda wpn_pose
+	cmp #POSE_COCK
+	beq .no5
+	lda #<spr_muzzle_b		; both flashes share this rect; stamp_flash keeps init_ptr
+	sta init_ptr
+	lda #>spr_muzzle_b
+	sta init_ptr+1
+	lda flash_phase
+	beq .no4
+	jsr stamp_flash
+.no4
+	lda flash5_phase
+	beq .no5
+	jsr stamp_flash
+.no5
+	lda emuz_on
+	beq .noe
+	lda emuz_vx
+	ldx emuz_xmsb
+	jsr stamp_set_xmsb
+	lda emuz_vy
+	jsr stamp_set_y
+	jsr stamp_emuz
+.noe
+	lda splat_on
+	beq .nos
+	jsr splat_track			; world-anchored: re-project for this frame's camera
+	bcc .nos
+	lda splat_vx
+	ldx splat_xmsb
+	jsr stamp_set_xmsb
+	lda splat_vy
+	jsr stamp_set_y
+	jsr stamp_splat
+.nos
+	rts
+
+; init_ptr set. A is the phase (1 = line colour, 2 = red). X is absolute,
+; so the anchor byte is 0 and the header x_byte is the viewport column.
+stamp_flash
+	ldx #0
+	cmp #2
+	bne .yel
+	inx
+.yel
+	stx stamp_red
+	lda #0
+	sta stamp_and
+	sta stamp_xb
+	jsr wpn_y_bob
+	sec
+	sbc #VIEW_SPR_Y0
+	sta stamp_y
+	jmp blit_rect
+
+; A = screen X (wpn_x). Restores the saved viewport Y.
+stamp_at_x
+	sec
+	sbc #VIEW_SPR_X0
+	lsr
+	lsr
+	lsr
+	sta stamp_xb
+	lda stamp_y0
+	sta stamp_y
+	rts
+
+; A = lo, Y = hi. Blits one body rect. Clobbers stamp_xb / stamp_y.
+stamp_body
+	sta init_ptr
+	sty init_ptr+1
+	lda #1
+	sta stamp_and
+	lda #0
+	sta stamp_red
+	jmp blit_rect
+
+; A = bobbed wpn_y. Chainsaw drops saw_amp when saw_flip bit 0 is set.
+; Down only, so the outline never lifts off the viewport bottom.
+saw_dy
+	ldx cur_weapon
+	cpx #WPN_SAW
+	bne .sd_rts
+	ldx saw_flip
+	cpx #1
+	beq .sd_add
+	cpx #3
+	bne .sd_rts
+.sd_add
+	clc
+	adc saw_amp
+.sd_rts
+	rts
+
+; A = wpn_y plus the walk bob. Phase 0 (rest, firing, airborne) adds 0.
+; (SINTAB[0..127] + 8) >> 5 is 0 at rest and 4 at the crest.
+wpn_y_bob
+	ldy wpn_bob_ph
+	lda SINTAB,y
+	clc
+	adc #8
+	lsr
+	lsr
+	lsr
+	lsr
+	lsr
+	clc
+	adc wpn_y
+	rts
+
+; init_ptr = one rect. stamp_xb / stamp_y are the anchor; the header
+; x_byte and y are added. Rows at y >= 128 are skipped so a stock can
+; hang off the bottom. The op is chosen once per row.
+blit_rect
+	ldy #0
+	lda (init_ptr),y
+	clc
+	adc stamp_xb
+	sta stamp_xb
+	iny
+	lda (init_ptr),y
+	clc
+	adc stamp_y
+	sta stamp_y
+	iny
+	lda (init_ptr),y
+	sta stamp_w
+	iny
+	lda (init_ptr),y
+	sta stamp_h
+	clc
+	lda init_ptr
+	adc #4
+	sta src_ptr
+	lda init_ptr+1
+	adc #0
+	sta src_ptr+1
+.row
+	lda stamp_y
+	cmp #128
+	bcs .adv
+	jsr blit_scan
+.adv
+	clc
+	lda src_ptr
+	adc stamp_w
+	sta src_ptr
+	bcc .src_ok
+	inc src_ptr+1
+.src_ok
+	inc stamp_y
+	dec stamp_h
+	bne .row
+	rts
+
+; One row. The source rect lives in bank 0, the bitmap is main RAM under the
+; same window, so the row is copied to stamp_rowbuf first (bank mapped), then the
+; window is switched to main RAM for the blend.
+blit_scan
+	ldy #0
+.cp
+	lda (src_ptr),y
+	sta stamp_rowbuf,y
+	iny
+	cpy stamp_w
+	bne .cp
+	lda #0
+	sta dst_ptr+1
+	lda stamp_y
+	sta dst_ptr
+	ldx #5
+-
+	asl dst_ptr
+	rol dst_ptr+1
+	dex
+	bne -
+	clc
+	lda dst_ptr
+	adc #BMP_MARGIN
+	adc stamp_xb
+	sta dst_ptr
+	lda dst_ptr+1
+	adc #0
+	adc bmp_hi
+	sta dst_ptr+1
+	lda #PORTB_MAIN
+	sta $d301
+	jsr blit_row
+	lda portb_cur
+	sta $d301
+	rts
+
+blit_row
+	lda stamp_and
+	bne .and
+	lda stamp_red
+	bne .red
+	ldy #0
+.ora
+	lda (dst_ptr),y
+	ora stamp_rowbuf,y
+	sta (dst_ptr),y
+	iny
+	cpy stamp_w
+	bne .ora
+	rts
+.and
+	ldy #0
+-
+	lda (dst_ptr),y
+	and stamp_rowbuf,y
+	sta (dst_ptr),y
+	iny
+	cpy stamp_w
+	bne -
+	rts
+.red
+	ldy #0
+-
+	lda stamp_rowbuf,y
+	sta stamp_tmp
+	and #$55
+	pha
+	lda (dst_ptr),y
+	ora stamp_tmp
+	sta stamp_tmp
+	pla
+	eor stamp_tmp
+	sta (dst_ptr),y
+	iny
+	cpy stamp_w
+	bne -
+	rts
+
+; A = VIC x, X = msb flag (nonzero → +256)
+stamp_set_xmsb
+	sec
+	sbc #VIEW_SPR_X0
+	sta stamp_x
+	lda #0
+	sbc #0
+	cpx #1
+	bcc .nm
+	clc
+	adc #1
+.nm
+	sta stamp_xh
+	rts
+
+; A = VIC y
+stamp_set_y
+	sec
+	sbc #VIEW_SPR_Y0
+	sta stamp_y
+	rts
+
+; Enemy muzzle. Always pixel %10. Anchor is the uncropped 24×21.
+stamp_emuz
+	lda emuz_src
+	sta init_ptr
+	lda emuz_src+1
+	sta init_ptr+1
+	lda #0
+	sta stamp_and
+	lda #1
+	sta stamp_red
+	jmp stamp_anchor
+
+; Splat. Hit writes %10. Miss ORs. Same uncropped anchor as the muzzle.
+stamp_splat
+	lda splat_src
+	sta init_ptr
+	lda splat_src+1
+	sta init_ptr+1
+	lda #0
+	sta stamp_and
+	sta stamp_red
+	lda splat_col
+	cmp #COL_SPLAT_HIT
+	bne stamp_anchor
+	inc stamp_red
+
+; Snap the uncropped left (tip − EMUZ_OX, already in stamp_x) to a byte
+; and keep that 24×21 box inside the viewport. blit_rect then adds the
+; header crop, so the ink stays on the tip.
+stamp_anchor
+	clc
+	lda stamp_x
+	adc #4
+	sta stamp_bl
+	lda stamp_xh
+	adc #0
+	sta stamp_bh
+	ldx #3
+-
+	lda stamp_bh
+	cmp #$80
+	ror stamp_bh
+	ror stamp_bl			; signed (hires+4)>>3, nearest byte
+	dex
+	bne -
+	lda stamp_bh
+	bmi .xlo
+	bne .xhi
+	lda stamp_bl
+	cmp #BMP_DRAW_W-2		; 3 bytes must end by column 23
+	bcc .xin
+.xhi
+	lda #BMP_DRAW_W-3
+	sta stamp_xb
+	jmp .yfix
+.xlo
+	lda #0
+	sta stamp_xb
+	jmp .yfix
+.xin
+	lda stamp_bl
+	sta stamp_xb
+.yfix
+	lda stamp_y
+	bpl .ypos
+	lda #0
+	sta stamp_y
+	beq .go
+.ypos
+	cmp #128-20
+	bcc .go
+	lda #128-21
+	sta stamp_y
+.go
+	jmp blit_rect
