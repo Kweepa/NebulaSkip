@@ -16,10 +16,10 @@ map_nelevs	= $0406
 map_nenemies	= $0407
 map_ntrigs	= $0408
 map_nthings	= $0409
-; unused streaming type pad (was the crusher count)
-map_type0	= $040A
-map_type1	= $040B
-map_type2	= $040C
+; Per-map jump physics, pre-scaled by tools/genmap.py (editor: units/s, units/s^2).
+map_jump_v	= $040A			; upward vel at takeoff: 8.8 per 32 ms tick = byte * 2
+map_grav	= $040B			; accel: 8.8 per tick^2 = byte / 4
+map_pad	= $040C			; unused (was streaming type pad)
 map_nux	= $040D
 map_nuz	= $040E
 map_nvert	= $040F

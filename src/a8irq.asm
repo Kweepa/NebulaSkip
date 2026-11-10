@@ -53,6 +53,7 @@ init_irq
 	sta sfx_q_len
 	sta in_qsave
 	sta in_qload
+	sta in_ability
 	sta spd_trip
 	ldx #11
 -
@@ -505,9 +506,18 @@ a8_keys
 	rts
 .k5
 	cmp #$1d				; 5 rocket
-	bne .ks
+	bne .ksp
 	lda #1
 	sta in_wpn_rkt
+	rts
+.ksp
+	cmp #$21				; space: swap joystick-button ability
+	bne .ks
+	lda space_held
+	bne .nk
+	lda #1
+	sta space_held
+	sta in_ability
 	rts
 .ks
 	ldx #0					; Shift-S quicksave, Shift-L quickload.
@@ -530,6 +540,7 @@ a8_keys
 	lda #0
 	sta qk_held
 	sta wpn1_held
+	sta space_held
 .nk
 	rts
 
@@ -818,6 +829,10 @@ snapshot_input
 	sta key_fire
 	lda #0
 	sta in_fire
+	lda in_ability
+	sta key_ability
+	lda #0
+	sta in_ability
 	rts
 
 turn_deliver

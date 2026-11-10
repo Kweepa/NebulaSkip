@@ -1,5 +1,8 @@
 {
   "name": "Central Processing",
+  "enterVerb": "",
+  "jumpSpeed": 23,
+  "gravity": 61,
   "objects": [
     {
       "id": "534c60db-2c9b-47f4-9432-3e09383a1490",

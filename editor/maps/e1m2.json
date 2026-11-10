@@ -1,5 +1,8 @@
 {
   "name": "Nuclear Plant",
+  "enterVerb": "",
+  "jumpSpeed": 23,
+  "gravity": 61,
   "objects": [
     {
       "id": "453bc83b-f067-4838-b45e-2920deff8f50",

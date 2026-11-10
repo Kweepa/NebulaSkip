@@ -25,7 +25,15 @@ ENEMY_TYPE = {
 }
 MAP_MAX_BYTES = 4096
 ROOM_MAX_TYPES = 2
-HDR_TYPE_SLOTS = 2  # packed header pad after map_type0; unused by streaming
+# Per-map physics, game units. Editor: jumpSpeed (units/s), gravity (units/s^2).
+# Engine ticks fall physics at 32 ms; header bytes are pre-scaled so the engine does no math:
+#   map_jump_v = jumpSpeed * 4.096   (8.8 vy per tick = byte * 2)
+#   map_grav   = gravity   * 1.0486  (8.8 accel per tick^2 = byte / 4)
+# Keep defaults and maxima in sync with editor/js/model.js.
+DEFAULT_JUMP_SPEED = 23.0
+DEFAULT_GRAVITY = 61.0
+JUMP_V_PER_UNIT = 0.032 * 256 / 2
+GRAV_PER_UNIT = 0.032 * 0.032 * 256 * 4
 ROOM_MAX = 32  # keep in sync with editor/js/model.js
 CRATE_MAX = 16
 SLOPE_MAX = 16
@@ -436,6 +444,16 @@ def ascii_screen(s: str, maxlen: int = 40) -> list[int]:
         o = ord(ch)
         out.append(o if 32 <= o <= 126 else 32)
     return out
+
+
+def phys_byte(level: dict, key: str, default: float, per_unit: float, map_key: str) -> int:
+    """Map physics field (game units) -> one header byte; missing = default."""
+    raw = level.get(key)
+    val = default if raw is None else float(raw)
+    b = round(val * per_unit)
+    if not 0 <= b <= 255:
+        raise SystemExit(f"{map_key} {key} {val} out of range (packs to {b}, max 255)")
+    return b
 
 
 def cook_one(level: dict, map_key: str) -> bytes:
@@ -1147,10 +1165,6 @@ def cook_one(level: dict, map_key: str) -> bytes:
         if len(lst) > cap:
             raise SystemExit(f"{map_key} has {len(lst)} {what} (max {cap})")
 
-    type_ids: list[int] = []
-    for t in en_type:
-        if t not in type_ids:
-            type_ids.append(t)
     # Per-room cap (streaming holds at most ROOM_MAX_TYPES banks).
     by_room: dict[int, set[int]] = {}
     for r, t in zip(en_room, en_type):
@@ -1161,10 +1175,8 @@ def cook_one(level: dict, map_key: str) -> bytes:
                 f"{map_key} room {r} uses {len(ts)} enemy types "
                 f"(max {ROOM_MAX_TYPES})"
             )
-    # Header still has HDR_TYPE_SLOTS bytes; truncate/pad, no map-wide cap.
-    type_ids = type_ids[:HDR_TYPE_SLOTS]
-    while len(type_ids) < HDR_TYPE_SLOTS:
-        type_ids.append(0xFF)
+    jump_v = phys_byte(level, "jumpSpeed", DEFAULT_JUMP_SPEED, JUMP_V_PER_UNIT, map_key)
+    grav = phys_byte(level, "gravity", DEFAULT_GRAVITY, GRAV_PER_UNIT, map_key)
 
     n_ux, n_uz = len(mesh_ux), len(mesh_uz)
     n_vert, n_edge = len(mesh_vy), len(mesh_e0)
@@ -1196,10 +1208,10 @@ def cook_one(level: dict, map_key: str) -> bytes:
             len(enemies),
             len(triggers),
             len(things),
-            0,  # map_type0 unused
+            jump_v,  # map_jump_v
         ]
     )
-    payload.extend(type_ids)
+    payload.extend([grav, 0])  # map_grav, map_pad
     payload.extend([n_ux, n_uz, n_vert, n_edge])
     payload.extend(
         [
@@ -1212,6 +1224,9 @@ def cook_one(level: dict, map_key: str) -> bytes:
         ]
     )
     payload.extend(ascii_screen(level.get("name") or ""))
+    payload.append(0)
+    # Enter-card verb ("docking at"); empty = HUD falls back to "entering".
+    payload.extend(ascii_screen(level.get("enterVerb") or "", 16))
     payload.append(0)
 
     def add(vals: list[int]) -> None:

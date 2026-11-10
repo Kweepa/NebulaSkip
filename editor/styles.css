@@ -262,6 +262,15 @@ h2 {
   margin: 0.1rem 0 0.15rem;
 }
 
+.right-editors .jump-graph {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 0.35rem 0 0.1rem;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
 .preview-panel {
   flex: 0 0 auto;
   padding: 0.75rem 0 0;
@@ -1589,33 +1598,45 @@ button:disabled {
 .font-preview-bar {
   display: flex;
   gap: 0.5rem;
-  align-items: center;
+  align-items: flex-start;
 }
 
 .font-preview-input {
   flex: 1;
   min-width: 0;
+  min-height: 3.2rem;
   padding: 0.3rem 0.5rem;
   background: #0a0a0c;
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 3px;
   font-family: inherit;
+  font-size: 0.85rem;
+  resize: vertical;
 }
 
-.font-preview-scroll {
+.font-preview-wrap {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  overflow-x: auto;
-  padding-bottom: 0.25rem;
+  min-width: 0;
+}
+
+.font-preview-cap {
+  margin: 0;
+  font-size: 0.7rem;
 }
 
 .font-preview-canvas {
   display: block;
-  flex: 0 0 auto;
+  max-width: 100%;
+  height: auto;
   image-rendering: pixelated;
   background: #0a0a0c;
+}
+
+.font-preview-canvas[hidden] {
+  display: none;
 }
 
 /* Default .field label column is 5.5rem; "Touch col 0 / col 7" overflowed into the value. */

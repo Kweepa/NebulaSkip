@@ -3,8 +3,8 @@
 ; One DLI on the blank line above the logo walks the per-line palette.
 ; Then mode-2 text.
 ; Screen at $A000, font at $A400.
-; Skull: four players (multicolour pairs), missiles as a black plate,
-; and nine mode-2 glyphs on top for the hires luminance.
+; Drive cursor: four players (multicolour pairs), missiles as a black plate,
+; and mode-2 glyphs on top for the hires luminance.
 ; Display list at $AE00. Menu code must end below $8000.
 ; Do not write $0200-$06FF: page 2 is the OS database, $0480 is the reboot stub.
 ; Exception: set_video_ms fills the PAL hue table at $06D5.
@@ -71,11 +71,25 @@ A8_HPOSM0	= $d004
 !zone
 A8_SIZEM	= $d00c
 !zone
-A8_CUR_CH0	= 96			; font slots 96..104: cursor glyphs
+A8_CUR_CH0	= 96			; font slots 96..: cursor glyphs (3 rows × A8_CUR_COLS)
+!zone
+A8_CUR_LINES	= 9			; drive cursor: 24×9 hires px
+!zone
+A8_CUR_COLS	= 3			; text cells wide (3 or 4)
+!zone
+A8_CUR_NGLYPH	= A8_CUR_COLS * 3
+!zone
+A8_CUR_YOFS	= 0			; cursor top, scanlines above the option's text row
 !zone
 A8_CUR_FONT	= A8_FONT + A8_CUR_CH0 * 8
 !zone
 A8_KB_ESC	= $1c
+
+; Logo fill copper bar: one hue step per two logo lines, hues $1x..$Fx at lum 8,
+; scrolling one step every COPPER_DIV frames. Index = line/2 + phase <= 27 + 14.
+COPPER_HUES	= 15
+COPPER_DIV	= 3
+COPPER_TAB_N	= LOGO_LINES / 2 + COPPER_HUES
 
 !zone
 a8_vbi_n	!byte 0
@@ -87,6 +101,12 @@ a8_line		!byte 0			; logo scanline; LOGO_LINES once text rows start
 ; One page so the four 56-byte columns never cross a page on lda abs,x.
 !align 256, 0
 title_ram	!fill LOGO_LINES * 4, 0	; pf0, pf1, pf2, bk — PAL-converted
+!zone
+a8_cu_ph	!byte 0			; copper phase 0..14, steps every COPPER_DIV frames
+!zone
+a8_cu_div	!byte 0
+!zone
+a8_cu_tab	!fill COPPER_TAB_N, 0	; hue $18..$f8 (lum 8), PAL-converted, repeats every 15
 !zone
 a8_nmist	!byte 0
 !zone
@@ -134,9 +154,9 @@ a8_sl		= $f3
 !zone
 a8_sh		= $f4
 !zone
-a8_pmm		!fill 21, 0		; missile plate
+a8_pmm		!fill A8_CUR_LINES, 0	; missile plate
 !zone
-a8_cglyph	!fill 72, 0		; nine cursor glyphs, 3 rows × 3 columns
+a8_cglyph	!fill A8_CUR_NGLYPH * 8, 0	; cursor glyphs, 3 rows × A8_CUR_COLS
 !zone
 a8_cy		!byte 0			; playfield line of Q line 0
 !zone
@@ -148,6 +168,18 @@ a8_g1		!byte 0
 !zone
 a8_g2		!byte 0
 !zone
+a8_g3		!byte 0
+!zone
+a8_cur_t	!byte 0			; stamp: line*4
+!zone
+a8_cur_c0	!byte 0			; COLPM0..3, PAL-converted
+!zone
+a8_cur_c1	!byte 0
+!zone
+a8_cur_c2	!byte 0
+!zone
+a8_cur_c3	!byte 0
+!zone
 a8_cur_orow	!byte $ff		; cells holding cursor codes, $ff = none
 !zone
 a8_cur_ocol	!byte 0
@@ -156,15 +188,15 @@ a8_cur_r	!byte 0
 !zone
 a8_cur_code	!byte 0
 !zone
-a8_r24		!byte 0, 24, 48
+a8_r32		!byte 0, A8_CUR_COLS * 8, A8_CUR_COLS * 16	; glyph offset of cell row 0..2
 !zone
-a8_pw0		!fill 21, 0
+a8_pw0		!fill A8_CUR_LINES, 0	; P0
 !zone
-a8_pw1		!fill 21, 0
+a8_pw1		!fill A8_CUR_LINES, 0	; P1
 !zone
-a8_pg0		!fill 21, 0
+a8_pg0		!fill A8_CUR_LINES, 0	; P2
 !zone
-a8_pg1		!fill 21, 0
+a8_pg1		!fill A8_CUR_LINES, 0	; P3
 !zone
 a8_cur_hx	!byte 0
 !zone
@@ -264,8 +296,8 @@ a8_init_vic
 	sta $d008,x				; SIZEP normal
 	dex
 	bpl .szp
-	lda #$15
-	sta A8_SIZEM				; M0-M2 double width
+	lda #$55
+	sta A8_SIZEM				; M0-M3 double width
 	lda #$0e
 	ldx #3
 .pcol
@@ -556,6 +588,7 @@ a8_nmi_text
 	lda #0
 	sta a8_line
 	sta a8_rowi
+	jsr a8_copper
 	lda title_ram
 	sta A8_COLPF0
 	lda title_ram+LOGO_LINES
@@ -847,6 +880,29 @@ a8_blit_title
 ; NTSC logo bytes → title_ram, through the PAL hue table when video_ms says so.
 !zone
 a8_title_cols
+	lda #0
+	sta a8_sx
+	tax
+.cu
+	lda a8_sx
+	asl
+	asl
+	asl
+	asl
+	clc
+	adc #$18				; hue (n+1), lum 8
+	jsr a8_to_pal
+	sta a8_cu_tab,x
+	inc a8_sx
+	lda a8_sx
+	cmp #COPPER_HUES
+	bcc .cun
+	lda #0
+	sta a8_sx
+.cun
+	inx
+	cpx #COPPER_TAB_N
+	bcc .cu
 	ldx #0
 .tc
 	lda title_src_pf0,x
@@ -864,6 +920,42 @@ a8_title_cols
 	inx
 	cpx #LOGO_LINES
 	bcc .tc
+	rts
+
+; VBI: scroll the copper bar over the logo fill. Fill = scanlines whose baked
+; pf0 is non-zero; outline (pf1) and black rows are left alone. Clobbers A X Y.
+!zone
+a8_copper
+	inc a8_cu_div
+	lda a8_cu_div
+	cmp #COPPER_DIV
+	bcc .go
+	lda #0
+	sta a8_cu_div
+	ldx a8_cu_ph
+	inx
+	cpx #COPPER_HUES
+	bcc .st
+	ldx #0
+.st
+	stx a8_cu_ph
+.go
+	ldx #0
+.l
+	lda title_src_pf0,x
+	beq .sk
+	txa
+	lsr
+	clc
+	adc a8_cu_ph
+	tay
+	lda a8_cu_tab,y
+	sta title_ram,x				; pf0
+	sta title_ram+LOGO_LINES*2,x		; pf2
+.sk
+	inx
+	cpx #LOGO_LINES
+	bcc .l
 	rts
 
 ; Columns outside the packed title cells. The letter cells stay.
@@ -1434,14 +1526,10 @@ a8_wait_frame
 	beq .wf
 	inc cursor_tick
 	lda cursor_tick
-	cmp #20				; skull blink; CURSOR_TICK_MAX
+	cmp #20				; cursor blink period
 	bcc .wfr
 	lda #0
 	sta cursor_tick
-	lda cursor_spr_en
-	beq .adv
-	jsr a8_cursor_erase
-.adv
 	inc cursor_frame
 	lda cursor_frame
 	cmp #CURSOR_FRAMES
@@ -1708,11 +1796,6 @@ a8_pix_len
 .pd
 	rts
 
-; Players are rewritten in the VBI, so a mid-frame erase does not shimmer.
-!zone
-a8_cursor_erase
-	rts
-
 ; Per Q line: pick the table for the luminance PF1 has on that scanline,
 ; copy the player, plate and glyph bytes. Pixels go to the hardware in the VBI.
 !zone
@@ -1723,12 +1806,25 @@ a8_stamp_cursor
 .on
 	lda #0
 	sta a8_cur_dirty
+	; Pair colours: one hue per pair, so a8_to_pal on each byte keeps the OR.
+	lda #A8CUR_C0
+	jsr a8_to_pal
+	sta a8_cur_c0
+	lda #A8CUR_C1
+	jsr a8_to_pal
+	sta a8_cur_c1
+	lda #A8CUR_C2
+	jsr a8_to_pal
+	sta a8_cur_c2
+	lda #A8CUR_C3
+	jsr a8_to_pal
+	sta a8_cur_c3
 	lda cursor_row
 	asl
 	asl
 	asl
 	sec
-	sbc #6
+	sbc #A8_CUR_YOFS
 	sta a8_cy
 	lsr
 	lsr
@@ -1742,7 +1838,7 @@ a8_stamp_cursor
 .mv
 	jsr a8_cur_cells_off
 .same
-	ldx #71
+	ldx #A8_CUR_NGLYPH * 8 - 1
 	lda #0
 .zg
 	sta a8_cglyph,x
@@ -1753,18 +1849,22 @@ a8_stamp_cursor
 	sta .pa + 1
 	sta .pb + 1
 	sta .pc + 1
+	sta .pd + 1
 	lda a8ct_phi,x
 	sta .pa + 2
 	sta .pb + 2
 	sta .pc + 2
+	sta .pd + 2
 	lda a8ct_glo,x
 	sta .ga + 1
 	sta .gb + 1
 	sta .gc + 1
+	sta .gd + 1
 	lda a8ct_ghi,x
 	sta .ga + 2
 	sta .gb + 2
 	sta .gc + 2
+	sta .gd + 2
 	lda a8ct_mlo,x
 	sta .m + 1
 	lda a8ct_mhi,x
@@ -1785,19 +1885,21 @@ a8_stamp_cursor
 	ldy #0
 	cmp #6
 	bcc .l0
-	ldy #3
+	ldy #4
 	cmp #$0d
 	bcc .l0
-	ldy #6
+	ldy #8
 .l0
 	sty a8_gb
 	txa
 	asl
 	asl
+	sta a8_cur_t				; i*4
 	asl
 	clc
-	adc a8_gi
-	adc a8_gb				; i*9 + lum*3
+	adc a8_cur_t				; i*12
+	clc
+	adc a8_gb				; + lum*4
 	tay
 .pa	lda $ffff,y
 	sta a8_pw0,x
@@ -1810,17 +1912,14 @@ a8_stamp_cursor
 	sta a8_g1
 	iny
 .pc	lda $ffff,y
-	pha
-	and #$f0
 	sta a8_pg0,x
-	pla
-	asl
-	asl
-	asl
-	asl
-	sta a8_pg1,x
 .gc	lda $ffff,y
 	sta a8_g2
+	iny
+.pd	lda $ffff,y
+	sta a8_pg1,x
+.gd	lda $ffff,y
+	sta a8_g3
 .m	lda $ffff,x
 	sta a8_pmm,x
 	lda a8_py
@@ -1830,7 +1929,7 @@ a8_stamp_cursor
 	sec
 	sbc a8_crow0
 	tay
-	lda a8_r24,y
+	lda a8_r32,y
 	sta a8_gb
 	lda a8_py
 	and #7
@@ -1843,9 +1942,13 @@ a8_stamp_cursor
 	sta a8_cglyph + 8,y
 	lda a8_g2
 	sta a8_cglyph + 16,y
+!if A8_CUR_COLS > 3 {
+	lda a8_g3
+	sta a8_cglyph + 24,y
+}
 	ldx a8_gi
 	inx
-	cpx #21
+	cpx #A8_CUR_LINES
 	bcs .ld
 	jmp .ln
 .ld
@@ -1906,7 +2009,7 @@ a8_cur_cells
 	beq .w
 	cmp #A8_CUR_CH0
 	bcc .nc
-	cmp #A8_CUR_CH0 + 9
+	cmp #A8_CUR_CH0 + A8_CUR_NGLYPH
 	bcs .nc
 .w
 	lda a8_cur_code
@@ -1914,14 +2017,17 @@ a8_cur_cells
 	clc
 	adc a8_cur_r
 	adc a8_cur_r
+!if A8_CUR_COLS > 3 {
 	adc a8_cur_r
+}
+	adc a8_cur_r				; code + r*COLS + c
 	stx a8_gb
 	adc a8_gb
 .st
 	sta (ptr_l),y
 .nc
 	inx
-	cpx #3
+	cpx #A8_CUR_COLS
 	bcc .c
 .nr
 	inc a8_cur_r
@@ -1930,7 +2036,7 @@ a8_cur_cells
 	bcc .r
 	rts
 
-; cursor_row*8 - 6 + 8, plus the 24 blank lines above the list.
+; cursor_row*8 - A8_CUR_YOFS + 8, plus the 24 blank lines above the list.
 !zone
 a8_cursor_ypos
 	lda cursor_row
@@ -1938,7 +2044,7 @@ a8_cursor_ypos
 	asl
 	asl
 	sec
-	sbc #6
+	sbc #A8_CUR_YOFS
 	clc
 	adc #A8_PM_Y0
 	clc
@@ -1975,11 +2081,15 @@ a8_cursor_vbi
 	sta A8_HPOSP0 + 2
 	sta A8_HPOSP0 + 3
 	sta A8_HPOSM0 + 2
-	lda #A8CUR_CA
+	adc #4
+	sta A8_HPOSM0 + 3
+	lda a8_cur_c0
 	sta A8_COLPM0
-	sta A8_COLPM0 + 2
-	lda #A8CUR_CB
+	lda a8_cur_c1
 	sta A8_COLPM0 + 1
+	lda a8_cur_c2
+	sta A8_COLPM0 + 2
+	lda a8_cur_c3
 	sta A8_COLPM0 + 3
 	ldy a8_by
 	ldx #0
@@ -1996,9 +2106,9 @@ a8_cursor_vbi
 	sta $bb00,y
 	iny
 	inx
-	cpx #21
+	cpx #A8_CUR_LINES
 	bcc .c
-	ldx #71
+	ldx #A8_CUR_NGLYPH * 8 - 1
 .f
 	lda a8_cglyph,x
 	sta A8_CUR_FONT,x
@@ -2010,7 +2120,7 @@ a8_cursor_vbi
 !zone
 a8_wipe_y
 	tay
-	ldx #21
+	ldx #A8_CUR_LINES
 	lda #0
 .w
 	sta $bb00,y
@@ -2039,4 +2149,10 @@ str_hint_a8	!scr "Nebula Skip by Steve McCrea 2026",0
 
 !zone
 !source "a8_cursor_tab.asm"
+!if A8CUR_GEN_LINES != A8_CUR_LINES {
+	!error "a8_cursor_tab.asm lines differ from A8_CUR_LINES"
+}
+!if A8CUR_GEN_COLS != A8_CUR_COLS {
+	!error "a8_cursor_tab.asm columns differ from A8_CUR_COLS"
+}
 !source "a8hue.asm"

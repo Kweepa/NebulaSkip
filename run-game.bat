@@ -13,4 +13,4 @@ if not exist "C:\app\altirra\Altirra64.exe" (
 )
 set "VIDEO=/ntsc"
 if /i "%~1"=="pal" set "VIDEO=/pal"
-start "" "C:\app\altirra\Altirra64.exe" /hardware:800xl %VIDEO% /nobasic /memsize:64K /w /diskemu:1050 /disk "%DISK%"
+start "" "C:\app\altirra\Altirra64.exe" /hardware:130XE %VIDEO% /nobasic /memsize:128K /w /diskemu:1050 /disk "%DISK%"

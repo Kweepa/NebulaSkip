@@ -450,6 +450,7 @@ export const KIND_ICON = {
 };
 export const MAX_TRIGGER_TEXT = 80;
 export const MAX_NAME_LEN = 40;
+export const MAX_VERB_LEN = 16;
 export const MAX_TAG_LEN = 16;
 
 /** Elevator height mode: Auto invents home/dest at cook; off uses elevLow/elevHigh vs room.y. */
@@ -2017,7 +2018,11 @@ export function clampObject(obj) {
     if (obj.allEdges) obj.allEdges = true;
     else delete obj.allEdges;
   }
-  if (obj.kind === "spawn") obj.enabled = !!obj.enabled;
+  if (obj.kind === "spawn") {
+    obj.enabled = !!obj.enabled;
+    if (obj.showJump) obj.showJump = true;
+    else delete obj.showJump;
+  }
   return obj;
 }
 
@@ -2047,7 +2052,10 @@ export function createObject(kind, x, y, z, extra = {}) {
   if (kind === "spawn" || kind === "enemy") {
     obj.rot = clampEnemyRot(extra.rot ?? 0);
   }
-  if (kind === "spawn") obj.enabled = extra.enabled === true;
+  if (kind === "spawn") {
+    obj.enabled = extra.enabled === true;
+    if (extra.showJump) obj.showJump = true;
+  }
   if (kind === "enemy") {
     const name = extra.enemy || "Possessed";
     obj.enemy = ENEMY_TYPES.some((t) => t.name === name) ? name : "Possessed";
@@ -2109,6 +2117,14 @@ export function clampName(s) {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, MAX_NAME_LEN);
+}
+
+/** Enter-card verb shown instead of "entering" ("docking at", "landing on"). */
+export function clampVerb(s) {
+  return String(s ?? "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, MAX_VERB_LEN);
 }
 
 export function clampTag(s) {
@@ -2269,6 +2285,108 @@ export function emptyMap() {
   return { name: "", objects: [] };
 }
 
+/** Per-map jump physics, game units (player is PLAYER_H = 4 high). Keep in sync with tools/genmap.py. */
+export const DEFAULT_JUMP_SPEED = 23; // units/s upward at takeoff
+export const DEFAULT_GRAVITY = 61; // units/s² (ledge falls use it too)
+export const JUMP_SPEED_MAX = 62; // packed as one byte, 4.096 per unit/s
+export const GRAVITY_MAX = 240; // packed as one byte, 1.0486 per unit/s²
+
+function clampPhys(v, def, min, max) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return def;
+  return Math.min(max, Math.max(min, Math.round(n * 10) / 10));
+}
+
+export function clampJumpSpeed(v) {
+  return clampPhys(v, DEFAULT_JUMP_SPEED, 0, JUMP_SPEED_MAX);
+}
+
+/** Min 1: zero gravity never lands (jump or fall). */
+export function clampGravity(v) {
+  return clampPhys(v, DEFAULT_GRAVITY, 1, GRAVITY_MAX);
+}
+
+export const PHYS_TICK_S = 0.032; // engine fall tick (FALL_TICK_MS)
+export const WALK_SPEED = 7.75; // units/s; wish scale 127 / 64 / 256 per ms
+
+/**
+ * Jump arc as the engine integrates it: values packed to the header bytes
+ * (genmap.py), then per 32 ms tick  up = v0 - n*a;  y += up  (no landing test
+ * while ascending). Horizontal is walk speed along the takeoff heading.
+ * Returns { pts: [{ t, d, y }], apex, range, time } in seconds / game units.
+ */
+export function jumpArc(jumpSpeed, gravity, land = null) {
+  const v0 = (Math.round(clampJumpSpeed(jumpSpeed) * 4.096) * 2) / 256;
+  const a = Math.round(clampGravity(gravity) * 1.048576) / 4 / 256;
+  const pt = (n, y) => ({ t: n * PHYS_TICK_S, d: WALK_SPEED * n * PHYS_TICK_S, y });
+  const pts = [pt(0, 0)];
+  let y = 0;
+  let apex = 0;
+  for (let n = 1; n <= 4000; n++) {
+    const up = v0 - n * a;
+    const prev = y;
+    y += up;
+    if (up <= 0) {
+      // Descending: land on the first surface, else (flat) back at takeoff height.
+      const ly = land ? land(pt(n - 1, prev), pt(n, y)) : y <= 0 ? 0 : null;
+      if (ly != null) {
+        const f = prev > y ? Math.min(1, Math.max(0, (prev - ly) / (prev - y))) : 0;
+        pts.push(pt(n - 1 + f, ly));
+        break;
+      }
+      if (land && y < -64) {
+        pts.push(pt(n, y)); // no floor under the path
+        break;
+      }
+    }
+    apex = Math.max(apex, y);
+    pts.push(pt(n, y));
+  }
+  const last = pts[pts.length - 1];
+  return { pts, apex, range: last.d, time: last.t };
+}
+
+export const JUMP_STEP_UP = 2; // keep in sync with STEP_UP in src/mem.asm
+
+/**
+ * Floor query for the editor's jump preview: (x, z, lo, hi) -> highest walkable
+ * top in [lo, hi] at that column, or null. Room floors, crate tops and solid
+ * platform tops (same surfaces genmap emits). Slopes and elevators are not
+ * included, so an arc passes through them.
+ */
+export function floorSurfaces(doc) {
+  const rooms = [];
+  const boxes = [];
+  for (const o of activeMap(doc).objects) {
+    if (o.kind === "room") {
+      rooms.push((roomGeometry(o).colliders || []).map((c) => ({ ...c })));
+    } else if (o.kind === "crate") {
+      boxes.push({ o, top: (o.y | 0) + (o.sy | 0) });
+    } else if (o.kind === "platform" && o.collide !== false) {
+      boxes.push({ o, top: (o.y | 0) + ((o.sy | 0) || 1) });
+    }
+  }
+  return (x, z, lo, hi) => {
+    let best = null;
+    const take = (t) => {
+      if (t >= lo - 1e-6 && t <= hi + 1e-6 && (best == null || t > best)) best = t;
+    };
+    for (const cols of rooms) {
+      let floor = null;
+      for (const c of cols) {
+        if (x >= c.x && x <= c.x + c.sx && z >= c.z && z <= c.z + c.sz) {
+          if (floor == null || c.y < floor) floor = c.y; // lowest containing, as the engine
+        }
+      }
+      if (floor != null) take(floor);
+    }
+    for (const { o, top } of boxes) {
+      if (x >= o.x && x <= o.x + o.sx && z >= o.z && z <= o.z + o.sz) take(top);
+    }
+    return best;
+  };
+}
+
 export function mapDisplayName(map, key) {
   const n = clampName(map?.name);
   return n || key;
@@ -2343,7 +2461,7 @@ export const MAP_MAX_BYTES = 4096;
 export const ENEMY_POSE_MAX = 7680;
 export const STICK_POSE_BYTES = 13 * 3; // gx+gy+gz per stored pose
 
-/** Packed map header: 10 counts + 3 type pads + 4 mesh lens + 6 spawn. */
+/** Packed map header: 10 counts + jump_v, grav, pad + 4 mesh lens + 6 spawn. */
 export const MAP_HDR_BYTES = 23;
 
 // Keep in sync with tools/genenemies.py (role names).
@@ -2702,6 +2820,7 @@ export function mapStats(doc) {
   let total = 0;
   let c64Bytes = MAP_HDR_BYTES;
   c64Bytes += clampName(map.name).length + 1; // map_name + NUL
+  c64Bytes += clampVerb(map.enterVerb).length + 1; // enter verb + NUL
   let meshEdges = 0;
   let hasSpawn = false;
   let mapText = 0;
@@ -2871,6 +2990,8 @@ export function activeMap(doc) {
   if (!doc.maps) doc.maps = {};
   if (!doc.maps[name]) doc.maps[name] = emptyMap();
   if (typeof doc.maps[name].name !== "string") doc.maps[name].name = "";
+  doc.maps[name].jumpSpeed = clampJumpSpeed(doc.maps[name].jumpSpeed);
+  doc.maps[name].gravity = clampGravity(doc.maps[name].gravity);
   if (!Array.isArray(doc.maps[name].objects)) doc.maps[name].objects = [];
   return doc.maps[name];
 }
@@ -3405,6 +3526,9 @@ export function mapFileRecords(doc) {
       file: `${name.toLowerCase()}.json`,
       data: {
         name: clampName(map.name),
+        enterVerb: clampVerb(map.enterVerb),
+        jumpSpeed: clampJumpSpeed(map.jumpSpeed),
+        gravity: clampGravity(map.gravity),
         objects,
       },
     };
@@ -3644,7 +3768,10 @@ function parseObjects(list) {
       if (o.tag != null) obj.tag = clampTag(o.tag);
     }
     if (o.kind === "platform" && o.collide != null) obj.collide = o.collide !== false;
-    if (o.kind === "spawn") obj.enabled = o.enabled === true;
+    if (o.kind === "spawn") {
+      obj.enabled = o.enabled === true;
+      if (o.showJump) obj.showJump = true;
+    }
     out.push(clampObject(obj));
   }
   ensureSpawnExclusive(out);
@@ -3918,12 +4045,18 @@ export function normalizeDocument(raw) {
       const src = raw.maps[name] || {};
       doc.maps[name] = {
         name: clampName(src.name),
+        enterVerb: clampVerb(src.enterVerb),
+        jumpSpeed: clampJumpSpeed(src.jumpSpeed),
+        gravity: clampGravity(src.gravity),
         objects: parseObjects(src.objects),
       };
     }
   } else {
     doc.maps.E1M1 = {
       name: clampName(raw.map?.name),
+      enterVerb: clampVerb(raw.map?.enterVerb),
+      jumpSpeed: clampJumpSpeed(raw.map?.jumpSpeed),
+      gravity: clampGravity(raw.map?.gravity),
       objects: parseObjects(raw.map?.objects || raw.objects),
     };
   }

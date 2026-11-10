@@ -32,6 +32,10 @@ import {
   layoutSearchTerms,
   objectMatchesLayoutSearch,
   elevStopBottoms,
+  jumpArc,
+  floorSurfaces,
+  JUMP_STEP_UP,
+  clampEnemyRot,
 } from "./model.js";
 import {
   BOX_EDGES,
@@ -1878,6 +1882,7 @@ export class LayoutView {
           if (verts[i] && verts[j]) this.#line3(ctx, verts[i], verts[j], cam, w, h);
         }
       }
+      if (obj.kind === "spawn" && obj.showJump) this.#drawJumpArc(ctx, doc, obj, cam, w, h);
     } else if (obj.kind === "pickup") {
       const mesh = itemMeshFor(doc, obj.pickup);
       for (const seg of itemMeshWorldSegs(obj, mesh)) {
@@ -1902,6 +1907,42 @@ export class LayoutView {
       this.#drawGlyphs(ctx, obj, cam, w, h, color);
     }
     if (primary && !this.#pointSelActive()) this.#drawGizmo(ctx, obj, cam, w, h);
+  }
+
+  /**
+   * Spawn "Show jump": the feet's path along the spawn heading at this map's
+   * jump speed / gravity (walking speed, flat ground), with a landing cross.
+   */
+  #drawJumpArc(ctx, doc, obj, cam, w, h) {
+    const map = activeMap(doc);
+    const yaw = (clampEnemyRot(obj.rot) * Math.PI) / 4;
+    const dx = Math.sin(yaw);
+    const dz = Math.cos(yaw);
+    const at = (p) => ({ x: obj.x + 1 + dx * p.d, y: obj.y + p.y, z: obj.z + 1 + dz * p.d });
+    // Land on the first surface under the path (feet may step up JUMP_STEP_UP).
+    const floorAt = floorSurfaces(doc);
+    const arc = jumpArc(map.jumpSpeed, map.gravity, (a, b) => {
+      const w = at(b);
+      const top = floorAt(w.x, w.z, w.y, obj.y + a.y + JUMP_STEP_UP);
+      return top == null ? null : top - obj.y;
+    });
+    const n = arc.pts.length;
+    const stride = Math.max(1, Math.ceil(n / 80));
+    ctx.save();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "#4fe0b0";
+    ctx.setLineDash([]);
+    let prev = at(arc.pts[0]);
+    for (let i = stride; i < n + stride; i += stride) {
+      const next = at(arc.pts[Math.min(i, n - 1)]);
+      this.#line3(ctx, prev, next, cam, w, h);
+      prev = next;
+    }
+    const land = at(arc.pts[n - 1]);
+    ctx.lineWidth = 1;
+    this.#line3(ctx, { ...land, x: land.x - 1 }, { ...land, x: land.x + 1 }, cam, w, h);
+    this.#line3(ctx, { ...land, z: land.z - 1 }, { ...land, z: land.z + 1 }, cam, w, h);
+    ctx.restore();
   }
 
   /**

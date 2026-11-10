@@ -1,5 +1,8 @@
 {
   "name": "Phobos Lab",
+  "enterVerb": "",
+  "jumpSpeed": 23,
+  "gravity": 61,
   "objects": [
     {
       "id": "b9b32a06-f0f4-4c83-aa8c-5f12b76700fe",

@@ -1496,7 +1496,7 @@ pick_death_var
 
 ; ------------------------------------------------------------------
 ; X = enemy. A = damage. Pain chance if survives.
-; I'm too young to die (difficulty 0) then x3/2, cap 255.
+; Doofus (difficulty 0) then x3/2, cap 255.
 damage_enemy
 	stx enemy_idx
 	sta hit_dmg

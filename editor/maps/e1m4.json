@@ -1,5 +1,8 @@
 {
   "name": "Command Control",
+  "enterVerb": "",
+  "jumpSpeed": 23,
+  "gravity": 61,
   "objects": [
     {
       "id": "43cf1c5b-f7d4-4310-b7d5-319d2e021291",

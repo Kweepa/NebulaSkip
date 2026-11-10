@@ -380,7 +380,6 @@ def steps(exe: str) -> list[Step]:
                 TOOLS / "gen_menu_text.py",
                 ROOT / "credits.txt",
                 ROOT / "control.txt",
-                ROOT / "order.txt",
                 ROOT / "readthis.txt",
                 ROOT / "ending.txt",
             ],
@@ -395,20 +394,10 @@ def steps(exe: str) -> list[Step]:
             lambda: tool("gen_menu_title.py"),
         ),
         Step(
-            "gen_menu_cursor",
-            lambda: [
-                TOOLS / "gen_menu_cursor_sprites.py",
-                ROOT / "ui" / "m_skull_c64.png",
-                ROOT / "ui" / "m_skull2_c64.png",
-            ],
-            lambda: [SRC / "menu_cursor_spr.asm"],
-            lambda: tool("gen_menu_cursor_sprites.py"),
-        ),
-        Step(
-            "gen_a8_cursor",
-            lambda: [TOOLS / "gen_a8_cursor.py", SRC / "menu_cursor_spr.asm"],
-            lambda: [SRC / "a8_cursor_tab.asm"],
-            lambda: tool("gen_a8_cursor.py"),
+            "gen_drive_cursor",
+            lambda: [TOOLS / "gen_drive_cursor.py", ROOT / "ui" / "drivecursorlow.png"],
+            lambda: [SRC / "menu_cursor_spr.asm", SRC / "a8_cursor_tab.asm"],
+            lambda: tool("gen_drive_cursor.py"),
         ),
         Step(
             "genpokey",

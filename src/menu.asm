@@ -12,8 +12,8 @@ MENU_HELP_ENDINGS = 0			; 1 = Read This! shows ending1/2 (spacing)
 MENU_SLOTS	= 8
 BOX_PAD		= 2
 BOX_VGAP	= 1			; empty rows inside box top/bottom
-CURSOR_GAP	= 1			; blank cols between skull and text
-CURSOR_CELLS	= 3			; 24px skull slot
+CURSOR_GAP	= 1			; blank cols between cursor and text
+CURSOR_CELLS	= 3			; 24px drive slot
 BAR_TOP		= 0			; logo block is flush with the top
 BAR_ROWS	= 7			; mode-E logo rows; matches MENU_TITLE_ROWS
 BRAND_KEEP_ROWS	= 7			; rows 0..6 are the logo; skip on repaint
@@ -21,20 +21,22 @@ HINT_ROW	= 23
 HINT_COL	= 0			; help text column (ink is TEXT_COL)
 HINT_GAP	= 8			; px between key sprite and label
 
-TEXT_COL	= 7			; yellow options
+; Mode 2 ink is PF1 luminance on the paper hue, so text on a box takes the box's
+; hue. Only on black paper does the ink's own hue show (titles).
+TEXT_COL	= 15			; light grey (lum C): pale steel-blue on the box
 HILITE_COL	= 1			; white selected
-TITLE_COL	= 7			; yellow titles
+TITLE_COL	= 7			; hazard-gold titles on black
 MENU_BORDER	= 0			; black
 COL_MAIN	= 0			; black surround
 COL_BAR		= 0			; black title strip
-COL_BOX		= 9			; brown option box
-HINT_BG		= 8			; orange bottom bar (old menu surround)
-COL_PANEL_INK_A8 = 7			; mode 2 ink is PF1 luminance on the paper hue: lum C on brown = orange
+COL_BOX		= 6			; dark steel-blue option box
+HINT_BG		= 11			; dark grey bottom bar
+COL_PANEL_INK_A8 = 15			; control / credits text
 COL_TITLE_INK	= 11			; dark grey letters in the bar
 HINT_KEY_COL	= 11			; dark grey key glyphs
 STORY_BG	= 0			; black around story panel
-STORY_BOX	= 7			; yellow story panel
-STORY_TEXT	= 0			; black story text
+STORY_BOX	= COL_BOX		; same steel-blue panel
+STORY_TEXT	= TEXT_COL
 STORY_GREY_TOP	= BRAND_KEEP_ROWS + 1	; panel area starts one row below brand
 MARK_CARET	= $1e			; !scr "^" — toggle monospaced span, not drawn
 FONT_GAP	= 1			; pixels after each glyph
@@ -43,7 +45,6 @@ MENU_FONT	= uifont_udgs + 32 * 8	; ASCII space; init_font_tabs scans 96 glyphs
 
 NM_BACK		= 256 - 66
 NM_START	= 256 - 10
-NM_ORDER	= 256 - 3
 NM_CTRL		= 256 - 4
 NM_HELP		= 256 - 5
 NM_CREDITS	= 256 - 7
@@ -130,7 +131,7 @@ run_menu
 	jsr menu_move_down
 .rm_nod
 	lda menu_id
-	cmp #3
+	cmp #2
 	bne .rm_nov
 	jsr menu_vol_input
 .rm_nov
@@ -183,9 +184,6 @@ menu_move_down
 
 ; Repaint only old + new rows (no clear / full redraw)
 update_selection
-
-	jsr a8_cursor_erase
-
 	ldx menu_prev
 	stx tmp4
 	jsr draw_menu_item
@@ -337,7 +335,7 @@ menu_select
 	cmp #NM_START
 	bne .ms_nv
 	lda menu_id
-	cmp #2				; skill menu
+	cmp #1				; skill menu
 	beq .ms_go
 	jmp .ms_st
 .ms_go
@@ -359,7 +357,7 @@ menu_select
 ; same-menu nop (volume) or mouse toggle
 	cmp menu_id
 	bne .ms_ne
-	cmp #3
+	cmp #2
 	bne .ms_stay
 	lda menu_item
 	cmp #1
@@ -380,13 +378,13 @@ menu_select
 	sta menu_item
 	lda tmp0
 	sta menu_id
-	cmp #2					; skill: cursor starts on Hurt me plenty
+	cmp #1					; skill: cursor starts on Freelancer
 	bne .ms_nsk
 	lda #1
 	sta menu_item
 .ms_nsk
 	lda menu_id
-	cmp #4					; Jukebox: cursor starts on the playing track
+	cmp #3					; Jukebox: cursor starts on the playing track
 	bne .ms_nj
 	lda music_track
 	sta menu_item
@@ -405,8 +403,6 @@ menu_select
 	jmp .ms_st
 .ms_tx
 	lda tmp0
-	cmp #NM_ORDER
-	beq .ms_ord
 	cmp #NM_CTRL
 	beq .ms_ctl
 	cmp #NM_HELP
@@ -426,20 +422,6 @@ menu_select
 	jsr jukebox_select			; ends in draw_menu; carry must be clear
 }
 	jmp .ms_st
-.ms_ord
-	ldx #0
-.ms_or
-	txa
-	pha
-	lda order_lo,x
-	ldy order_hi,x
-	jsr show_text_screen
-	pla
-	tax
-	inx
-	cpx #ORDER_PAGES
-	bne .ms_or
-	jmp .ms_ret
 .ms_ctl
 	lda #<control_text
 	ldy #>control_text
@@ -488,17 +470,16 @@ quit_to_basic
 	jmp a8_quit
 next_menu
 !if  JUKEBOX {
-	!byte 1, 3, NM_CTRL, NM_HELP, NM_CREDITS, 4, NM_QUIT, 0
+	!byte 1, 2, NM_CTRL, NM_HELP, NM_CREDITS, 3, NM_QUIT, 0
 } else {
-	!byte 1, 3, NM_CTRL, NM_HELP, NM_CREDITS, NM_QUIT, 0, 0
+	!byte 1, 2, NM_CTRL, NM_HELP, NM_CREDITS, NM_QUIT, 0, 0
 }
-	!byte 2, NM_ORDER, NM_ORDER, NM_BACK, 0, 0, 0, 0
 	!byte NM_START, NM_START, NM_START, NM_BACK, 0, 0, 0, 0
-	!byte 3, 3, NM_BACK, 0, 0, 0, 0, 0
+	!byte 2, 2, NM_BACK, 0, 0, 0, 0, 0
 	!byte NM_JUKE, NM_JUKE, NM_JUKE, NM_BACK, 0, 0, 0, 0
 
 menu_sizes
-	!byte 7 - (1 - JUKEBOX), 4, 4, 3, 4
+	!byte 7 - (1 - JUKEBOX), 4, 3, 4
 
 ; --- drawing ---------------------------------------------------------------
 draw_menu
@@ -540,7 +521,7 @@ draw_menu
 ; Jukebox only: "Tracks by Mandy Kane" one blank row under the option box.
 draw_track_credit
 	lda menu_id
-	cmp #4
+	cmp #3
 	beq .dtc
 	rts
 .dtc
@@ -655,7 +636,7 @@ calc_box
 	ror pix_max_l
 	lsr
 	ror pix_max_l
-	; Center option *text* on screen; skull sits left with CURSOR_GAP.
+	; Center option *text* on screen; cursor sits left with CURSOR_GAP.
 	lda #40
 	sec
 	sbc pix_max_l			; text_cells
@@ -725,7 +706,7 @@ draw_menu_item
 .di_h
 	lda #HILITE_COL
 	sta ui_text_col
-	; Skull: column is box_left+BOX_PAD. VIC X = 24 + col*8.
+	; Cursor: column is box_left+BOX_PAD-1.
 	lda box_left
 	clc
 	adc #BOX_PAD
@@ -736,22 +717,6 @@ draw_menu_item
 	sta cursor_col
 	lda pr_row
 	sta cursor_row
-	lda box_left
-	clc
-	adc #BOX_PAD
-	asl
-	asl
-	asl
-	clc
-	adc #24
-	sta cursor_spr_x
-	lda pr_row
-	asl
-	asl
-	asl
-	clc
-	adc #44				; 6px above char row (was 50)
-	sta cursor_spr_y
 .di_g
 	lda menu_id
 	asl
@@ -788,7 +753,7 @@ show_text_screen
 	sta pr_setcol
 	jmp .sts_body
 
-; Read This! / endings: black surround, yellow panel, black text. Restores COL_MAIN.
+; Read This! / endings: black surround, steel-blue panel, STORY_TEXT ink. Restores COL_MAIN.
 show_ending_pages
 	ldx #0
 .sep
@@ -811,9 +776,9 @@ show_story_screen
 	sta clear_bg
 
 
-	lda #STORY_BOX				; yellow panel
+	lda #STORY_BOX
 	sta cell_bg
-	lda #0					; black text
+	lda #STORY_TEXT
 	sta ui_text_col
 	lda #0
 	sta pr_setcol
@@ -1628,8 +1593,6 @@ music_ok	!byte 0				; 1 = MUSn resident at $9000
 music_track	!byte 0				; 0..2 playing / selected
 music_zp	!fill MUSIC_ZP_N, 0		; player's $f0-$f7 while the menu owns ZP
 hint_spr_x	!byte 0, 0, 0
-cursor_spr_x	!byte 0
-cursor_spr_y	!byte 0
 cursor_col	!byte 0
 cursor_row	!byte 0
 hint_tx		!byte 0, 0, 0
@@ -1691,30 +1654,26 @@ str_back	!scr "Back",0
 str_trk1	!scr "Searching for Doom",0
 str_trk2	!scr "Through the Slipgate",0
 str_trk3	!scr "Realms of Chthon",0
-str_e1		!scr "Knee deep in the dead",0
-str_e2		!scr "The shores of hell",0
-str_e3		!scr "Inferno",0
 str_fx_vol	!scr "Audio volume 15",0
 
 str_mouse	!scr "Mouse (port 2) "
 
 str_mouse_bit	!scr "Off",0
-str_itytd	!scr "I'm too young to die",0
-str_hmp		!scr "Hurt me plenty",0
-str_uv		!scr "Ultra-violence",0
+str_doofus	!scr "Doofus",0
+str_freelancer	!scr "Freelancer",0
+str_spacebast	!scr "Space Bastard",0
 
 str_sec_main	!byte 0				; main: logo only, no heading
-str_sec_new	!scr "Which episode?",0
-str_sec_skill	!scr "Choose skill level",0
+str_sec_skill	!scr "Skill Level",0
 str_sec_sound	!scr "Options",0
 str_now1	!scr "Now playing: Searching for Doom",0
 str_now2	!scr "Now playing: Through the Slipgate",0
 str_now3	!scr "Now playing: Realms of Chthon",0
 
 section_lo
-	!byte <str_sec_main, <str_sec_new, <str_sec_skill, <str_sec_sound, <str_now1
+	!byte <str_sec_main, <str_sec_skill, <str_sec_sound, <str_now1
 section_hi
-	!byte >str_sec_main, >str_sec_new, >str_sec_skill, >str_sec_sound, >str_now1
+	!byte >str_sec_main, >str_sec_skill, >str_sec_sound, >str_now1
 
 !source "menu_text.asm"
 
@@ -1725,9 +1684,7 @@ menu_str_lo
 } else {
 	!byte <str_credits, <str_quit, 0, 0
 }
-	!byte <str_e1, <str_e2, <str_e3, <str_back
-	!byte 0, 0, 0, 0
-	!byte <str_itytd, <str_hmp, <str_uv, <str_back
+	!byte <str_doofus, <str_freelancer, <str_spacebast, <str_back
 	!byte 0, 0, 0, 0
 	!byte <str_fx_vol, <str_mouse, <str_back, 0
 	!byte 0, 0, 0, 0
@@ -1740,9 +1697,7 @@ menu_str_hi
 } else {
 	!byte >str_credits, >str_quit, 0, 0
 }
-	!byte >str_e1, >str_e2, >str_e3, >str_back
-	!byte 0, 0, 0, 0
-	!byte >str_itytd, >str_hmp, >str_uv, >str_back
+	!byte >str_doofus, >str_freelancer, >str_spacebast, >str_back
 	!byte 0, 0, 0, 0
 	!byte >str_fx_vol, >str_mouse, >str_back, 0
 	!byte 0, 0, 0, 0

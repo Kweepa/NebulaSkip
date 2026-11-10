@@ -17,8 +17,8 @@ proc_init
 	bpl .pi_uh
 	jsr elev_init
 	lda #0
-	sta in_use
-	sta key_use
+	sta in_ability
+	sta key_ability
 	sta key_use_was
 	rts
 

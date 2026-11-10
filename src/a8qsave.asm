@@ -182,8 +182,11 @@ qso_restore
 	jsr set_room_idx
 	lda #0
 	sta pl_falling
+	sta jump_on
+	sta jump_held
 	sta fall_vl
 	sta fall_vh
+	sta fall_vf
 	sta fall_y0
 	sta fall_acc
 	lda #$ff

@@ -329,6 +329,15 @@ hide_flash
 
 ; ------------------------------------------------------------------
 update_weapon
+	lda key_ability
+	beq .uw_ab
+	lda ability_cur
+	eor #1
+	sta ability_cur
+	lda #0
+	sta jump_held
+	jsr hud_ability
+.uw_ab
 	lda key_wpn_1
 	beq .uw_sw
 	jsr select_slot1
@@ -368,6 +377,21 @@ update_weapon
 	sta fire_rpt_l
 	sta fire_rpt_h
 .uw_chk
+	lda ability_cur
+	cmp #ABIL_JUMP
+	bne .uw_fire
+	lda key_fire			; jump mode: press edge, weapon stays idle
+	beq .uw_jrel
+	lda jump_held
+	bne .uw_up
+	lda #1
+	sta jump_held
+	jsr do_jump
+	jmp .uw_up
+.uw_jrel
+	sta jump_held			; A = 0
+	beq .uw_up
+.uw_fire
 	lda key_fire
 	beq .uw_up
 	lda fire_rpt_l

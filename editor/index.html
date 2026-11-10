@@ -270,6 +270,15 @@ h2 {
   margin: 0.1rem 0 0.15rem;
 }
 
+.right-editors .jump-graph {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 0.35rem 0 0.1rem;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
 .preview-panel {
   flex: 0 0 auto;
   padding: 0.75rem 0 0;
@@ -1597,33 +1606,45 @@ button:disabled {
 .font-preview-bar {
   display: flex;
   gap: 0.5rem;
-  align-items: center;
+  align-items: flex-start;
 }
 
 .font-preview-input {
   flex: 1;
   min-width: 0;
+  min-height: 3.2rem;
   padding: 0.3rem 0.5rem;
   background: #0a0a0c;
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 3px;
   font-family: inherit;
+  font-size: 0.85rem;
+  resize: vertical;
 }
 
-.font-preview-scroll {
+.font-preview-wrap {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  overflow-x: auto;
-  padding-bottom: 0.25rem;
+  min-width: 0;
+}
+
+.font-preview-cap {
+  margin: 0;
+  font-size: 0.7rem;
 }
 
 .font-preview-canvas {
   display: block;
-  flex: 0 0 auto;
+  max-width: 100%;
+  height: auto;
   image-rendering: pixelated;
   background: #0a0a0c;
+}
+
+.font-preview-canvas[hidden] {
+  display: none;
 }
 
 /* Default .field label column is 5.5rem; "Touch col 0 / col 7" overflowed into the value. */
@@ -4486,6 +4507,7 @@ const KIND_ICON = {
 };
 const MAX_TRIGGER_TEXT = 80;
 const MAX_NAME_LEN = 40;
+const MAX_VERB_LEN = 16;
 const MAX_TAG_LEN = 16;
 
 /** Elevator height mode: Auto invents home/dest at cook; off uses elevLow/elevHigh vs room.y. */
@@ -6053,7 +6075,11 @@ function clampObject(obj) {
     if (obj.allEdges) obj.allEdges = true;
     else delete obj.allEdges;
   }
-  if (obj.kind === "spawn") obj.enabled = !!obj.enabled;
+  if (obj.kind === "spawn") {
+    obj.enabled = !!obj.enabled;
+    if (obj.showJump) obj.showJump = true;
+    else delete obj.showJump;
+  }
   return obj;
 }
 
@@ -6083,7 +6109,10 @@ function createObject(kind, x, y, z, extra = {}) {
   if (kind === "spawn" || kind === "enemy") {
     obj.rot = clampEnemyRot(extra.rot ?? 0);
   }
-  if (kind === "spawn") obj.enabled = extra.enabled === true;
+  if (kind === "spawn") {
+    obj.enabled = extra.enabled === true;
+    if (extra.showJump) obj.showJump = true;
+  }
   if (kind === "enemy") {
     const name = extra.enemy || "Possessed";
     obj.enemy = ENEMY_TYPES.some((t) => t.name === name) ? name : "Possessed";
@@ -6145,6 +6174,14 @@ function clampName(s) {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, MAX_NAME_LEN);
+}
+
+/** Enter-card verb shown instead of "entering" ("docking at", "landing on"). */
+function clampVerb(s) {
+  return String(s ?? "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, MAX_VERB_LEN);
 }
 
 function clampTag(s) {
@@ -6305,6 +6342,108 @@ function emptyMap() {
   return { name: "", objects: [] };
 }
 
+/** Per-map jump physics, game units (player is PLAYER_H = 4 high). Keep in sync with tools/genmap.py. */
+const DEFAULT_JUMP_SPEED = 23; // units/s upward at takeoff
+const DEFAULT_GRAVITY = 61; // units/s² (ledge falls use it too)
+const JUMP_SPEED_MAX = 62; // packed as one byte, 4.096 per unit/s
+const GRAVITY_MAX = 240; // packed as one byte, 1.0486 per unit/s²
+
+function clampPhys(v, def, min, max) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return def;
+  return Math.min(max, Math.max(min, Math.round(n * 10) / 10));
+}
+
+function clampJumpSpeed(v) {
+  return clampPhys(v, DEFAULT_JUMP_SPEED, 0, JUMP_SPEED_MAX);
+}
+
+/** Min 1: zero gravity never lands (jump or fall). */
+function clampGravity(v) {
+  return clampPhys(v, DEFAULT_GRAVITY, 1, GRAVITY_MAX);
+}
+
+const PHYS_TICK_S = 0.032; // engine fall tick (FALL_TICK_MS)
+const WALK_SPEED = 7.75; // units/s; wish scale 127 / 64 / 256 per ms
+
+/**
+ * Jump arc as the engine integrates it: values packed to the header bytes
+ * (genmap.py), then per 32 ms tick  up = v0 - n*a;  y += up  (no landing test
+ * while ascending). Horizontal is walk speed along the takeoff heading.
+ * Returns { pts: [{ t, d, y }], apex, range, time } in seconds / game units.
+ */
+function jumpArc(jumpSpeed, gravity, land = null) {
+  const v0 = (Math.round(clampJumpSpeed(jumpSpeed) * 4.096) * 2) / 256;
+  const a = Math.round(clampGravity(gravity) * 1.048576) / 4 / 256;
+  const pt = (n, y) => ({ t: n * PHYS_TICK_S, d: WALK_SPEED * n * PHYS_TICK_S, y });
+  const pts = [pt(0, 0)];
+  let y = 0;
+  let apex = 0;
+  for (let n = 1; n <= 4000; n++) {
+    const up = v0 - n * a;
+    const prev = y;
+    y += up;
+    if (up <= 0) {
+      // Descending: land on the first surface, else (flat) back at takeoff height.
+      const ly = land ? land(pt(n - 1, prev), pt(n, y)) : y <= 0 ? 0 : null;
+      if (ly != null) {
+        const f = prev > y ? Math.min(1, Math.max(0, (prev - ly) / (prev - y))) : 0;
+        pts.push(pt(n - 1 + f, ly));
+        break;
+      }
+      if (land && y < -64) {
+        pts.push(pt(n, y)); // no floor under the path
+        break;
+      }
+    }
+    apex = Math.max(apex, y);
+    pts.push(pt(n, y));
+  }
+  const last = pts[pts.length - 1];
+  return { pts, apex, range: last.d, time: last.t };
+}
+
+const JUMP_STEP_UP = 2; // keep in sync with STEP_UP in src/mem.asm
+
+/**
+ * Floor query for the editor's jump preview: (x, z, lo, hi) -> highest walkable
+ * top in [lo, hi] at that column, or null. Room floors, crate tops and solid
+ * platform tops (same surfaces genmap emits). Slopes and elevators are not
+ * included, so an arc passes through them.
+ */
+function floorSurfaces(doc) {
+  const rooms = [];
+  const boxes = [];
+  for (const o of activeMap(doc).objects) {
+    if (o.kind === "room") {
+      rooms.push((roomGeometry(o).colliders || []).map((c) => ({ ...c })));
+    } else if (o.kind === "crate") {
+      boxes.push({ o, top: (o.y | 0) + (o.sy | 0) });
+    } else if (o.kind === "platform" && o.collide !== false) {
+      boxes.push({ o, top: (o.y | 0) + ((o.sy | 0) || 1) });
+    }
+  }
+  return (x, z, lo, hi) => {
+    let best = null;
+    const take = (t) => {
+      if (t >= lo - 1e-6 && t <= hi + 1e-6 && (best == null || t > best)) best = t;
+    };
+    for (const cols of rooms) {
+      let floor = null;
+      for (const c of cols) {
+        if (x >= c.x && x <= c.x + c.sx && z >= c.z && z <= c.z + c.sz) {
+          if (floor == null || c.y < floor) floor = c.y; // lowest containing, as the engine
+        }
+      }
+      if (floor != null) take(floor);
+    }
+    for (const { o, top } of boxes) {
+      if (x >= o.x && x <= o.x + o.sx && z >= o.z && z <= o.z + o.sz) take(top);
+    }
+    return best;
+  };
+}
+
 function mapDisplayName(map, key) {
   const n = clampName(map?.name);
   return n || key;
@@ -6379,7 +6518,7 @@ const MAP_MAX_BYTES = 4096;
 const ENEMY_POSE_MAX = 7680;
 const STICK_POSE_BYTES = 13 * 3; // gx+gy+gz per stored pose
 
-/** Packed map header: 10 counts + 3 type pads + 4 mesh lens + 6 spawn. */
+/** Packed map header: 10 counts + jump_v, grav, pad + 4 mesh lens + 6 spawn. */
 const MAP_HDR_BYTES = 23;
 
 // Keep in sync with tools/genenemies.py (role names).
@@ -6738,6 +6877,7 @@ function mapStats(doc) {
   let total = 0;
   let c64Bytes = MAP_HDR_BYTES;
   c64Bytes += clampName(map.name).length + 1; // map_name + NUL
+  c64Bytes += clampVerb(map.enterVerb).length + 1; // enter verb + NUL
   let meshEdges = 0;
   let hasSpawn = false;
   let mapText = 0;
@@ -6907,6 +7047,8 @@ function activeMap(doc) {
   if (!doc.maps) doc.maps = {};
   if (!doc.maps[name]) doc.maps[name] = emptyMap();
   if (typeof doc.maps[name].name !== "string") doc.maps[name].name = "";
+  doc.maps[name].jumpSpeed = clampJumpSpeed(doc.maps[name].jumpSpeed);
+  doc.maps[name].gravity = clampGravity(doc.maps[name].gravity);
   if (!Array.isArray(doc.maps[name].objects)) doc.maps[name].objects = [];
   return doc.maps[name];
 }
@@ -7441,6 +7583,9 @@ function mapFileRecords(doc) {
       file: `${name.toLowerCase()}.json`,
       data: {
         name: clampName(map.name),
+        enterVerb: clampVerb(map.enterVerb),
+        jumpSpeed: clampJumpSpeed(map.jumpSpeed),
+        gravity: clampGravity(map.gravity),
         objects,
       },
     };
@@ -7680,7 +7825,10 @@ function parseObjects(list) {
       if (o.tag != null) obj.tag = clampTag(o.tag);
     }
     if (o.kind === "platform" && o.collide != null) obj.collide = o.collide !== false;
-    if (o.kind === "spawn") obj.enabled = o.enabled === true;
+    if (o.kind === "spawn") {
+      obj.enabled = o.enabled === true;
+      if (o.showJump) obj.showJump = true;
+    }
     out.push(clampObject(obj));
   }
   ensureSpawnExclusive(out);
@@ -7954,12 +8102,18 @@ function normalizeDocument(raw) {
       const src = raw.maps[name] || {};
       doc.maps[name] = {
         name: clampName(src.name),
+        enterVerb: clampVerb(src.enterVerb),
+        jumpSpeed: clampJumpSpeed(src.jumpSpeed),
+        gravity: clampGravity(src.gravity),
         objects: parseObjects(src.objects),
       };
     }
   } else {
     doc.maps.E1M1 = {
       name: clampName(raw.map?.name),
+      enterVerb: clampVerb(raw.map?.enterVerb),
+      jumpSpeed: clampJumpSpeed(raw.map?.jumpSpeed),
+      gravity: clampGravity(raw.map?.gravity),
       objects: parseObjects(raw.map?.objects || raw.objects),
     };
   }
@@ -11979,6 +12133,7 @@ class LayoutView {
           if (verts[i] && verts[j]) this.#line3(ctx, verts[i], verts[j], cam, w, h);
         }
       }
+      if (obj.kind === "spawn" && obj.showJump) this.#drawJumpArc(ctx, doc, obj, cam, w, h);
     } else if (obj.kind === "pickup") {
       const mesh = itemMeshFor(doc, obj.pickup);
       for (const seg of itemMeshWorldSegs(obj, mesh)) {
@@ -12003,6 +12158,42 @@ class LayoutView {
       this.#drawGlyphs(ctx, obj, cam, w, h, color);
     }
     if (primary && !this.#pointSelActive()) this.#drawGizmo(ctx, obj, cam, w, h);
+  }
+
+  /**
+   * Spawn "Show jump": the feet's path along the spawn heading at this map's
+   * jump speed / gravity (walking speed, flat ground), with a landing cross.
+   */
+  #drawJumpArc(ctx, doc, obj, cam, w, h) {
+    const map = activeMap(doc);
+    const yaw = (clampEnemyRot(obj.rot) * Math.PI) / 4;
+    const dx = Math.sin(yaw);
+    const dz = Math.cos(yaw);
+    const at = (p) => ({ x: obj.x + 1 + dx * p.d, y: obj.y + p.y, z: obj.z + 1 + dz * p.d });
+    // Land on the first surface under the path (feet may step up JUMP_STEP_UP).
+    const floorAt = floorSurfaces(doc);
+    const arc = jumpArc(map.jumpSpeed, map.gravity, (a, b) => {
+      const w = at(b);
+      const top = floorAt(w.x, w.z, w.y, obj.y + a.y + JUMP_STEP_UP);
+      return top == null ? null : top - obj.y;
+    });
+    const n = arc.pts.length;
+    const stride = Math.max(1, Math.ceil(n / 80));
+    ctx.save();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "#4fe0b0";
+    ctx.setLineDash([]);
+    let prev = at(arc.pts[0]);
+    for (let i = stride; i < n + stride; i += stride) {
+      const next = at(arc.pts[Math.min(i, n - 1)]);
+      this.#line3(ctx, prev, next, cam, w, h);
+      prev = next;
+    }
+    const land = at(arc.pts[n - 1]);
+    ctx.lineWidth = 1;
+    this.#line3(ctx, { ...land, x: land.x - 1 }, { ...land, x: land.x + 1 }, cam, w, h);
+    this.#line3(ctx, { ...land, z: land.z - 1 }, { ...land, z: land.z + 1 }, cam, w, h);
+    ctx.restore();
   }
 
   /**
@@ -12325,7 +12516,7 @@ const GAME_FOCAL = 100;
 /** Draw buffer = CSS frame (C64 1:1.2 PAR). */
 const PREVIEW_W = 320;
 const PREVIEW_H = 256;
-const PREVIEW_EYE = 3;
+const PREVIEW_EYE = 3.75; // keep in sync with EYE_HEIGHT + EYE_FRAC in src/mem.asm
 const PREVIEW_FRAME_W = PREVIEW_W;
 const PREVIEW_FRAME_H = PREVIEW_H;
 const PREVIEW_SX = PREVIEW_W / GAME_VIEW_W;
@@ -14819,7 +15010,7 @@ const FONT_GRID = "rgba(255, 255, 255, 0.09)";
 const FONT_CELL_PX = 32;
 const FONT_SLOT_COUNT = 4;
 const FONT_DRAG_THRESHOLD = 4;
-const FONT_SAMPLE = "Nebula Skip: the quick brown fox 0123456789 !?";
+const FONT_SAMPLE = "Nebula Skip: the quick brown fox\njumps over the lazy dog 0123456789 !?";
 
 function fontEl(tag, cls, text) {
   const e = document.createElement(tag);
@@ -14952,12 +15143,13 @@ class FontView {
 
     const prev = fontEl("div", "font-preview");
     const bar = fontEl("div", "font-preview-bar");
-    const input = document.createElement("input");
-    input.type = "text";
+    const input = document.createElement("textarea");
     input.className = "font-preview-input";
     input.value = this.sample;
-    input.maxLength = 96;
+    input.rows = 3;
+    input.maxLength = 600;
     input.spellcheck = false;
+    input.placeholder = "Preview text (Enter = new line)";
     input.addEventListener("input", () => {
       this.sample = input.value;
       this.#drawPreview();
@@ -14971,14 +15163,24 @@ class FontView {
       this.#drawPreview();
     });
     bar.append(input, prop);
-    const scroll = fontEl("div", "font-preview-scroll");
-    this.preview2 = document.createElement("canvas");
-    this.preview4 = document.createElement("canvas");
-    this.preview2.className = this.preview4.className = "font-preview-canvas";
-    scroll.append(this.preview2, this.preview4);
-    prev.append(bar, scroll);
+    // No scrolling: the large copy picks the biggest integer scale (<= 4) that fits the panel.
+    const wrap = fontEl("div", "font-preview-wrap");
+    this.previewA = document.createElement("canvas");
+    this.previewB = document.createElement("canvas");
+    this.previewA.className = this.previewB.className = "font-preview-canvas";
+    this.previewCap = fontEl("div", "font-preview-cap muted");
+    wrap.append(this.previewA, this.previewCap, this.previewB);
+    prev.append(bar, wrap);
     root.append(prev);
     this.previewInput = input;
+    this.previewWrap = wrap;
+    this.previewWidth = 0;
+    new ResizeObserver(() => {
+      const w = wrap.clientWidth;
+      if (w === this.previewWidth) return;
+      this.previewWidth = w;
+      this.#drawPreview();
+    }).observe(wrap);
   }
 
   // ---- drawing ----
@@ -15063,29 +15265,37 @@ class FontView {
   #drawPreview() {
     if (!this.enabled) return;
     const font = this.#font();
-    const lay = fontLayoutText(font, this.sample, this.proportional);
-    const w = Math.max(1, lay.width);
+    const lays = this.sample.split("\n").map((l) => fontLayoutText(font, l, this.proportional));
+    const w = Math.max(1, ...lays.map((l) => l.width));
+    const h = lays.length * FONT_H;
+    const avail = this.previewWrap.clientWidth || w;
+    const fit = Math.max(1, Math.min(4, Math.floor(avail / w)));
+    this.previewCap.textContent = `${w}x${h} px · actual size above${fit > 1 ? `, ${fit}x below` : ""}`;
+    this.previewB.hidden = fit === 1;
     for (const [cv, scale] of [
-      [this.preview2, 2],
-      [this.preview4, 4],
+      [this.previewA, 1],
+      [this.previewB, fit],
     ]) {
       cv.width = w;
-      cv.height = FONT_H;
+      cv.height = h;
       cv.style.width = `${w * scale}px`;
-      cv.style.height = `${FONT_H * scale}px`;
+      cv.style.aspectRatio = `${w} / ${h}`;
       const ctx = cv.getContext("2d");
       ctx.fillStyle = FONT_BG;
-      ctx.fillRect(0, 0, w, FONT_H);
+      ctx.fillRect(0, 0, w, h);
       ctx.fillStyle = FONT_INK;
-      for (const c of lay.cells) {
-        const rows = font[c.code - FONT_FIRST];
-        for (let y = 0; y < FONT_H; y++) {
-          for (let x = 0; x < FONT_W; x++) {
-            const px = c.x + x - c.shift;
-            if (px >= 0 && fontGetPixel(rows, x, y)) ctx.fillRect(px, y, 1, 1);
+      lays.forEach((lay, li) => {
+        const y0 = li * FONT_H;
+        for (const c of lay.cells) {
+          const rows = font[c.code - FONT_FIRST];
+          for (let y = 0; y < FONT_H; y++) {
+            for (let x = 0; x < FONT_W; x++) {
+              const px = c.x + x - c.shift;
+              if (px >= 0 && fontGetPixel(rows, x, y)) ctx.fillRect(px, y0 + y, 1, 1);
+            }
           }
         }
-      }
+      });
     }
   }
 
@@ -18683,6 +18893,107 @@ function renderFontInspector(root) {
   root.append(sheet, invertLabel);
 }
 
+const JUMP_GRAPH_W = 560; // canvas px (CSS scales to the panel, aspect kept)
+const JUMP_GRAPH_H = 320;
+
+/**
+ * Side view of the jump: x = distance along the takeoff heading, y = height,
+ * 1:1 unit grid (heavy line every 4 = player height). Returns the arc.
+ */
+function drawJumpGraph(canvas, jumpSpeed, gravity) {
+  const arc = jumpArc(jumpSpeed, gravity);
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width;
+  const H = canvas.height;
+  const L = 44;
+  const R = 14;
+  const T = 14;
+  const B = 28;
+  const pw = W - L - R;
+  const ph = H - T - B;
+  const PLAYER_W = 2; // PLAYER_R = 1 each side
+  const PLAYER_H = 4;
+  const xMin = -PLAYER_W / 2 - 0.5;
+  const xMax = Math.max(arc.range + PLAYER_W / 2 + 1, 10);
+  const yMax = Math.max(arc.apex + 1.5, PLAYER_H + 2);
+  const s = Math.min(pw / (xMax - xMin), ph / yMax);
+  const ox = L - xMin * s;
+  const oy = T + ph;
+  const px = (d) => ox + d * s;
+  const py = (y) => oy - y * s;
+  const x1 = px(xMax);
+
+  ctx.fillStyle = "#0a0a0c";
+  ctx.fillRect(0, 0, W, H);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(L, T, pw, ph);
+  ctx.clip();
+
+  // Grid: 1 unit, thinning out when it would be denser than ~10 px.
+  const minor = s >= 10 ? 1 : s >= 5 ? 2 : s >= 2.5 ? 4 : 8;
+  ctx.lineWidth = 1;
+  for (let u = Math.ceil(xMin / minor) * minor; u <= xMax; u += minor) {
+    ctx.strokeStyle = u % 4 === 0 ? "#444d63" : "#252b3a";
+    ctx.beginPath();
+    ctx.moveTo(Math.round(px(u)) + 0.5, T);
+    ctx.lineTo(Math.round(px(u)) + 0.5, oy);
+    ctx.stroke();
+  }
+  for (let u = 0; u <= yMax; u += minor) {
+    ctx.strokeStyle = u % 4 === 0 ? "#444d63" : "#252b3a";
+    ctx.beginPath();
+    ctx.moveTo(L, Math.round(py(u)) + 0.5);
+    ctx.lineTo(x1, Math.round(py(u)) + 0.5);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = "#9aa3b5"; // floor
+  ctx.beginPath();
+  ctx.moveTo(L, Math.round(oy) + 0.5);
+  ctx.lineTo(x1, Math.round(oy) + 0.5);
+  ctx.stroke();
+
+  // Player at takeoff (solid) and landing (dashed).
+  ctx.strokeStyle = "#6a7388";
+  ctx.strokeRect(px(-PLAYER_W / 2), py(PLAYER_H), PLAYER_W * s, PLAYER_H * s);
+  ctx.setLineDash([5, 4]);
+  ctx.strokeRect(px(arc.range - PLAYER_W / 2), py(PLAYER_H), PLAYER_W * s, PLAYER_H * s);
+  ctx.setLineDash([]);
+
+  // Apex guide.
+  ctx.strokeStyle = "#5ad0ff";
+  ctx.globalAlpha = 0.45;
+  ctx.setLineDash([3, 4]);
+  ctx.beginPath();
+  ctx.moveTo(L, py(arc.apex));
+  ctx.lineTo(x1, py(arc.apex));
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.globalAlpha = 1;
+
+  // Arc, one point per physics tick.
+  ctx.strokeStyle = "#f2d36b";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  arc.pts.forEach((p, i) => (i ? ctx.lineTo(px(p.d), py(p.y)) : ctx.moveTo(px(p.d), py(p.y))));
+  ctx.stroke();
+  ctx.fillStyle = "#f2d36b";
+  for (const p of arc.pts) ctx.fillRect(px(p.d) - 1.5, py(p.y) - 1.5, 3, 3);
+  ctx.restore();
+
+  // Axis labels (units).
+  ctx.fillStyle = "#8b91a0";
+  ctx.font = "16px Segoe UI, sans-serif";
+  const step = s >= 14 ? 4 : 8;
+  ctx.textAlign = "right";
+  ctx.textBaseline = "middle";
+  for (let u = 0; u <= yMax; u += step) ctx.fillText(String(u), L - 6, py(u));
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  for (let u = 0; u <= xMax; u += step) ctx.fillText(String(u), px(u), oy + 6);
+  return arc;
+}
+
 function field(label, input) {
   const row = document.createElement("label");
   row.className = "field";
@@ -18975,6 +19286,17 @@ function renderLayoutObjectFields(root, objs) {
         refreshAll();
       })
     );
+    const jumpChk = document.createElement("input");
+    jumpChk.type = "checkbox";
+    jumpChk.checked = objs.every((o) => !!o.showJump);
+    jumpChk.indeterminate = !jumpChk.checked && objs.some((o) => !!o.showJump);
+    jumpChk.title = "Draw the jump arc from this spawn along its heading (map jump speed and gravity)";
+    jumpChk.addEventListener("change", () =>
+      apply((obj) => {
+        obj.showJump = jumpChk.checked;
+      })
+    );
+    root.appendChild(field("Show jump", jumpChk));
   }
 
   if (isFigureObject(objs[0])) {
@@ -19383,6 +19705,74 @@ function renderInspector() {
         refreshAll();
       });
       root.appendChild(field("Name", nameInp));
+      const verbInp = document.createElement("input");
+      verbInp.type = "text";
+      verbInp.maxLength = MAX_VERB_LEN;
+      verbInp.value = map.enterVerb || "";
+      verbInp.placeholder = "entering";
+      verbInp.title = 'Printed above the map name on the enter card instead of "entering" (e.g. "docking at", "landing on").';
+      verbInp.addEventListener("change", () => {
+        pushUndo();
+        map.enterVerb = clampVerb(verbInp.value);
+        markDirty();
+        refreshAll();
+      });
+      root.appendChild(field("Enter text", verbInp));
+      const physField =(label, key, clamp, min, max, def, step, title) => {
+        const inp = document.createElement("input");
+        inp.type = "number";
+        inp.min = String(min);
+        inp.max = String(max);
+        inp.step = String(step);
+        inp.value = String(map[key]);
+        inp.title = `${title} Default ${def}.`;
+        inp.addEventListener("change", () => {
+          pushUndo();
+          map[key] = clamp(inp.value);
+          inp.value = String(map[key]);
+          markDirty();
+          redrawJump();
+          layoutView.draw();
+        });
+        inp.addEventListener("input", () => redrawJump());
+        root.appendChild(field(label, inp));
+        return inp;
+      };
+      let redrawJump = () => {};
+      const jumpInp = physField(
+        "Jump (u/s)",
+        "jumpSpeed",
+        clampJumpSpeed,
+        0,
+        JUMP_SPEED_MAX,
+        DEFAULT_JUMP_SPEED,
+        0.5,
+        "Upward speed at takeoff, units/s (player is 4 high)."
+      );
+      const gravInp = physField(
+        "Gravity (u/s²)",
+        "gravity",
+        clampGravity,
+        1,
+        GRAVITY_MAX,
+        DEFAULT_GRAVITY,
+        1,
+        "Downward acceleration, units/s². Jumps and ledge falls."
+      );
+      const jumpCanvas = document.createElement("canvas");
+      jumpCanvas.className = "jump-graph";
+      jumpCanvas.width = JUMP_GRAPH_W;
+      jumpCanvas.height = JUMP_GRAPH_H;
+      const jumpStats = document.createElement("p");
+      jumpStats.className = "muted jump-stats";
+      root.append(jumpCanvas, jumpStats);
+      redrawJump = () => {
+        const arc = drawJumpGraph(jumpCanvas, jumpInp.value, gravInp.value);
+        jumpStats.textContent =
+          `apex ${arc.apex.toFixed(1)} · range ${arc.range.toFixed(1)} · air ${arc.time.toFixed(2)} s` +
+          ` · flat ground, walking speed`;
+      };
+      redrawJump();
       for (const row of mapKindStatRows(mapStats(doc))) {
         const line = document.createElement("div");
         line.className = "field level-stat";

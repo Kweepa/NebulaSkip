@@ -25,7 +25,7 @@ REBOOT_STUB	= $08F9			; 3-byte JMP reboot_game (installed at start)
 level_num	= $08FC			; 1..8 -> e1m1..e1m8
 effects_vol	= $08FD			; menu SFX level 0..15
 game_complete	= $08FE
-difficulty	= $08FF			; menu skill 0..2 (too young / hurt me / ultra-violence)
+difficulty	= $08FF			; menu skill 0..2 (Doofus / Freelancer / Space Bastard)
 ; Mouse on/off. Not $38 — GAME uses that for dt_ms.
 ; init_irq / LoadLevel must not clear it.
 mouse_en	= $cd
@@ -114,7 +114,8 @@ HUD_OFF_SHELLS	= HUD_ROW_SHELLS * 40 + HUD_COL
 HUD_OFF_RKT	= HUD_ROW_RKT * 40 + HUD_COL
 HUD_OFF3	= HUD_OFF_MAP		; PROFILE vertex counts, on the map line
 HUD_OFF4	= HUD_ROW4 * 40 + HUD_COL
-HUD_TITLE_COL	= 17			; (40 - len "DoomA8") / 2
+HUD_TITLE_COL	= 14			; (40 - len "Nebula Skip") / 2
+HUD_ABIL_COL	= 28			; "fire" / "jump" on the rockets row, icon above
 HUD_AMMO_ICON	= 8
 HUD_AMMO_NUM	= 9
 HUD_HP_LABEL	= 13
@@ -123,7 +124,7 @@ HUD_HP_NUM	= 15
 HUD_AR_NUM	= 22
 HUD_KEY_COL_BLU	= 30			; keycard glyphs, one per ammo row
 HUD_KEY_COL_YEL	= 29
-HUD_KEY_COL_RED	= 30
+HUD_KEY_COL_RED	= 32			; clear of the ability text at cols 28-31
 HUD_CH_SP	= $20			; ASCII space / digits / letters in UI charset
 HUD_CH_PLUS	= $2b
 HUD_CH_MINUS	= $2d
@@ -435,7 +436,8 @@ OC_BOT		= 8
 OC_NEAR		= $80			; VOC only: z < ZCLIP (screen bits not set)
 
 ; Player / world
-EYE_HEIGHT	= 3
+EYE_HEIGHT	= 3			; integer part of the eye height; feet = cam_yh - EYE_HEIGHT
+EYE_FRAC	= $c0			; + 0.75 in cam_yl: the eye rides 3.75 above the feet
 PLAYER_H	= 4			; Y collision height [feet, feet+PLAYER_H)
 DOOR_Y_SLACK	= 1			; |feet − door_y| to fire a wish-through
 DOOR_AIM	= 32			; yaw ticks (45°) of through-heading to transit
@@ -445,9 +447,12 @@ PLAYER_R	= 1			; XZ collision radius
 FALL_LEDGE	= 1			; start fall if feet-floor > this
 STEP_UP		= 2			; max walk-up; 2 units plays SOUND_OOF
 FALL_TICK_MS	= 32			; gravity cadence (like MOTION_STEP_MS)
-FALL_ACCEL	= $10			; 8.8 added to downward vel per tick
+; Gravity and jump speed are per map (map_grav / map_jump_v, map_bss.asm). The
+; editor sets them in units/s and units/s^2; genmap.py packs them for this tick.
 FALL_SAFE	= 8			; no damage if eye-drop <= this
 FALL_DAMAGE	= 15			; HP on hard landing
+ABIL_FIRE	= 0			; joystick button ability (space toggles)
+ABIL_JUMP	= 1
 HURT_FLASH_MS	= 300			; red border duration
 ENEMY_CULL_R	= 2			; view-space |x| vs z+R (8.8 high)
 ENEMY_CULL_H	= 6			; view-space |y| vs z+H (figure height)
@@ -557,8 +562,8 @@ hold_strafel	= $CBCE + A8_OFF
 hold_strafer	= $CBD0 + A8_OFF
 hold_turn_l	= $CBD2 + A8_OFF
 hold_turn_r	= $CBD4 + A8_OFF
-in_use		= $CBD6 + A8_OFF			; unused; quicksave span
-key_use		= $CBD7 + A8_OFF			; unused; quicksave span
+in_ability	= $CBD6 + A8_OFF			; space press (IRQ), one-shot
+key_ability	= $CBD7 + A8_OFF			; latched by snapshot_input
 key_use_was	= $CBD8 + A8_OFF			; door_blk rising edge
 pl_falling	= $CBD9 + A8_OFF			; 0 grounded, 1 airborne
 fall_vl		= $CBDA + A8_OFF			; 8.8 downward vel lo
@@ -1060,7 +1065,13 @@ uh_tag		= $CFEC + A8_OFF		; cooked door tag
 uh_lo		= $CFF0 + A8_OFF		; remaining ms
 uh_hi		= $CFF4 + A8_OFF
 uh_hide		= $CFF8 + A8_OFF		; door_hide_tag: 1 = set DOOR_HIDDEN
-; $CFF9–$CFFF reserved.
+ability_cur	= $CFF9 + A8_OFF		; ABIL_*
+space_held	= $CFFA + A8_OFF		; 1 = space still down; one toggle per press
+jump_held	= $CFFB + A8_OFF		; 1 = fire still down in jump mode
+jump_on		= $CFFC + A8_OFF		; 0 none, 1 vertical only, 2 with XZ (while airborne)
+jump_yaw	= $CFFD + A8_OFF		; takeoff heading for the arc
+fall_vf		= $CFFE + A8_OFF		; fall_v fraction (8.16 low byte); map_grav is 1/4 unit/tick^2 steps
+; $CFFF reserved.
 !if uh_tag != elev_hits + 1 {
 	!error "uh_tag must follow elev_hits"
 }

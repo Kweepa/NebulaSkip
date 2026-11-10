@@ -169,7 +169,8 @@ hud_stax
 hud_ch	!byte 0
 
 ; Rows 0 and 1 while DMA is off. The blank line between them is enter_dl.
-; "entering" is 8 wide, so the column is (40-8)/2.
+; Verb line: the map's own string (second NUL-terminated string after
+; map_name, e.g. "docking at"), or "entering" (8 wide, column 16) if empty.
 hud_enter_rows
 	lda #<HUD_SCR
 	sta init_ptr
@@ -183,6 +184,44 @@ hud_enter_rows
 	cpy #80
 	bcc .er_sp
 
+	ldy #0					; skip map_name, Y = verb offset
+.er_vo
+	+lda_my map_name
+	beq .er_vo0
+	iny
+	bne .er_vo
+.er_vo0
+	iny
+	ldx #0					; X = verb length
+.er_vl
+	+lda_my map_name
+	beq .er_vl0
+	iny
+	inx
+	bne .er_vl
+.er_vl0
+	stx hud_n
+	cpx #0					; stx leaves Z from the NUL test
+	beq .er_def
+	tya						; back to verb start
+	sec
+	sbc hud_n
+	pha
+	lda #HUD_MSG_W
+	sec
+	sbc hud_n
+	lsr
+	tax
+	pla
+	tay
+.er_vc
+	+lda_my map_name
+	beq .er_nm
+	jsr hud_stax
+	inx
+	iny
+	bne .er_vc				; NUL-bounded, never wraps
+.er_def
 	ldx #16
 	ldy #0
 .er_en
@@ -291,9 +330,26 @@ hud_print
 }
 	rts
 
-; Bullets, shells, rockets + health + armour.
+; Current joystick-button ability, 4 chars. Absolute stores (hi $02 sentinel).
+hud_ability
+	lda ability_cur
+	asl
+	asl
+	tax
+	lda hud_str_abil,x
+	sta HUD_SCR + HUD_OFF_RKT + HUD_ABIL_COL
+	lda hud_str_abil + 1,x
+	sta HUD_SCR + HUD_OFF_RKT + HUD_ABIL_COL + 1
+	lda hud_str_abil + 2,x
+	sta HUD_SCR + HUD_OFF_RKT + HUD_ABIL_COL + 2
+	lda hud_str_abil + 3,x
+	sta HUD_SCR + HUD_OFF_RKT + HUD_ABIL_COL + 3
+	rts
+
+; Bullets, shells, rockets + health + armour (+ ability label).
 ; Call on init, spend, backpack, damage — not every frame.
 hud_ammo
+	jsr hud_ability
 	lda #<HUD_SCR + HUD_OFF_SHELL + HUD_AMMO_NUM
 	sta dst_ptr
 	lda #>HUD_SCR + HUD_OFF_SHELL + HUD_AMMO_NUM
@@ -856,7 +912,8 @@ th_name_hi
 	!byte >thn_soul, >thn_suit, >thn_lamp, >thn_barrel
 
 ; ASCII (UI charset), not PETSCII
-hud_str_title	!text "DoomA8",0
+hud_str_title	!text "Nebula Skip",0
 hud_str_entering	!text "entering",0
+hud_str_abil	!text "firejump"		; ABIL_* x 4
 hud_str_health	!text "health",0
 hud_str_armour	!text "armour",0

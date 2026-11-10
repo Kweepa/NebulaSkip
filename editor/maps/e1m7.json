@@ -1,5 +1,8 @@
 {
   "name": "Computer Station",
+  "enterVerb": "",
+  "jumpSpeed": 23,
+  "gravity": 61,
   "objects": [
     {
       "id": "b6659c89-6aca-4454-9497-3326417e2e62",

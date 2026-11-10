@@ -1,5 +1,8 @@
 {
   "name": "Toxin Refinery",
+  "enterVerb": "",
+  "jumpSpeed": 23,
+  "gravity": 61,
   "objects": [
     {
       "id": "a61a19be-0a10-4114-b03f-c8437539e5b5",

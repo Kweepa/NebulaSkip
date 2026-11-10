@@ -1,34 +1,11 @@
-Doom is a trademark of
-id software llc/zenimax media inc.
+Design and technical direction by
+Steve McCrea.
+Programming grunt work by
+Claude Sonnet.
 
-Unofficial atari 8-bit fan port
-created by steve mccrea in 2026.
-
-Not affiliated with or endorsed
-by id software or zenimax.
-
-For non-commercial/fan use only.
-^
-Doom was created by john carmack,
-john romero, dave taylor,
-adrian carmack, kevin cloud,
-sandy peterson, jay wilbur, and
-shawn green, with additional support
-from tom hall, bobby prince, paul
-radek, gregor punchatz, american
-mcgee and donna jackson.
-^
-Design and technical direction
-by steve mcccrea.
-Programming by claude sonnet.
-
-Music by benjamin dibbert,
-butchered by an automatic sid to
-pokey translation.
-
-Acme assembler by marco baye.
-altirra emulator by avery lee.
+Acme assembler by Marco Baye.
+Altirra emulator by Avery Lee.
 
 Thanks y'all!
 
-DoomA8 v1.00.0, built 8 Nov 2026
+Nebula Skip v1.0, built 9 Nov 2026

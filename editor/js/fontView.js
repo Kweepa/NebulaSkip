@@ -24,7 +24,7 @@ const FONT_GRID = "rgba(255, 255, 255, 0.09)";
 const FONT_CELL_PX = 32;
 const FONT_SLOT_COUNT = 4;
 const FONT_DRAG_THRESHOLD = 4;
-const FONT_SAMPLE = "Nebula Skip: the quick brown fox 0123456789 !?";
+const FONT_SAMPLE = "Nebula Skip: the quick brown fox\njumps over the lazy dog 0123456789 !?";
 
 function fontEl(tag, cls, text) {
   const e = document.createElement(tag);
@@ -157,12 +157,13 @@ export class FontView {
 
     const prev = fontEl("div", "font-preview");
     const bar = fontEl("div", "font-preview-bar");
-    const input = document.createElement("input");
-    input.type = "text";
+    const input = document.createElement("textarea");
     input.className = "font-preview-input";
     input.value = this.sample;
-    input.maxLength = 96;
+    input.rows = 3;
+    input.maxLength = 600;
     input.spellcheck = false;
+    input.placeholder = "Preview text (Enter = new line)";
     input.addEventListener("input", () => {
       this.sample = input.value;
       this.#drawPreview();
@@ -176,14 +177,24 @@ export class FontView {
       this.#drawPreview();
     });
     bar.append(input, prop);
-    const scroll = fontEl("div", "font-preview-scroll");
-    this.preview2 = document.createElement("canvas");
-    this.preview4 = document.createElement("canvas");
-    this.preview2.className = this.preview4.className = "font-preview-canvas";
-    scroll.append(this.preview2, this.preview4);
-    prev.append(bar, scroll);
+    // No scrolling: the large copy picks the biggest integer scale (<= 4) that fits the panel.
+    const wrap = fontEl("div", "font-preview-wrap");
+    this.previewA = document.createElement("canvas");
+    this.previewB = document.createElement("canvas");
+    this.previewA.className = this.previewB.className = "font-preview-canvas";
+    this.previewCap = fontEl("div", "font-preview-cap muted");
+    wrap.append(this.previewA, this.previewCap, this.previewB);
+    prev.append(bar, wrap);
     root.append(prev);
     this.previewInput = input;
+    this.previewWrap = wrap;
+    this.previewWidth = 0;
+    new ResizeObserver(() => {
+      const w = wrap.clientWidth;
+      if (w === this.previewWidth) return;
+      this.previewWidth = w;
+      this.#drawPreview();
+    }).observe(wrap);
   }
 
   // ---- drawing ----
@@ -268,29 +279,37 @@ export class FontView {
   #drawPreview() {
     if (!this.enabled) return;
     const font = this.#font();
-    const lay = fontLayoutText(font, this.sample, this.proportional);
-    const w = Math.max(1, lay.width);
+    const lays = this.sample.split("\n").map((l) => fontLayoutText(font, l, this.proportional));
+    const w = Math.max(1, ...lays.map((l) => l.width));
+    const h = lays.length * FONT_H;
+    const avail = this.previewWrap.clientWidth || w;
+    const fit = Math.max(1, Math.min(4, Math.floor(avail / w)));
+    this.previewCap.textContent = `${w}x${h} px · actual size above${fit > 1 ? `, ${fit}x below` : ""}`;
+    this.previewB.hidden = fit === 1;
     for (const [cv, scale] of [
-      [this.preview2, 2],
-      [this.preview4, 4],
+      [this.previewA, 1],
+      [this.previewB, fit],
     ]) {
       cv.width = w;
-      cv.height = FONT_H;
+      cv.height = h;
       cv.style.width = `${w * scale}px`;
-      cv.style.height = `${FONT_H * scale}px`;
+      cv.style.aspectRatio = `${w} / ${h}`;
       const ctx = cv.getContext("2d");
       ctx.fillStyle = FONT_BG;
-      ctx.fillRect(0, 0, w, FONT_H);
+      ctx.fillRect(0, 0, w, h);
       ctx.fillStyle = FONT_INK;
-      for (const c of lay.cells) {
-        const rows = font[c.code - FONT_FIRST];
-        for (let y = 0; y < FONT_H; y++) {
-          for (let x = 0; x < FONT_W; x++) {
-            const px = c.x + x - c.shift;
-            if (px >= 0 && fontGetPixel(rows, x, y)) ctx.fillRect(px, y, 1, 1);
+      lays.forEach((lay, li) => {
+        const y0 = li * FONT_H;
+        for (const c of lay.cells) {
+          const rows = font[c.code - FONT_FIRST];
+          for (let y = 0; y < FONT_H; y++) {
+            for (let x = 0; x < FONT_W; x++) {
+              const px = c.x + x - c.shift;
+              if (px >= 0 && fontGetPixel(rows, x, y)) ctx.fillRect(px, y0 + y, 1, 1);
+            }
           }
         }
-      }
+      });
     }
   }
 

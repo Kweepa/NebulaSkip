@@ -1,14 +1,14 @@
-^Joystick...^ Move and shoot
-^Btn 2......^ Strafe
+^Joystick...^ Move and use ability.
 ^12345......^ Change weapon
+^Space......^ Cycle ability
 ^Shift-S....^ Quick save
 ^Shift-L....^ Quick load
 
 If you have an ST mouse in port 2
 and you have enabled it in the
-options, you can turn and shoot with
+options, you can turn with
 it. The joystick then strafes.
 
-Walk into doors to open them.
+Walk into doors to go through them.
 Walk over items to pick them up.
 Walk into switches to activate them.

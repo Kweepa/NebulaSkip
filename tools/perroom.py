@@ -12,6 +12,7 @@ Level PRG payload:
 Packed layout:
     23 bytes  counts header (map_nrooms .. spawn_id, see src/map_bss.asm)
     n bytes   NUL-terminated map name
+    n bytes   NUL-terminated enter verb (empty = "entering")
     ...       the bind_add arrays, in source order
 
 Counts are either a header symbol or `bind_n`. bind_tab emits
@@ -42,7 +43,7 @@ def header_symbols() -> list[str]:
     """The 23 count bytes, in address order, from map_bss.asm."""
     text = MAP_BSS.read_text(encoding="utf-8", errors="replace")
     found: dict[int, str] = {}
-    for m in re.finditer(r"^([a-z_0-9]+)\s*=\s*\$0([0-9a-fA-F]{3})\s*$",
+    for m in re.finditer(r"^([a-z_0-9]+)\s*=\s*\$0([0-9a-fA-F]{3})\s*(?:;.*)?$",
                          text, re.M):
         addr = int(m.group(2), 16)
         if 0x400 <= addr < 0x400 + HDR_LEN:
@@ -117,6 +118,10 @@ def field_offsets(payload: bytes) -> tuple[dict[str, int], dict[str, int]]:
     end = payload.find(b"\x00", HDR_LEN)
     if end < 0:
         raise SystemExit("perroom: unterminated map name")
+    # enter verb, NUL-terminated, follows the name
+    end = payload.find(b"\x00", end + 1)
+    if end < 0:
+        raise SystemExit("perroom: unterminated enter verb")
     cur = end + 1
 
     def resolve(expr: str) -> int:

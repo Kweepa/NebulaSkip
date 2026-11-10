@@ -11,9 +11,11 @@ world_init
 	jsr set_room_idx
 	lda #0
 	sta cam_xl
-	sta cam_yl
 	sta cam_zl
 	sta pitch
+	lda #EYE_FRAC
+	sta cam_yl
+	lda #0
 	sta msg_on
 	sta status_ms_l
 	sta status_ms_h
@@ -23,8 +25,12 @@ world_init
 	sta pl_falling
 	sta fall_vl
 	sta fall_vh
+	sta fall_vf
 	sta fall_y0
 	sta fall_acc
+	sta jump_on
+	sta jump_held
+	sta ability_cur
 	sta hurt_flash_l
 	sta hurt_flash_h
 	sta hurt_ms_l
@@ -770,11 +776,12 @@ slope_height
 
 sync_eye
 	clc
+	lda floor_yl
+	adc #EYE_FRAC
+	sta cam_yl
 	lda floor_y
 	adc #EYE_HEIGHT
 	sta cam_yh
-	lda floor_yl
-	sta cam_yl
 	rts
 
 ; ------------------------------------------------------------------
@@ -933,11 +940,14 @@ update_fall
 
 .ufl_start
 	jsr ledge_unstick
+	jsr air_heading			; walking off a ledge keeps the walk velocity
+	stx jump_on
 	lda #1
 	sta pl_falling
 	lda #0
 	sta fall_vl
 	sta fall_vh
+	sta fall_vf
 	sta fall_acc
 	lda cam_yh
 	sta fall_y0
@@ -965,12 +975,25 @@ update_fall
 	lda proc_tmp1
 	sbc #0
 	sta proc_tmp1
+	lda map_grav			; byte/4 in 8.8: whole part >> 2, fraction (byte & 3) << 6
+	lsr
+	lsr
+	tax
+	lda map_grav
+	asl
+	asl
+	asl
+	asl
+	asl
+	asl
 	clc
-	lda fall_vl
-	adc #<FALL_ACCEL
+	adc fall_vf
+	sta fall_vf
+	txa
+	adc fall_vl
 	sta fall_vl
 	lda fall_vh
-	adc #>FALL_ACCEL
+	adc #0
 	sta fall_vh
 	sec
 	lda cam_yl
@@ -979,6 +1002,8 @@ update_fall
 	lda cam_yh
 	sbc fall_vh
 	sta cam_yh
+	lda fall_vh
+	bmi .ufl_tick			; jump still ascending: feet == floor on tick 1
 	sec
 	lda cam_yh
 	sbc #EYE_HEIGHT			; feet
@@ -990,6 +1015,8 @@ update_fall
 .ufl_ticks_done
 	lda proc_tmp0
 	sta fall_acc
+	lda fall_vh
+	bmi .ufl_air_rts		; ascending
 	; overshoot / floor rose to meet us
 	sec
 	lda cam_yh
@@ -997,18 +1024,22 @@ update_fall
 	cmp floor_y
 	beq .ufl_land
 	bcc .ufl_land
+.ufl_air_rts
 	rts
 
 .ufl_land
 	jsr sync_eye
 	lda #0
 	sta pl_falling
+	sta jump_on
 	sta fall_vl
 	sta fall_vh
+	sta fall_vf
 	sta fall_acc
 	sec
 	lda fall_y0
 	sbc cam_yh			; eye drop
+	bcc .ufl_rts			; landed above the takeoff height (jump onto a platform)
 	cmp #FALL_SAFE + 1
 	bcc .ufl_rts
 	lda #FALL_DAMAGE
@@ -1474,11 +1505,114 @@ step_up_ok
 	rts
 
 ; ------------------------------------------------------------------
+; do_jump — joystick button in ABIL_JUMP. Grounded only. Heading = held
+; direction (fwd/back/strafe) relative to yaw, none held = vertical only.
+; Rides update_fall with a negative fall_v; apply_move_world adds walk-speed XZ.
+; ------------------------------------------------------------------
+do_jump
+	lda pl_falling
+	bne .dj_rts
+	jsr air_heading
+	stx jump_on
+	jmp .dj_go
+
+; air_heading — held direction (fwd/back/strafe) relative to yaw -> jump_yaw.
+; Out: X = 2 heading set, X = 1 nothing held (straight up/down). Clobbers A, Y.
+; Used by do_jump and when a walk-off starts a fall, so the air path keeps the
+; walking velocity (apply_move_world, jump_on >= 2).
+air_heading
+	ldy #0
+	lda hold_fwd
+	ora hold_fwd + 1
+	beq .dj_nf
+	iny				; 1 fwd
+.dj_nf
+	lda hold_back
+	ora hold_back + 1
+	beq .dj_nb
+	tya
+	ora #2
+	tay
+.dj_nb
+	lda hold_strafel
+	ora hold_strafel + 1
+	beq .dj_nl
+	tya
+	ora #4
+	tay
+.dj_nl
+	lda hold_strafer
+	ora hold_strafer + 1
+	beq .dj_nr
+	tya
+	ora #8
+	tay
+.dj_nr
+	lda .dj_off,y
+	ldx #1				; vertical only
+	cmp #$ff
+	beq .dj_set
+	clc
+	adc yaw
+	sta jump_yaw
+	inx				; 2 = with XZ
+.dj_set
+	rts
+
+.dj_go
+	lda map_jump_v			; vy = -(byte * 2), 8.8 per tick
+	asl
+	tax				; lo of +vy
+	lda #0
+	rol
+	tay				; hi of +vy
+	txa
+	eor #$ff
+	clc
+	adc #1
+	sta fall_vl
+	tya
+	eor #$ff
+	adc #0
+	sta fall_vh
+	lda #0
+	sta fall_vf
+	sta fall_acc
+	lda cam_yh
+	sta fall_y0
+	lda #1
+	sta pl_falling
+.dj_rts
+	rts
+
+; yaw offset by mask fwd=1 back=2 left=4 right=8; $ff none / cancelled
+.dj_off	!byte $ff, 0, 128, $ff, 192, 224, 160, 192
+	!byte 64, 32, 96, 64, $ff, 0, 128, $ff
+
+; ------------------------------------------------------------------
 ; Horizontal move from IRQ hold-ms wish (8 units/s). Slide on X then Z.
 ; ------------------------------------------------------------------
 apply_move_world
 	lda pl_falling
 	beq .am_go
+	lda jump_on
+	cmp #2
+	bcc .am_air_rts			; fall / vertical jump: no air control
+	ldy jump_yaw			; ballistic: heading fixed at takeoff, walk speed
+	lda SINTAB,y
+	sta rot0
+	lda COSTAB,y
+	sta rot1
+	lda dt_ms
+	sta vel_ms
+	lda dt_msh
+	sta vel_msh
+	lda rot0
+	jsr wish_add_x
+	lda rot1
+	jsr wish_add_z
+	jmp .am_noa
+.am_air_rts
 	rts
 .am_go
 	ldy yaw

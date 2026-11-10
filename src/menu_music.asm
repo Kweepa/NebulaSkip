@@ -16,13 +16,13 @@ jukebox_select
 	jsr sync_juke_title
 	jmp draw_menu
 
-; Jukebox heading follows music_track (menu id 4).
+; Jukebox heading follows music_track (menu id 3).
 sync_juke_title
 	ldx music_track
 	lda juke_now_lo,x
-	sta section_lo + 4
+	sta section_lo + 3
 	lda juke_now_hi,x
-	sta section_hi + 4
+	sta section_hi + 3
 	rts
 
 juke_now_lo	!byte <str_now1, <str_now2, <str_now3

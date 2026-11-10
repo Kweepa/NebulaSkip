@@ -919,6 +919,13 @@ bind_map
 	bne .bm_nm
 .bm_nm0
 	iny					; skip NUL
+.bm_vb
+	lda (src_ptr),y		; enter verb, NUL-terminated
+	beq .bm_vb0
+	iny
+	bne .bm_vb
+.bm_vb0
+	iny					; skip NUL
 	tya
 	clc
 	adc map_base
