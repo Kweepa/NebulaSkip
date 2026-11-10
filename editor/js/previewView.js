@@ -16,6 +16,7 @@ import {
   isGhostKind,
   itemMeshFor,
   itemMeshWorldSegs,
+  itemYawFor,
   localVisibleIds,
   pointInRoom,
   roomFloorY,
@@ -437,7 +438,7 @@ export class PreviewView {
     }
     if (obj.kind === "pickup") {
       const mesh = itemMeshFor(doc, obj.pickup);
-      for (const seg of itemMeshWorldSegs(obj, mesh)) {
+      for (const seg of itemMeshWorldSegs(obj, mesh, itemYawFor(doc, obj.pickup))) {
         this.#stroke(ctx, cam, seg.a, seg.b, color);
       }
       return;

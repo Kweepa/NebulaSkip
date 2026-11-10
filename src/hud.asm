@@ -878,38 +878,7 @@ hud_str_red_req	!text "You need a "
 	!byte HUD_CH_KEY_RED
 	!text " keycard",0
 hud_str_remote_req	!text "This door is opened elsewhere",0
-thn_hsm	!text "stimpack",0
-thn_hlg	!text "medikit",0
-thn_ag	!text "green armor",0
-thn_ab	!text "blue armor",0
-thn_bullets	!text "ammo box",0
-thn_shells	!text "shells",0
-thn_rockets	!text "box of rockets",0
-thn_shot	!text "shotgun",0
-thn_chain	!text "chaingun",0
-thn_saw	!text "chainsaw",0
-thn_rl	!text "rocket launcher",0
-thn_pack	!text "backpack",0
-thn_red	!byte HUD_CH_KEY_RED
-	!text " keycard",0
-thn_yellow	!byte HUD_CH_KEY_YEL
-	!text " keycard",0
-thn_blue	!byte HUD_CH_KEY_BLU
-	!text " keycard",0
-thn_soul	!text "soulsphere",0
-thn_suit	!text "radsuit",0
-thn_lamp	!text "lightpost",0
-thn_barrel	!text "barrel",0
-th_name_lo
-	!byte <thn_hsm, <thn_hlg, <thn_ag, <thn_ab, <thn_bullets
-	!byte <thn_shells, <thn_rockets, <thn_shot, <thn_chain, <thn_saw
-	!byte <thn_rl, <thn_pack, <thn_red, <thn_yellow, <thn_blue
-	!byte <thn_soul, <thn_suit, <thn_lamp, <thn_barrel
-th_name_hi
-	!byte >thn_hsm, >thn_hlg, >thn_ag, >thn_ab, >thn_bullets
-	!byte >thn_shells, >thn_rockets, >thn_shot, >thn_chain, >thn_saw
-	!byte >thn_rl, >thn_pack, >thn_red, >thn_yellow, >thn_blue
-	!byte >thn_soul, >thn_suit, >thn_lamp, >thn_barrel
+; th_name_lo/hi + thn_* strings: generated from the editor item names (item_mesh.asm, tools/genitems.py)
 
 ; ASCII (UI charset), not PETSCII
 hud_str_title	!text "Nebula Skip",0

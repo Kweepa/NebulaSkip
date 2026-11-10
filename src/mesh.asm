@@ -613,7 +613,7 @@ draw_pickup_mesh
 	jmp stroke_mesh
 
 fill_item_verts
-	cmp #TH_NTYPES
+	cmp #ITEM_DOOR_BASE		; every item slot, incl. editor-defined props (TH 19..)
 	bcc +
 	lda #0
 +
@@ -625,15 +625,11 @@ fill_item_verts
 	lda #0
 	sta rot1				; no door scale
 	jsr fill_item_slot
-	; Props stay put. Other pickups yaw-spin about box+ITEM_BIAS.
+	; item_rot (editor Rotating flag): 1 yaw-spins about box+ITEM_BIAS, 0 stays put.
 	ldy rot0
+	lda item_rot,y
+	beq .fi_spin			; A = 0
 	lda item_spin
-	cpy #TH_LIGHTPOST
-	beq .fi_still
-	cpy #TH_BARREL
-	bne .fi_spin
-.fi_still
-	lda #0
 .fi_spin
 	sta ent_rot
 	jmp xform_item_spin
@@ -645,6 +641,8 @@ fill_door_slot
 	adc #ITEM_DOOR_BASE
 	tay
 ; Y = slot. rot1 = U/VY scale (0 for items). Fills mesh tables, rot0 = slot.
+; Blobs are paged (item_pg): X = page selects the pg_*_lo/hi base, offsets are page-relative.
+; X is reloaded at the start of each section (scale_door_u clobbers it).
 fill_item_slot
 	lda item_nv,y
 	sta mesh_nv
@@ -656,11 +654,12 @@ fill_item_slot
 	sta mesh_nz
 	sty rot0
 	; UX/UZ stay local (editor 0 = spin centre). World centre is box+ITEM_BIAS.
+	ldx item_pg,y
 	clc
-	lda #<item_ux
+	lda pg_ux_lo,x
 	adc item_uo,y
 	sta src_ptr
-	lda #>item_ux
+	lda pg_ux_hi,x
 	adc #0
 	sta src_ptr+1
 	ldy #0
@@ -674,11 +673,12 @@ fill_item_slot
 	bne .fi_ux
 .fi_uz
 	ldy rot0
+	ldx item_pg,y
 	clc
-	lda #<item_uz
+	lda pg_uz_lo,x
 	adc item_zo,y
 	sta src_ptr
-	lda #>item_uz
+	lda pg_uz_hi,x
 	adc #0
 	sta src_ptr+1
 	ldy #0
@@ -691,11 +691,12 @@ fill_item_slot
 	bne .fi_uzl
 .fi_vy
 	ldy rot0
+	ldx item_pg,y
 	clc
-	lda #<item_vy
+	lda pg_vy_lo,x
 	adc item_vo,y
 	sta src_ptr
-	lda #>item_vy
+	lda pg_vy_hi,x
 	adc #0
 	sta src_ptr+1
 	ldy #0
@@ -709,39 +710,40 @@ fill_item_slot
 	bne .fi_vyl
 .fi_ptr
 	ldy rot0
+	ldx item_pg,y
 	clc
-	lda #<item_xid
+	lda pg_xid_lo,x
 	adc item_vo,y
 	sta xid_ptr
-	lda #>item_xid
+	lda pg_xid_hi,x
 	adc #0
 	sta xid_ptr+1
 	clc
-	lda #<item_zid
+	lda pg_zid_lo,x
 	adc item_vo,y
 	sta zid_ptr
-	lda #>item_zid
+	lda pg_zid_hi,x
 	adc #0
 	sta zid_ptr+1
 	clc
-	lda #<item_col
+	lda pg_col_lo,x
 	adc item_vo,y
 	sta col_ptr
-	lda #>item_col
+	lda pg_col_hi,x
 	adc #0
 	sta col_ptr+1
 	clc
-	lda #<item_ea
+	lda pg_ea_lo,x
 	adc item_eo,y
 	sta edge_ptr
-	lda #>item_ea
+	lda pg_ea_hi,x
 	adc #0
 	sta edge_ptr+1
 	clc
-	lda #<item_eb
+	lda pg_eb_lo,x
 	adc item_eo,y
 	sta edge_b
-	lda #>item_eb
+	lda pg_eb_hi,x
 	adc #0
 	sta edge_b+1
 	rts
@@ -790,14 +792,18 @@ scale_door_u
 fill_door_type_verts
 	ldx obj_i
 	+lda_mx door_type
-	and #($ff - DOOR_HIDDEN)
-	cmp #DOOR_NTYPES
+	and #($ff - DOOR_HIDDEN)		; door type = item mesh slot (any item flagged Door in the editor)
+	cmp #ITEM_NSLOTS
 	bcc +
-	lda #0
+	lda #ITEM_DOOR_BASE				; unknown -> Tech
 +
 	tay
-	jsr door_mesh_scale
-	jsr fill_door_slot
+	lda item_nv,y
+	bne +
+	ldy #ITEM_DOOR_BASE				; empty mesh -> Tech
++
+	jsr door_mesh_scale				; clobbers A/X only
+	jsr fill_item_slot
 	jsr fill_door_origin
 	jmp xform_item_at
 

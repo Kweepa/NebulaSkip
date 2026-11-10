@@ -115,7 +115,7 @@ export const ANIM_ORBIT_DIST_MIN = 4;
 export const ANIM_ORBIT_DIST_MAX = 400;
 export const ITEM_ORBIT_DIST_MIN = 8;
 export const ITEM_ORBIT_DIST_MAX = 80;
-export const DOC_VERSION = 10;
+export const DOC_VERSION = 11;
 export const DEFAULT_WEAPON_SCALE = 0.4;
 export const WEAPON_KEYS = ["shot2", "chain", "rock"];
 export const WEAPON_LABELS = {
@@ -427,7 +427,6 @@ export function cycleSlopeOrient(obj) {
 
 export const PALETTE_ORDER = [
   "room",
-  "doorway",
   "switch",
   "slope",
   "platform",
@@ -630,27 +629,31 @@ export const PICKUP_TYPES = [
   "lightpost",
   "barrel",
 ];
-/** Palette icon stem in editor/thingicons/{stem}.png. */
-export const PICKUP_ICON = {
-  "small health": "health",
-  "large health": "healthcrate",
-  "green armor": "greenarmor",
-  "blue armor": "bluearmor",
-  "ammo box": "ammobox",
-  shells: "shellbox",
-  "box of rockets": "boxofrockets",
-  shotgun: "shotgun",
-  chaingun: "chaingun",
-  chainsaw: "chainsaw",
-  "rocket launcher": "rocketlauncher",
-  backpack: "backpack",
-  "red keycard": "redcard",
-  "yellow keycard": "yellowcard",
-  "blue keycard": "bluecard",
-  soulsphere: "soulsphere",
-  radsuit: "radsuit",
-  lightpost: "lightpost",
-  barrel: "barrel",
+/** Shipped 8x8 palette icons (C64 index per pixel, . = clear), traced from the old thingicons PNGs. */
+const BUILTIN_ITEM_ICONS = {
+  "small health": ["00000000", "00111100", "01111110", "0ffffff0", "01155110", "01555510", "01155110", "01111110"],
+  "large health": ["00000000", "01111110", "11111111", "ffffffff", "11155111", "11555511", "11155111", "11111111"],
+  "green armor": ["55500555", "55555555", "055bb550", "0bb55bb0", "05b55b50", "0b5555b0", "05b55b50", "00555500"],
+  "blue armor": ["eee00eee", "eeeeeeee", "0ee99ee0", "099ee990", "0e9ee9e0", "09eeee90", "0e9ee9e0", "00eeee00"],
+  "ammo box": ["00000000", "00000000", "00000000", "00dddd00", "05555550", "09155190", "05999950", "05555550"],
+  "shells": ["00000000", "00000000", "00000000", "00000000", "00000000", "00111700", "0f5f5880", "0ffff880"],
+  "box of rockets": ["00000000", "00000000", "08888880", "9f9999f9", "98855889", "98989989", "98888889", "99999999"],
+  "shotgun": ["........", "........", "........", "........", ".0......", "..000000", "22c..22.", "22......"],
+  "chaingun": ["00000000", "00000000", "01f01010", "ccccfcfc", "ccfcfcf0", "022cfcf0", "2220f0f0", "22000000"],
+  "chainsaw": ["........", "........", ".0......", "0.0.....", "0001c1c.", "727bbbb1", "777bbbbc", "771c1c1."],
+  "rocket launcher": ["00000000", "00000000", "00000000", "00000010", "f222ffcf", "c2cfcccc", "00cc00c0", "00c00000"],
+  "backpack": ["..88....", ".8888...", ".88899..", ".8898.9.", "89988..9", "88888..9", "88888.9.", ".88899.."],
+  "red keycard": ["000aaaaa", "00aa2a2a", "0aa7222a", "0a7a222a", "0a772a2a", "0aa72a2a", "0a7a2a2a", "0aaaaaaa"],
+  "yellow keycard": ["00077777", "00775757", "07725557", "07275557", "07225757", "07725757", "07275757", "07777777"],
+  "blue keycard": ["000eeeee", "00ee6e6e", "0ee3666e", "0e3e666e", "0e336e6e", "0ee36e6e", "0e3e6e6e", "0eeeeeee"],
+  "soulsphere": ["..6666..", ".6eeee6.", "6e0ee0e6", "66100166", "6ee66ee6", "66600666", ".660066.", "..6e66.."],
+  "radsuit": ["0ff00ff0", "fffbbfff", "fc1cc1cf", "fcf11fcf", "fbffffbf", "29ffff92", "fbffffbf", "00ffff00"],
+  "lightpost": ["00077000", "00011000", "000cb000", "000cb000", "000fc000", "000cb000", "000fc000", "00fccc00"],
+  "barrel": ["0dd55555", "00bbbbb0", "0dd55555", "00bbbcb0", "00d55b50", "00d55550", "00555550", "0dd55555"],
+  Tech: ["ffffffff", "fccccccf", "fcbbbbcf", "fcb11bcf", "fcbbbbcf", "fcb11bcf", "fcbbbbcf", "fccccccf"],
+  Arch: ["..ffff..", ".fccccf.", "fcbbbbcf", "fcbbbbcf", "fcb11bcf", "fcbbbbcf", "fcbbbbcf", "fcbbbbcf"],
+  Tri: ["...ff...", "...cc...", "..fccf..", "..fbbf..", ".fcbbcf.", ".fbbbbf.", "fcbbbbcf", "ffffffff"],
+  Crack: ["...f....", "...f....", "..f.....", "..ff....", "...f....", "....f...", "...f....", "..f....."],
 };
 /** @deprecated Use PICKUP_TYPES */
 export const BACKPACK_TYPES = PICKUP_TYPES;
@@ -659,6 +662,280 @@ export const ITEM_MESH_KEYS = PICKUP_TYPES;
 export const DOOR_TYPES = ["Tech", "Arch", "Tri", "Crack"];
 export const DOOR_MESH_KEYS = DOOR_TYPES;
 export const ALL_MESH_KEYS = [...ITEM_MESH_KEYS, ...DOOR_MESH_KEYS];
+
+/**
+ * User-defined items. TH 0..18 are the built-ins above (fixed by the asm);
+ * customItems get TH 19.. in order. Module registry so doc-less clamps
+ * (clampPickupType) accept custom names; the doc owns the list and calls
+ * setCustomItemNames on load / edit / undo.
+ */
+export const BUILTIN_ITEM_COUNT = PICKUP_TYPES.length;
+export const ITEM_NAME_MAX = 24;
+export const ITEM_PAGES_MAX = 2;
+/** Offsets into a page blob are one byte. */
+export const ITEM_PAGE_OFFSET_MAX = 255;
+let customItemList = [];
+
+export function setCustomItemNames(list) {
+  customItemList = Array.isArray(list) ? [...list] : [];
+}
+
+export function customItemNames() {
+  return customItemList;
+}
+
+/** Items in TH order: built-ins, then custom. */
+export function itemKeys() {
+  return [...PICKUP_TYPES, ...customItemList];
+}
+
+/** Every key with a mesh slot: items then doors. */
+export function allMeshKeys() {
+  return [...itemKeys(), ...DOOR_MESH_KEYS];
+}
+
+export function isCustomItem(key) {
+  return customItemList.includes(key);
+}
+
+/**
+ * Door types. Any item can be flagged door (doc.itemMeta[key].door); the item key is the door
+ * type, its mesh the door face. The four shipped doors always are. Module registry so doc-less
+ * clamps (clampDoorType) know the set.
+ */
+let doorKeySet = new Set(DOOR_MESH_KEYS);
+
+export function setItemDoors(metaMap) {
+  doorKeySet = new Set(DOOR_MESH_KEYS);
+  if (!metaMap || typeof metaMap !== "object") return;
+  for (const key of itemKeys()) if (metaMap[key]?.door === true) doorKeySet.add(key);
+}
+
+export function isDoorItem(key) {
+  return doorKeySet.has(key);
+}
+
+/** Door types in cook order: the shipped four, then flagged items. */
+export function doorTypes() {
+  return [...DOOR_MESH_KEYS, ...itemKeys().filter((k) => doorKeySet.has(k))];
+}
+
+/** Items the Things palette places as pickups/props (doors are placed as doorways). */
+export function placeableItemKeys() {
+  return itemKeys().filter((k) => !doorKeySet.has(k));
+}
+
+/** Rebuild every doc-less registry (labels, doors) from doc.itemMeta. */
+export function syncItemRegistry(metaMap) {
+  setItemLabels(metaMap);
+  setItemDoors(metaMap);
+}
+
+/**
+ * Display names. Every item and door has a free name; the key stays internal (map JSON, TH
+ * slots, mesh tables). Custom items are their own key. Built-ins fall back to the shipped
+ * in-game text (stimpack, medikit) and carry an override in doc.itemMeta[key].label.
+ * Module registry like customItemList so doc-less labels (objectLabel) work.
+ */
+const DEFAULT_ITEM_LABEL = { "small health": "stimpack", "large health": "medikit" };
+let itemLabelOverrides = {};
+
+export function defaultItemLabel(key) {
+  return DEFAULT_ITEM_LABEL[key] ?? key;
+}
+
+export function itemLabel(key) {
+  if (customItemList.includes(key)) return key;
+  return itemLabelOverrides[key] ?? defaultItemLabel(key);
+}
+
+/** Rebuild the label registry from doc.itemMeta. */
+export function setItemLabels(metaMap) {
+  itemLabelOverrides = {};
+  if (!metaMap || typeof metaMap !== "object") return;
+  for (const key of [...PICKUP_TYPES, ...DOOR_MESH_KEYS]) {
+    const l = clampItemName(metaMap[key]?.label);
+    if (l && l !== defaultItemLabel(key)) itemLabelOverrides[key] = l;
+  }
+}
+
+/** Name cleanup for a user item. "" when nothing usable is left. */
+export function clampItemName(s) {
+  const t = String(s ?? "")
+    .replace(/[^A-Za-z0-9 _-]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, ITEM_NAME_MAX)
+    .trim();
+  return t;
+}
+
+/** Reason a name cannot be used for a new/renamed custom item, or "". */
+export function itemNameProblem(name, except = null) {
+  if (!name) return "Name is empty";
+  const low = name.toLowerCase();
+  if (["__proto__", "constructor", "prototype"].includes(low)) return "Reserved name";
+  const others = allMeshKeys().filter((k) => k !== except);
+  if (others.some((k) => itemLabel(k).toLowerCase() === low)) return `"${name}" is already an item`;
+  // Internal keys stay claimed even when their item has been renamed.
+  if (others.some((k) => k.toLowerCase() === low)) return `"${name}" is reserved`;
+  if ((except == null || isCustomItem(except)) && PICKUP_ALIAS_NAMES.includes(low)) {
+    return `"${name}" is a reserved alias`;
+  }
+  return "";
+}
+
+/** Built-in flags. Lightpost / barrel are still props. */
+export function builtinItemMeta(key) {
+  if (DOOR_MESH_KEYS.includes(key)) {
+    return { rotating: false, pickup: false, door: true, icon: BUILTIN_ITEM_ICONS[key] ?? null };
+  }
+  const prop = key === "lightpost" || key === "barrel";
+  return { rotating: !prop, pickup: !prop, door: false, icon: BUILTIN_ITEM_ICONS[key] ?? null };
+}
+
+/** Colodore. Same palette the shipped thingicons were drawn in. */
+export const C64_HEX = [
+  "#000000",
+  "#ffffff",
+  "#813338",
+  "#75cec8",
+  "#8e3c97",
+  "#56ac4d",
+  "#40318d",
+  "#bfce72",
+  "#8e5029",
+  "#574200",
+  "#c46c71",
+  "#4a4a4a",
+  "#7b7b7b",
+  "#a9ff9f",
+  "#706deb",
+  "#b2b2b2",
+];
+export const ITEM_ICON_SIZE = 8;
+
+export function emptyItemIcon() {
+  return Array.from({ length: ITEM_ICON_SIZE }, () => ".".repeat(ITEM_ICON_SIZE));
+}
+
+/** 8 strings of 8 chars, 0-f = C64 colour, . = transparent. null when blank/invalid. */
+export function parseItemIcon(raw) {
+  if (!Array.isArray(raw)) return null;
+  const rows = [];
+  let any = false;
+  for (let y = 0; y < ITEM_ICON_SIZE; y++) {
+    const src = String(raw[y] ?? "").toLowerCase();
+    let row = "";
+    for (let x = 0; x < ITEM_ICON_SIZE; x++) {
+      const c = src[x];
+      if (c && /[0-9a-f]/.test(c)) {
+        row += c;
+        any = true;
+      } else row += ".";
+    }
+    rows.push(row);
+  }
+  return any ? rows : null;
+}
+
+function baseItemMeta(key) {
+  return isCustomItem(key)
+    ? { rotating: true, pickup: false, door: false, icon: null, label: key }
+    : { ...builtinItemMeta(key), label: defaultItemLabel(key) };
+}
+
+/** Shipped defaults for a key (what "reset" returns to). */
+export function defaultItemMeta(key) {
+  return baseItemMeta(key);
+}
+
+/** Effective flags for a key: built-in defaults / custom defaults, then doc overrides. */
+export function itemMeta(doc, key) {
+  const base = baseItemMeta(key);
+  const o = doc?.itemMeta?.[key];
+  if (!o || typeof o !== "object") return base;
+  const door = DOOR_MESH_KEYS.includes(key) ? true : o.door == null ? base.door : !!o.door;
+  return {
+    // A door is a static face: it never spins and is never a pickup.
+    rotating: door ? false : o.rotating == null ? base.rotating : !!o.rotating,
+    pickup: door ? false : isCustomItem(key) ? (o.pickup == null ? base.pickup : !!o.pickup) : base.pickup,
+    door,
+    icon: parseItemIcon(o.icon) ?? base.icon,
+    label: isCustomItem(key) ? key : clampItemName(o.label) || base.label,
+  };
+}
+
+/** Write one key's meta, creating doc.itemMeta as needed. */
+export function setItemMeta(doc, key, patch) {
+  if (!doc.itemMeta) doc.itemMeta = {};
+  const cur = itemMeta(doc, key);
+  const next = { ...cur, ...patch };
+  const icon = parseItemIcon(next.icon);
+  const shipped = baseItemMeta(key).icon;
+  const same = icon && shipped && icon.join("|") === shipped.join("|");
+  const label = isCustomItem(key) ? "" : clampItemName(next.label);
+  const door = DOOR_MESH_KEYS.includes(key) ? true : !!next.door;
+  doc.itemMeta[key] = {
+    rotating: door ? false : !!next.rotating,
+    pickup: door ? false : !!next.pickup,
+    ...(door !== baseItemMeta(key).door ? { door } : {}),
+    ...(icon && !same ? { icon } : {}),
+    ...(label && label !== defaultItemLabel(key) ? { label } : {}),
+  };
+  syncItemRegistry(doc.itemMeta);
+}
+
+export function parseItemMetaMap(raw, customList) {
+  const out = {};
+  if (!raw || typeof raw !== "object") return out;
+  const fixed = [...PICKUP_TYPES, ...DOOR_MESH_KEYS];
+  const valid = new Set([...fixed, ...customList]);
+  for (const key of Object.keys(raw)) {
+    if (!valid.has(key)) continue;
+    const o = raw[key];
+    if (!o || typeof o !== "object") continue;
+    const custom = customList.includes(key);
+    const base = custom ? { rotating: true, pickup: false, door: false } : builtinItemMeta(key);
+    const icon = parseItemIcon(o.icon);
+    const label = custom ? "" : clampItemName(o.label);
+    const door = DOOR_MESH_KEYS.includes(key) ? true : o.door == null ? base.door : o.door === true;
+    out[key] = {
+      rotating: door ? false : o.rotating == null ? base.rotating : !!o.rotating,
+      pickup: door ? false : custom ? !!o.pickup : base.pickup,
+      ...(door !== base.door ? { door } : {}),
+      ...(icon ? { icon } : {}),
+      ...(label && label !== defaultItemLabel(key) ? { label } : {}),
+    };
+  }
+  // Drop label overrides that collide with another item's name.
+  const taken = new Set(customList.map((k) => k.toLowerCase()));
+  for (const k of fixed) if (!out[k]?.label) taken.add(defaultItemLabel(k).toLowerCase());
+  for (const k of fixed) {
+    const l = out[k]?.label;
+    if (!l) continue;
+    if (taken.has(l.toLowerCase())) delete out[k].label;
+    else taken.add(l.toLowerCase());
+  }
+  return out;
+}
+
+export function parseCustomItems(raw) {
+  const out = [];
+  if (!Array.isArray(raw)) return out;
+  const seen = new Set([...PICKUP_TYPES, ...DOOR_MESH_KEYS].map((k) => k.toLowerCase()));
+  for (const src of raw) {
+    const name = clampItemName(src);
+    if (!name) continue;
+    const low = name.toLowerCase();
+    if (seen.has(low) || ["__proto__", "constructor", "prototype"].includes(low)) continue;
+    if (PICKUP_ALIAS_NAMES.includes(low)) continue;
+    seen.add(low);
+    out.push(name);
+  }
+  return out;
+}
+
 /** Items-tab floor/cube and paste-nudge window. Not a coord cap. */
 export const ITEM_MIN = -4;
 export const ITEM_MAX = 4;
@@ -704,9 +981,12 @@ const PICKUP_ALIAS = {
   "rune of earth magic": "red keycard",
 };
 
+const PICKUP_ALIAS_NAMES = Object.keys(PICKUP_ALIAS);
+
 export function clampPickupType(s) {
   const n = PICKUP_ALIAS[s] || s;
-  return PICKUP_TYPES.includes(n) ? n : "shells";
+  if (PICKUP_TYPES.includes(n) || customItemList.includes(n)) return n;
+  return "shells";
 }
 
 /** @deprecated Use clampPickupType */
@@ -724,7 +1004,7 @@ export function clampDoorLock(s) {
 
 export function clampDoorType(s) {
   const t = String(s ?? "");
-  if (DOOR_TYPES.includes(t)) return t;
+  if (doorKeySet.has(t)) return t;
   const lower = t.toLowerCase();
   if (lower === "tech") return "Tech";
   if (lower === "arch") return "Arch";
@@ -748,9 +1028,10 @@ export function doorSizeForScale(scale) {
   return [4, 5, 1];
 }
 
+/** True for a door type (flagged item or shipped door), incl. the old lowercase spellings. */
 export function isDoorMeshKey(key) {
   const t = String(key ?? "");
-  return DOOR_TYPES.includes(t) || t === "tech" || t === "arch" || t === "tri" || t === "crack";
+  return doorKeySet.has(t) || t === "tech" || t === "arch" || t === "tri" || t === "crack";
 }
 
 export function clampItemCoord(n) {
@@ -1246,10 +1527,13 @@ export function parseItemMeshes(raw) {
   if (src.arch != null && src.Arch == null) src.Arch = src.arch;
   if (src.tri != null && src.Tri == null) src.Tri = src.tri;
   if (src.crack != null && src.Crack == null) src.Crack = src.crack;
-  for (const key of ALL_MESH_KEYS) {
-    if (src[key] == null) continue;
+  for (const key of allMeshKeys()) {
+    if (!Object.hasOwn(src, key) || src[key] == null) {
+      if (isCustomItem(key)) d[key] = emptyItemMesh();
+      continue;
+    }
     const mesh = parseItemMesh(src[key]);
-    if (!mesh.verts.length && (key === "backpack" || isDoorMeshKey(key))) continue;
+    if (!mesh.verts.length && (key === "backpack" || DOOR_MESH_KEYS.includes(key))) continue;
     d[key] = mesh;
   }
   return d;
@@ -1347,38 +1631,80 @@ export function itemMeshStats(mesh) {
 
 export const ITEM_TABLE_MAX = 256;
 
-function addMeshBudget(sum, mesh) {
-  const stats = itemMeshStats(mesh);
-  sum.nv += stats.nv;
-  sum.nx += stats.nx;
-  sum.nz += stats.nz;
-  sum.ne += stats.ne;
-}
-
-export function itemGlobalBudgets(doc) {
+/**
+ * Mesh blob paging, mirrors tools/genitems.py. Slots in order (built-ins, custom,
+ * doors) are packed first-fit into pages. A mesh fits a page while every start
+ * offset it would get (verts, edges, unique X, unique Z so far) is still <= 255.
+ * @returns {{ pages: {nv:number,ne:number,nx:number,nz:number}[], pageOf: Record<string, number>, over: boolean }}
+ */
+export function itemPagePlan(doc) {
   const items = doc?.items || {};
-  const pickups = { nv: 0, nx: 0, nz: 0, ne: 0 };
-  for (const key of ITEM_MESH_KEYS) {
-    const mesh = items[key];
-    if (!itemMeshHasGeom(mesh)) continue;
-    addMeshBudget(pickups, mesh);
-  }
-  const doors = { nv: 0, nx: 0, nz: 0, ne: 0 };
   const defaults = defaultItemMeshes();
-  for (const key of DOOR_MESH_KEYS) {
-    const mesh = itemMeshHasGeom(items[key]) ? items[key] : defaults[key];
-    addMeshBudget(doors, mesh);
+  const pages = [];
+  const pageOf = {};
+  for (const key of allMeshKeys()) {
+    let mesh = items[key];
+    if (DOOR_MESH_KEYS.includes(key)) mesh = itemMeshHasGeom(mesh) ? mesh : defaults[key];
+    if (!itemMeshHasGeom(mesh)) {
+      pageOf[key] = 0;
+      continue;
+    }
+    const st = itemMeshStats(mesh);
+    let p = pages.findIndex(
+      (pg) =>
+        pg.nv <= ITEM_PAGE_OFFSET_MAX &&
+        pg.ne <= ITEM_PAGE_OFFSET_MAX &&
+        pg.nx <= ITEM_PAGE_OFFSET_MAX &&
+        pg.nz <= ITEM_PAGE_OFFSET_MAX
+    );
+    if (p < 0) {
+      pages.push({ nv: 0, ne: 0, nx: 0, nz: 0 });
+      p = pages.length - 1;
+    }
+    pages[p].nv += st.nv;
+    pages[p].ne += st.ne;
+    pages[p].nx += st.nx;
+    pages[p].nz += st.nz;
+    pageOf[key] = p;
   }
-  return { pickups, doors };
+  if (!pages.length) pages.push({ nv: 0, ne: 0, nx: 0, nz: 0 });
+  return { pages, pageOf, over: pages.length > ITEM_PAGES_MAX };
 }
 
-export function itemMeshWorldSegs(obj, mesh) {
+/** Rotation period of spinning items, ms. Game: ~1 rev / 4 s. */
+export const ITEM_SPIN_PERIOD_MS = 4000;
+
+/** Shared spin angle (radians) for every rotating item in every editor view. */
+export function itemSpinAngle(nowMs = performance.now()) {
+  return ((nowMs % ITEM_SPIN_PERIOD_MS) / ITEM_SPIN_PERIOD_MS) * Math.PI * 2;
+}
+
+/** Yaw to draw this placed item at: spin when its type rotates, else 0. */
+export function itemYawFor(doc, type) {
+  return itemMeta(doc, clampPickupType(type)).rotating ? itemSpinAngle() : 0;
+}
+
+/** True when any pickup object in the list uses a rotating item. */
+export function anyRotatingItem(doc, objs) {
+  for (const o of objs || []) {
+    if (o.kind === "pickup" && itemMeta(doc, clampPickupType(o.pickup)).rotating) return true;
+  }
+  return false;
+}
+
+export function itemMeshWorldSegs(obj, mesh, yaw = 0) {
   const m = mesh && itemMeshHasGeom(mesh) ? mesh : defaultItemMeshes().backpack;
-  const verts = m.verts.map((v) => ({
-    x: obj.x + Number(v.x) + ITEM_WORLD_BIAS,
-    y: obj.y + Number(v.y),
-    z: obj.z + Number(v.z) + ITEM_WORLD_BIAS,
-  }));
+  const c = Math.cos(yaw);
+  const s = Math.sin(yaw);
+  const verts = m.verts.map((v) => {
+    const lx = Number(v.x);
+    const lz = Number(v.z);
+    return {
+      x: obj.x + (lx * c + lz * s) + ITEM_WORLD_BIAS,
+      y: obj.y + Number(v.y),
+      z: obj.z + (-lx * s + lz * c) + ITEM_WORLD_BIAS,
+    };
+  });
   const segs = [];
   for (const [a, b] of m.lines) {
     if (verts[a] && verts[b]) segs.push({ a: verts[a], b: verts[b] });
@@ -2159,8 +2485,8 @@ export function objectLabel(obj) {
     return obj.name ? `Room  ${obj.name}` : "Room";
   }
   if (obj.kind === "enemy") return obj.enemy || "Enemy";
-  if (obj.kind === "pickup") return `Pickup (${clampPickupType(obj.pickup)})`;
-  if (obj.kind === "doorway") return `Doorway (${clampDoorType(obj.doorType)})`;
+  if (obj.kind === "pickup") return `Pickup (${itemLabel(clampPickupType(obj.pickup))})`;
+  if (obj.kind === "doorway") return `Doorway (${itemLabel(clampDoorType(obj.doorType))})`;
   if (obj.kind === "spawn" && !obj.enabled) return "Spawn (off)";
   return KINDS[obj.kind].label;
 }
@@ -2234,11 +2560,11 @@ function walkStepMs(name) {
   return DOOM_SLOW_WALK.has(name) ? ANIM_MS * 2 : ANIM_MS;
 }
 
-/** Run/walk clip frame at the game step clock. All placed enemies share one phase. */
-function walkCycleFrame(template, now) {
+/** Role clip ("run"/"stand") frame at the game step clock. All placed figures share one phase. */
+function roleCycleFrame(template, now, roleName) {
   const frames = template?.frames;
   if (!frames?.length) return null;
-  const role = findPoseRole(template?.name, template?.clips || [], "run");
+  const role = findPoseRole(template?.name, template?.clips || [], roleName);
   if (!role) return enemyPreviewFrame(template);
   const [start, len] = role;
   if (len < 1) return enemyPreviewFrame(template);
@@ -2247,9 +2573,14 @@ function walkCycleFrame(template, now) {
   return frames[fi];
 }
 
-/** World-space stick verts (1/4 scale, feet on floor center). Enemies loop walk. */
+/** World-space stick verts (1/4 scale, feet on floor center). Enemies loop walk, player spawns loop stand. */
 export function enemyPlacementWorldVerts(obj, template, now = performance.now()) {
-  const frame = obj?.kind === "enemy" ? walkCycleFrame(template, now) : enemyPreviewFrame(template);
+  const frame =
+    obj?.kind === "enemy"
+      ? roleCycleFrame(template, now, "run")
+      : obj?.kind === "spawn"
+        ? roleCycleFrame(template, now, "stand")
+        : enemyPreviewFrame(template);
   if (!frame) return [];
   const ox = obj.x + obj.sx / 2;
   const oy = obj.y;
@@ -3958,7 +4289,7 @@ export function parseEditorState(raw) {
   } else {
     d.activeLevel = null;
   }
-  if (typeof raw.item === "string" && ALL_MESH_KEYS.includes(raw.item)) d.item = raw.item;
+  if (typeof raw.item === "string" && allMeshKeys().includes(raw.item)) d.item = raw.item;
   const io = raw.itemOrbit || {};
   const tgt = io.target || {};
   d.itemOrbit = {
@@ -3980,10 +4311,14 @@ export function gameDocument(doc) {
     version: doc.version,
     weapons: doc.weapons,
     items: doc.items,
+    customItems: doc.customItems || [],
+    itemMeta: doc.itemMeta || {},
   };
 }
 
 export function createDefaultDocument() {
+  setCustomItemNames([]);
+  syncItemRegistry({});
   const maps = {};
   for (const name of LEVEL_NAMES) maps[name] = emptyMap();
   maps.E1M1 = { name: "Slipgate Complex", objects: starterObjects() };
@@ -3994,6 +4329,8 @@ export function createDefaultDocument() {
     enemies: createAllCreatures(),
     weapons: defaultWeapons(),
     items: defaultItemMeshes(),
+    customItems: [],
+    itemMeta: {},
     font: fontBlank(),
   };
 }
@@ -4040,6 +4377,11 @@ export function normalizeDocument(raw) {
   const doc = createDefaultDocument();
   if (!raw || typeof raw !== "object") return doc;
   const fromVersion = Number(raw.version) || 0;
+  // Custom item names first: object normalization below clamps pickup names against them.
+  const customItems = parseCustomItems(raw.customItems);
+  setCustomItemNames(customItems);
+  const itemMetaParsed = parseItemMetaMap(raw.itemMeta, customItems);
+  syncItemRegistry(itemMetaParsed);
   if (raw.maps && typeof raw.maps === "object") {
     for (const name of LEVEL_NAMES) {
       const src = raw.maps[name] || {};
@@ -4114,6 +4456,8 @@ export function normalizeDocument(raw) {
   relinkAllDoors(doc);
   doc.version = DOC_VERSION;
   doc.weapons = parseWeapons(raw.weapons);
+  doc.customItems = customItems;
+  doc.itemMeta = itemMetaParsed;
   doc.items = parseItemMeshes(migrateItemMeshes(raw.items, fromVersion));
   doc.font = normalizeFont(raw.font);
   doc.editor = parseEditorState(raw.editor);

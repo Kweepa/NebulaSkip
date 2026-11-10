@@ -41,7 +41,7 @@ Segment A/B/C/D slack is printed by `build-report.json` (`game.segments`); ACME
 | :--- | :--- |
 | `$4000-$5DFF` | Heap (`DYN_BASE`..`HEAP_LIM`), 7680 B: packed map + prefix, then up to two fused enemy banks, relocated as before. E1M5 is the tightest (~1.1K spare). |
 | `$5E00-$6A95` | Code zone (`CODE0_BASE`..`CODE0_END`=`STATIC_BASE`, 3392 B, 170 B spare): weapon, process, elevator, cheats_apply. Main-loop-only code: runs with `PORTB_PLAY`, no trampolines. |
-| `$6B40-$7896` | `STATIC_BASE`: weapon sprites, splat, enemy muzzle, item meshes |
+| `$6B40-$72F6` | `STATIC_BASE`: weapon sprites, splat, enemy muzzle (1546 B spare below `QS_OVL`). Item/door meshes moved to segment A (`item_mesh.asm`, 1503 B, paged by `tools/genitems.py`). |
 | `$7900-$7FB8` | `QS_OVL`: QSAVE overlay (code 1079 B + 640 B payload buffer), called in place |
 
 **Code-zone rules:** nothing in the zone may be called from the NMI/DLI/VBI path,

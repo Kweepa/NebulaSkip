@@ -147,6 +147,11 @@ mod_a8stamp
 mod_a8sio
 !source "a8sio.asm"
 
+; Item / door line meshes (tools/genitems.py). Pure data read at draw time from
+; main RAM, so it lives in A rather than the full bank-0 static block.
+mod_item_mesh
+!source "item_mesh.asm"
+
 seg_a_end = *
 !if seg_a_end > $4000 {
 	!error "GAME segment A runs into the bitmaps; end=$", seg_a_end
@@ -160,8 +165,6 @@ mod_splat_spr
 !source "splat_spr.asm"
 mod_enemy_muzzle
 !source "enemy_muzzle.asm"
-mod_item_mesh
-!source "item_mesh.asm"
 static_end = *
 !if static_end > STATIC_END {
 	!error "static data runs into QS_OVL; end=$", static_end

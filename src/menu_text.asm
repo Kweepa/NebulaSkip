@@ -31,7 +31,7 @@ credits1_text
 	!scr " ",0
 	!scr "Thanks y'all!",0
 	!scr " ",0
-	!scr "Nebula Skip v1.0, built 9 Nov 2026",0
+	!scr "Nebula Skip v1.0, built 10 Nov 2026",0
 	!byte 0
 
 credits_lo
@@ -105,7 +105,7 @@ readthis_lo
 readthis_hi
 	!byte >readthis1_text, >readthis2_text, >readthis3_text, >readthis4_text, >readthis5_text
 
-ENDING_PAGES = 1
+ENDING_PAGES = 2
 
 ending1_text
 	!scr "You've hunted down all the miscreants",0
@@ -114,13 +114,17 @@ ending1_text
 	!scr "bits to pay off your debts.",0
 	!scr " ",0
 	!scr "Congrats! Now don't get distracted by",0
-	!scr "the asteroid destruction derby.",0
-	!scr " ",0
-	!scr "Oh dear... we'll see each other again",0
+	!scr "the Space Cadet pinball championships,",0
+	!scr "or that Space Pool Alpha tournament",0
+	!scr "tomorrow...",0
+	!byte 0
+
+ending2_text
+	!scr "Oh dear. We'll see each other again",0
 	!scr "in Nebula Skip II!",0
 	!byte 0
 
 ending_lo
-	!byte <ending1_text
+	!byte <ending1_text, <ending2_text
 ending_hi
-	!byte >ending1_text
+	!byte >ending1_text, >ending2_text

@@ -149,23 +149,18 @@ def main() -> None:
       </section>
       <section id="items-left" hidden>
         <table id="item-budget" class="item-budget">
-          <tbody>
-            <tr><th colspan="2">Items</th></tr>
-            <tr><td>verts</td><td id="bud-item-nv"></td></tr>
-            <tr><td>unique X</td><td id="bud-item-nx"></td></tr>
-            <tr><td>unique Z</td><td id="bud-item-nz"></td></tr>
-            <tr><td>lines</td><td id="bud-item-ne"></td></tr>
-            <tr><th colspan="2">Doors</th></tr>
-            <tr><td>verts</td><td id="bud-door-nv"></td></tr>
-            <tr><td>unique X</td><td id="bud-door-nx"></td></tr>
-            <tr><td>unique Z</td><td id="bud-door-nz"></td></tr>
-            <tr><td>lines</td><td id="bud-door-ne"></td></tr>
-          </tbody>
+          <tbody id="item-budget-body"></tbody>
         </table>
+        <div class="toolbar-actions mdl-overlay-row">
+          <button type="button" id="btn-item-spin" class="toggle active" title="Spin rotating items in the viewport while the pointer is off it">Spin preview</button>
+          <button type="button" id="btn-item-ghost" class="toggle" title="Ghost player spawn (2x4x2 box + figure) at game scale, for sizing">Ghost player</button>
+        </div>
         <h2>Items</h2>
-        <ul id="item-mesh-list" class="object-list"></ul>
-        <h2>Doors</h2>
-        <ul id="door-mesh-list" class="object-list"></ul>
+        <div class="btn-row item-list-actions">
+          <button type="button" id="btn-item-add" title="Add a prop (non-pickup) item">+ Add</button>
+          <button type="button" id="btn-item-remove" class="danger" disabled>Remove</button>
+        </div>
+        <div id="item-mesh-list" class="palette-things item-grid"></div>
       </section>
       <section id="font-left" hidden></section>
     </aside>

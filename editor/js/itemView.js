@@ -11,9 +11,11 @@ import {
   ITEM_ORBIT_DIST_MAX,
   aabbCenter,
   clampItemCoord,
+  itemSpinAngle,
   itemUniqueXZ,
 } from "./model.js";
 import {
+  BOX_EDGES,
   cornerWorld,
   distPointToSegment2d,
   intersectPlane,
@@ -61,10 +63,17 @@ export class ItemView {
     this.selectedVerts = [];
     this.selectedLines = [];
     this.enabled = false;
+    this.pointerInside = false;
     this._ro = new ResizeObserver(() => this.resize());
     this._ro.observe(opts.stage || canvas.parentElement);
     this.resize();
 
+    canvas.addEventListener("pointerenter", () => {
+      this.pointerInside = true;
+    });
+    canvas.addEventListener("pointerleave", () => {
+      this.pointerInside = false;
+    });
     canvas.addEventListener("pointerdown", (e) => this.#onDown(e));
     canvas.addEventListener("pointermove", (e) => this.#onMove(e));
     canvas.addEventListener("pointerup", (e) => this.#onUp(e));
@@ -77,6 +86,29 @@ export class ItemView {
     canvas.addEventListener("auxclick", (e) => {
       if (e.button === 1) e.preventDefault();
     });
+    const spinLoop = () => {
+      if (this.enabled && this.#spinning()) this.draw();
+      requestAnimationFrame(spinLoop);
+    };
+    requestAnimationFrame(spinLoop);
+  }
+
+  /**
+   * Rotating-item preview. Runs only while the pointer is off the canvas with nothing
+   * selected or dragged, so picking and the gizmo always see authored coordinates.
+   */
+  #spinning() {
+    return (
+      !!this.opts.getSpin?.() &&
+      !this.drag &&
+      !this.pointerInside &&
+      !this.selectedVerts.length &&
+      !this.selectedLines.length
+    );
+  }
+
+  #spinYaw() {
+    return this.#spinning() ? itemSpinAngle() : 0;
   }
 
   resize() {
@@ -440,12 +472,7 @@ export class ItemView {
       next[o.i].z = o.z;
       applyCoord(next[o.i], o);
     }
-    const seen = new Set();
-    for (const v of next) {
-      const k = `${v.x},${v.y},${v.z}`;
-      if (seen.has(k)) return false;
-      seen.add(k);
-    }
+    // Coincident verts are allowed mid-drag; #mergeDropped welds them on release.
     if (!this.#uniqueOk(next)) return false;
     for (const o of origs) {
       mesh.verts[o.i].x = next[o.i].x;
@@ -465,9 +492,108 @@ export class ItemView {
     }));
   }
 
-  #startGizmoDrag(gizmoHit, prim, p) {
+  /**
+   * Ctrl-drag: first valid move appends a copy of each dragged vertex plus a line from
+   * the original to it, then drags the copies. Nothing is added if the move is refused.
+   */
+  #dupStart(d) {
+    const mesh = this.#mesh();
+    const n = d.origs.length;
+    if (mesh.verts.length + n > ITEM_MAX_VERTS) {
+      this.opts.onStatus?.("Vertex cap (16)", true);
+      return false;
+    }
+    if (mesh.lines.length + n > ITEM_MAX_LINES) {
+      this.opts.onStatus?.("Line cap (16)", true);
+      return false;
+    }
+    const base = mesh.verts.length;
+    d.dupFrom = d.origs;
+    for (const o of d.origs) mesh.verts.push({ x: o.x, y: o.y, z: o.z });
+    d.origs.forEach((o, k) => mesh.lines.push([o.i, base + k]));
+    d.origs = d.origs.map((o, k) => ({ i: base + k, x: o.x, y: o.y, z: o.z }));
+    return true;
+  }
+
+  #dupUndo(d) {
+    const mesh = this.#mesh();
+    const n = d.dupFrom.length;
+    mesh.verts.length -= n;
+    mesh.lines.length -= n;
+    d.origs = d.dupFrom;
+    d.dupFrom = null;
+  }
+
+  /** Apply a gizmo drag step, creating the ctrl-drag copies on the first one that lands. */
+  #dragStep(coordFn) {
+    const d = this.drag;
+    if (d.dupBlocked) return false;
+    const starting = d.dup && !d.dupDone;
+    if (starting && !this.#dupStart(d)) {
+      d.dupBlocked = true;
+      return false;
+    }
+    const ok = this.#applyVertDrag(d.origs, coordFn);
+    if (ok) d.moved = true;
+    if (starting) {
+      if (ok) {
+        d.dupDone = true;
+        this.selectedVerts = d.origs.map((o) => o.i);
+        this.selectedLines = [];
+        this.opts.onSelect?.();
+      } else this.#dupUndo(d);
+    }
+    return ok;
+  }
+
+  /**
+   * Drop-merge: every dragged vertex now sitting on a vertex that was not dragged is welded into
+   * it. Lines follow the survivor; a line that collapses to a point or duplicates another is
+   * dropped, so a ctrl-drag copy dropped on vertex B leaves its new line (original, B).
+   * Returns the number of vertices removed.
+   */
+  #mergeDropped(indices) {
+    const mesh = this.#mesh();
+    const moved = new Set(indices);
+    const into = new Map();
+    for (const i of moved) {
+      const v = mesh.verts[i];
+      if (!v) continue;
+      const j = mesh.verts.findIndex((w, k) => !moved.has(k) && w.x === v.x && w.y === v.y && w.z === v.z);
+      if (j >= 0) into.set(i, j);
+    }
+    if (!into.size) return 0;
+    const seen = new Set();
+    const lines = [];
+    for (const [a0, b0] of mesh.lines) {
+      const a = into.get(a0) ?? a0;
+      const b = into.get(b0) ?? b0;
+      if (a === b) continue;
+      const lo = Math.min(a, b);
+      const hi = Math.max(a, b);
+      const k = `${lo}-${hi}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      lines.push([lo, hi]);
+    }
+    const newIdx = [];
+    let n = 0;
+    mesh.verts.forEach((_, i) => {
+      newIdx[i] = into.has(i) ? -1 : n++;
+    });
+    mesh.verts = mesh.verts.filter((_, i) => !into.has(i));
+    mesh.lines = lines.map(([a, b]) => [newIdx[a], newIdx[b]]);
+    this.selectedVerts = [...new Set([...moved].map((i) => newIdx[into.get(i) ?? i]))];
+    this.selectedLines = [];
+    return into.size;
+  }
+
+  #startGizmoDrag(gizmoHit, prim, p, dup = false) {
     this.opts.beginUndo?.();
     this.drag = {
+      dup,
+      dupDone: false,
+      dupBlocked: false,
       kind: gizmoHit.kind,
       axis: gizmoHit.axis,
       plane: gizmoHit.plane,
@@ -608,7 +734,7 @@ export class ItemView {
     if (prim) {
       const gizmoHit = hitTranslateGizmo(prim.v, cam, this.cssW, this.cssH, p.x, p.y);
       if (gizmoHit) {
-        this.#startGizmoDrag(gizmoHit, prim, p);
+        this.#startGizmoDrag(gizmoHit, prim, p, e.ctrlKey || e.metaKey);
         this.canvas.setPointerCapture(e.pointerId);
         return;
       }
@@ -706,9 +832,10 @@ export class ItemView {
         false
       );
       if (delta == null) return;
+      const axis = this.drag.axis;
       if (
-        this.#applyVertDrag(this.drag.origs, (v, o) => {
-          v[this.drag.axis] = clampItemCoord(o[this.drag.axis] + delta);
+        this.#dragStep((v, o) => {
+          v[axis] = clampItemCoord(o[axis] + delta);
         })
       ) {
         this.opts.onChange?.();
@@ -728,7 +855,7 @@ export class ItemView {
       else if (this.drag.plane === "xz") dy = 0;
       else if (this.drag.plane === "yz") dx = 0;
       if (
-        this.#applyVertDrag(this.drag.origs, (v, o) => {
+        this.#dragStep((v, o) => {
           v.x = clampItemCoord(o.x + dx);
           v.y = clampItemCoord(o.y + dy);
           v.z = clampItemCoord(o.z + dz);
@@ -780,7 +907,15 @@ export class ItemView {
     if (!this.enabled) return;
     const orbitEnded = this.drag?.kind === "orbit" || this.drag?.kind === "zoom" || this.drag?.kind === "pan";
     if (this.drag?.kind === "box") this.#finishBox();
-    if (this.drag?.kind === "axis" || this.drag?.kind === "plane") this.opts.endUndo?.();
+    if (this.drag?.kind === "axis" || this.drag?.kind === "plane") {
+      const merged = this.drag.moved ? this.#mergeDropped(this.drag.origs.map((o) => o.i)) : 0;
+      if (merged) {
+        this.opts.onChange?.();
+        this.opts.onSelect?.();
+        this.opts.onStatus?.(`Merged ${merged} vertex${merged === 1 ? "" : "es"}`);
+      }
+      this.opts.endUndo?.();
+    }
     this.drag = null;
     if (orbitEnded) this.opts.onViewChanged?.();
     try {
@@ -822,6 +957,26 @@ export class ItemView {
       ctx.font = "11px Segoe UI, sans-serif";
       ctx.fillText("fwd", label.sx - 10, label.sy);
     }
+  }
+
+  /** Dim player spawn (collision box + stick figure) at game scale, for sizing. */
+  #drawGhost(ctx, cam, w, h) {
+    const g = this.opts.getGhost?.();
+    if (!g) return;
+    ctx.save();
+    ctx.strokeStyle = "#3ee06a";
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.25;
+    for (const [i, j] of BOX_EDGES) {
+      const a = cornerWorld(g.box, i);
+      const b = cornerWorld(g.box, j);
+      this.#strokeSeg(ctx, cam, w, h, a, b, "#3ee06a");
+    }
+    ctx.globalAlpha = 0.6;
+    for (const [i, j] of g.lines) {
+      if (g.verts[i] && g.verts[j]) this.#strokeSeg(ctx, cam, w, h, g.verts[i], g.verts[j], "#3ee06a", 1.5);
+    }
+    ctx.restore();
   }
 
   draw() {
@@ -895,6 +1050,7 @@ export class ItemView {
     for (const [a, b] of cube) this.#strokeSeg(ctx, cam, w, h, a, b, "#252a35");
 
     this.#drawForwardArrow(ctx, cam, w, h);
+    this.#drawGhost(ctx, cam, w, h);
 
     let shownVerts = this.selectedVerts;
     if (this.drag?.kind === "box") {
@@ -905,15 +1061,24 @@ export class ItemView {
       }
     }
 
+    const yaw = this.#spinYaw();
+    const dverts = yaw
+      ? mesh.verts.map((v) => ({
+          x: v.x * Math.cos(yaw) + v.z * Math.sin(yaw),
+          y: v.y,
+          z: -v.x * Math.sin(yaw) + v.z * Math.cos(yaw),
+        }))
+      : mesh.verts;
+
     mesh.lines.forEach(([ia, ib], i) => {
-      const a = mesh.verts[ia];
-      const b = mesh.verts[ib];
+      const a = dverts[ia];
+      const b = dverts[ib];
       if (!a || !b) return;
       const sel = this.selectedLines.includes(i);
       this.#strokeSeg(ctx, cam, w, h, a, b, sel ? "#f2d36b" : "#c8ccd4", sel ? 2.5 : 1.5);
     });
 
-    mesh.verts.forEach((v, i) => {
+    dverts.forEach((v, i) => {
       const pr = projectPoint(v, cam, w, h);
       if (!pr.ok) return;
       const sel = shownVerts.includes(i);

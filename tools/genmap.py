@@ -15,6 +15,7 @@ EDITOR_MAPS = ROOT / "editor" / "maps"
 MAP_DIR = ROOT / "maps"
 COUNTS_OUT = ROOT / "src" / "map_counts.asm"
 SIZES_OUT = ROOT / "src" / "map_sizes.asm"
+ITEM_DOC = ROOT / "editor" / "nebula.json"
 
 LEVEL_NAMES = ["E1M1", "E1M2", "E1M3", "E1M4", "E1M5", "E1M6", "E1M7", "E1M8"]
 ENEMY_TYPE = {
@@ -524,6 +525,20 @@ def cook_one(level: dict, map_key: str) -> bytes:
         "gold key": 14,
         "rune of earth magic": 12,
     }
+    for ci, cname in enumerate(custom_item_names()):
+        TH_TYPE[cname] = len(BUILTIN_ITEMS) + ci
+
+    # Door type byte = mesh slot: built-ins and customs sit at their TH number, the four shipped
+    # doors follow (mirrors genitems.py slot order). Any item can be a door.
+    DOOR_SLOT = {k: i for i, k in enumerate(BUILTIN_ITEMS)}
+    for ci, cname in enumerate(custom_item_names()):
+        DOOR_SLOT[cname] = len(BUILTIN_ITEMS) + ci
+    door_base = len(BUILTIN_ITEMS) + len(custom_item_names())
+    for di, dname in enumerate(DOOR_ITEM_NAMES):
+        DOOR_SLOT[dname] = door_base + di
+        DOOR_SLOT[dname.capitalize()] = door_base + di
+    if door_base + len(DOOR_ITEM_NAMES) > 127:
+        fail(f"{map_key}: {door_base + len(DOOR_ITEM_NAMES)} item slots; door type is 7 bits")
 
     # Tag → first elevator index. Shared tags are one group (elev_grp).
     # Switch and summon stay single-car; a repeated tag is a cook error there.
@@ -763,16 +778,9 @@ def cook_one(level: dict, map_key: str) -> bytes:
         ra, rb = door_rooms(rooms, d)
         key = door_lock_key(d)
         dt = str(d.get("doorType") or "Tech").strip()
-        dtype = {
-            "Tech": 0,
-            "Arch": 1,
-            "Tri": 2,
-            "Crack": 3,
-            "tech": 0,
-            "arch": 1,
-            "tri": 2,
-            "crack": 3,
-        }.get(dt, 0)
+        if dt not in DOOR_SLOT:
+            fail(f"{map_key}: unknown door type {dt!r} (not an item)")
+        dtype = DOOR_SLOT[dt]  # absolute mesh slot (item_mesh.asm); bit 7 stays DOOR_HIDDEN
         if d.get("hidden"):
             dtype |= 0x80
         did = map_id[id(d)]
@@ -1139,7 +1147,9 @@ def cook_one(level: dict, map_key: str) -> bytes:
                 bt = 13
         else:
             name = (b.get("pickup") or b.get("backpack") or "shells").strip()
-            bt = TH_TYPE.get(name, 0)
+            if name not in TH_TYPE:
+                fail(f"{map_key}: unknown item {name!r} (not a built-in or customItems entry)")
+            bt = TH_TYPE[name]
         th_x.append(b["x"])
         th_y.append(b["y"])
         th_z.append(b["z"])
@@ -1432,6 +1442,34 @@ ENT_IMP	= 3
 ENEMY_NTYPES	= 4
 ENEMY_CLASS_HUM	= 0
 """
+
+
+# Built-in TH_* names (TH 0..18, fixed by the asm); keep in sync with genitems.py BP_MESH_KEY.
+BUILTIN_ITEMS = [
+    "small health", "large health", "green armor", "blue armor", "ammo box", "shells",
+    "box of rockets", "shotgun", "chaingun", "chainsaw", "rocket launcher", "backpack",
+    "red keycard", "yellow keycard", "blue keycard", "soulsphere", "radsuit",
+    "lightpost", "barrel",
+]
+DOOR_ITEM_NAMES = ["tech", "arch", "tri", "crack"]
+
+
+def custom_item_names() -> list[str]:
+    """User-defined items from editor/nebula.json, TH 19.. in order (mirrors genitems.custom_items)."""
+    if not ITEM_DOC.is_file():
+        return []
+    doc = json.loads(ITEM_DOC.read_text(encoding="utf-8"))
+    taken = {k.lower() for k in BUILTIN_ITEMS} | set(DOOR_ITEM_NAMES)
+    out: list[str] = []
+    for src in doc.get("customItems") or []:
+        if not isinstance(src, str):
+            continue
+        name = src.strip()
+        if not name or name.lower() in taken:
+            continue
+        taken.add(name.lower())
+        out.append(name)
+    return out
 
 
 def load_level(key: str) -> dict:

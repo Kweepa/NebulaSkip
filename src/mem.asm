@@ -5,7 +5,7 @@
 ; reads main RAM (PORTB bit 5 stays 1), the CPU sees bank 0 there during
 ; play (PORTB_PLAY) and main RAM only inside screen leaves (PORTB_MAIN).
 ; Bank 0: [DYN_BASE, HEAP_LIM) is the heap (map + fused enemy banks), then
-; CODE0_BASE (code zone), STATIC_BASE (weapon/item/splat/muzzle data), QS_OVL.
+; CODE0_BASE (code zone), STATIC_BASE (weapon/splat/muzzle data), QS_OVL.
 ; Bank 1: TAB_STAGE only.
 ; $D000-$D7FF is I/O. Play state and alog/log sit at $D800-$DFFF.
 ; $F000 sqt, $F800 UI font. a8_bind_tabs copies tab.prg from TAB_STAGE.
@@ -336,7 +336,7 @@ HEAP_LIM	= $5e00			; heap ceiling = CODE0_BASE (heap 7680 B)
 ; process, elevator, cheats_apply). Loaded once at boot with BANK0. Not
 ; callable from NMI/DLI, with the OS on, inside a screen leaf, or before boot.
 CODE0_BASE	= $5e00
-STATIC_BASE	= $6b40			; weapon_spr, splat, muzzle, item_mesh (3415 B)
+STATIC_BASE	= $6b40			; weapon_spr, splat, muzzle (item_mesh lives in segment A)
 CODE0_END	= STATIC_BASE
 STATIC_END	= $7900
 !if QS_OVL != STATIC_END {

@@ -40,12 +40,10 @@ import {
   MAX_NAME_LEN,
   MAX_VERB_LEN,
   MAX_TAG_LEN,
-  PICKUP_TYPES,
-  PICKUP_ICON,
-  ALL_MESH_KEYS,
-  ITEM_MESH_KEYS,
-  DOOR_MESH_KEYS,
-  DOOR_TYPES,
+  doorTypes,
+  placeableItemKeys,
+  isDoorItem,
+  defaultItemMeta,
   DOOR_LOCKS,
   DOOR_LOCK_LABELS,
   DOOR_SCALES,
@@ -54,11 +52,25 @@ import {
   clampDoorLock,
   clampDoorType,
   clampDoorScale,
-  isDoorMeshKey,
+  DOOR_MESH_KEYS,
   ITEM_MAX_UNIQUE,
-  ITEM_TABLE_MAX,
   itemMeshStats,
-  itemGlobalBudgets,
+  itemPagePlan,
+  itemKeys,
+  itemLabel,
+  allMeshKeys,
+  isCustomItem,
+  setCustomItemNames,
+  clampItemName,
+  itemNameProblem,
+  itemMeta,
+  setItemMeta,
+  emptyItemIcon,
+  C64_HEX,
+  ITEM_ICON_SIZE,
+  ITEM_NAME_MAX,
+  ITEM_PAGES_MAX,
+  BUILTIN_ITEM_COUNT,
   createObject,
   createDefaultDocument,
   localFocusRoom,
@@ -78,7 +90,9 @@ import {
   canAddEnemyType,
   clipForFrame,
   dummyFrameFor,
+  enemyPlacementWorldVerts,
   enemyPreviewFrame,
+  figureTemplateName,
   findEnemyTemplate,
   isFigureObject,
   enableSpawn,
@@ -254,6 +268,9 @@ let mdlScale = DEFAULT_MDL_SCALE;
 let weaponKey = "shot2";
 let weaponFrame = 0;
 let itemMeshKey = "backpack";
+let itemSpinPreview = true;
+let itemGhostOn = false;
+let iconPaintColor = 1;
 /** Collapsed room ids in the Objects tree. */
 const collapsedRooms = new Set();
 /** Maps-panel search. Session only; does not dirty the document. */
@@ -619,6 +636,8 @@ const itemView = new ItemView(document.getElementById("view-canvas"), {
   },
   beginUndo,
   endUndo,
+  getSpin: () => itemSpinPreview && itemMeta(doc, itemMeshKey).rotating,
+  getGhost: itemGhostPlayer,
   onChange: () => {
     markDirty();
     renderInspector();
@@ -883,7 +902,7 @@ function applyEditorState(ed) {
     setOrthoMode(ed.orthoMode);
     collapsedRooms.clear();
     for (const id of ed.collapsedRooms) collapsedRooms.add(id);
-    itemMeshKey = ALL_MESH_KEYS.includes(ed.item) ? ed.item : "backpack";
+    itemMeshKey = allMeshKeys().includes(ed.item) ? ed.item : "backpack";
     const iorb = itemView.orbit;
     iorb.yaw = ed.itemOrbit.yaw;
     iorb.pitch = ed.itemOrbit.pitch;
@@ -942,6 +961,8 @@ function snapshot() {
     enemies: doc.enemies,
     weapons: doc.weapons,
     items: doc.items,
+    customItems: doc.customItems,
+    itemMeta: doc.itemMeta,
     font: doc.font,
   });
 }
@@ -966,6 +987,7 @@ function pushUndo() {
 
 function restore(json) {
   doc = normalizeDocument(JSON.parse(json));
+  if (!allMeshKeys().includes(itemMeshKey)) itemMeshKey = "backpack";
   deriveAllEnemyFrames();
   const have = new Set(activeMap(doc).objects.map((o) => o.id));
   selectedIds = selectedIds.filter((id) => have.has(id));
@@ -1387,6 +1409,7 @@ function previewObjectAtScreen(place, mx, my) {
   const extra = {};
   if (place.enemy) extra.enemy = place.enemy;
   if (place.pickup) extra.pickup = place.pickup;
+  if (place.doorType) extra.doorType = place.doorType;
   if (owner) extra.roomId = owner.id;
   if (kind === "spawn") {
     extra.enabled = !activeMap(doc).objects.some((o) => o.kind === "spawn");
@@ -1430,10 +1453,20 @@ function buildPalette() {
   root.appendChild(thingsSep);
   const things = document.createElement("div");
   things.className = "palette-things";
-  for (const t of PICKUP_TYPES) {
-    things.appendChild(paletteButton(t, KINDS.pickup.color, { kind: "pickup", pickup: t }));
+  for (const t of placeableItemKeys()) {
+    things.appendChild(paletteButton(itemLabel(t), KINDS.pickup.color, { kind: "pickup", pickup: t }));
   }
   root.appendChild(things);
+  const doorsSep = document.createElement("div");
+  doorsSep.className = "palette-sep";
+  doorsSep.textContent = "Doors";
+  root.appendChild(doorsSep);
+  const doors = document.createElement("div");
+  doors.className = "palette-things";
+  for (const t of doorTypes()) {
+    doors.appendChild(paletteButton(itemLabel(t), KINDS.doorway.color, { kind: "doorway", doorType: t }));
+  }
+  root.appendChild(doors);
   const sep = document.createElement("div");
   sep.className = "palette-sep";
   sep.textContent = "Enemies";
@@ -1565,13 +1598,13 @@ function paletteButton(label, color, payload) {
     name.className = "palette-enemy-name";
     name.textContent = label;
     el.append(icon, name);
-  } else if (payload.pickup) {
+  } else if (payload.pickup || payload.doorType) {
     el.classList.add("palette-thing");
     const icon = document.createElement("img");
     icon.className = "palette-thing-icon";
     icon.alt = "";
     icon.draggable = false;
-    icon.src = `thingicons/${PICKUP_ICON[payload.pickup]}.png`;
+    icon.src = thingIconUrl(payload.pickup ?? payload.doorType);
     const name = document.createElement("span");
     name.className = "palette-thing-name";
     name.textContent = label;
@@ -1589,7 +1622,7 @@ function paletteButton(label, color, payload) {
   } else {
     el.textContent = label;
   }
-  el.title = payload.pickup ? label : "Drag onto the map to place";
+  el.title = payload.pickup || payload.doorType ? label : "Drag onto the map to place";
   el.addEventListener("pointerdown", (e) => {
     if (e.button !== 0) return;
     e.preventDefault();
@@ -2043,50 +2076,438 @@ function renderEnemyList() {
   });
 }
 
-function renderMeshKeyList(ul, keys) {
+/** Player spawn at game scale beside the 2x2 footprint (x centre +2.5), item-local coords. */
+function itemGhostPlayer() {
+  if (!itemGhostOn) return null;
+  const box = { kind: "spawn", x: 1.5, y: 0, z: -1, sx: 2, sy: 4, sz: 2, rot: 0 };
+  const tmpl = findEnemyTemplate(doc, figureTemplateName(box));
+  return {
+    box,
+    verts: tmpl ? enemyPlacementWorldVerts(box, tmpl, 0) : [],
+    lines: tmpl?.lines || [],
+  };
+}
+
+function renderMeshKeyList(ul, keys, plan) {
   if (!ul) return;
   ul.innerHTML = "";
   if (!doc.items) doc.items = {};
+  const multi = plan && plan.pages.length > 1;
   for (const key of keys) {
-    const li = document.createElement("li");
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.textContent = key;
-    if (key === itemMeshKey) btn.className = "active";
-    btn.addEventListener("click", () => {
-      itemMeshKey = key;
-      if (!doc.items[key]) doc.items[key] = { verts: [], lines: [] };
-      itemView.clearSelection();
-      persistEditorSettings();
-      refreshAll();
-    });
-    li.appendChild(btn);
-    ul.appendChild(li);
+    btn.className = "palette-item palette-thing";
+    if (key === itemMeshKey) btn.classList.add("active");
+    const icon = document.createElement("img");
+    icon.className = "palette-thing-icon";
+    icon.alt = "";
+    icon.draggable = false;
+    icon.src = thingIconUrl(key);
+    const name = document.createElement("span");
+    name.className = "palette-thing-name";
+    name.textContent = itemLabel(key);
+    btn.append(icon, name);
+    btn.title = multi ? `${itemLabel(key)} (page ${plan.pageOf[key] ?? 0})` : itemLabel(key);
+    btn.addEventListener("click", () => selectItemKey(key));
+    ul.appendChild(btn);
   }
 }
 
+function selectItemKey(key) {
+  itemMeshKey = key;
+  if (!doc.items[key]) doc.items[key] = { verts: [], lines: [] };
+  itemView.clearSelection();
+  persistEditorSettings();
+  refreshAll();
+}
+
 function renderItemBudget() {
-  const bud = itemGlobalBudgets(doc);
-  const fill = (id, n) => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.textContent = `${n} / ${ITEM_TABLE_MAX}`;
-    el.classList.toggle("error", n > ITEM_TABLE_MAX - 1);
-  };
-  fill("bud-item-nv", bud.pickups.nv);
-  fill("bud-item-nx", bud.pickups.nx);
-  fill("bud-item-nz", bud.pickups.nz);
-  fill("bud-item-ne", bud.pickups.ne);
-  fill("bud-door-nv", bud.doors.nv);
-  fill("bud-door-nx", bud.doors.nx);
-  fill("bud-door-nz", bud.doors.nz);
-  fill("bud-door-ne", bud.doors.ne);
+  const body = document.getElementById("item-budget-body");
+  if (!body) return;
+  const plan = itemPagePlan(doc);
+  const head = plan.pages.map((_, i) => `<th>p${i}</th>`).join("");
+  const row = (label, k) =>
+    `<tr><td>${label}</td>${plan.pages.map((pg) => `<td>${pg[k]}</td>`).join("")}</tr>`;
+  const over = plan.pages.length > ITEM_PAGES_MAX;
+  body.innerHTML =
+    `<tr><th>page</th>${head}</tr>` +
+    row("verts", "nv") +
+    row("unique X", "nx") +
+    row("unique Z", "nz") +
+    row("lines", "ne") +
+    `<tr><td>pages</td><td colspan="${plan.pages.length}" class="${over ? "error" : ""}">${plan.pages.length} / ${ITEM_PAGES_MAX}</td></tr>`;
 }
 
 function renderItemList() {
   renderItemBudget();
-  renderMeshKeyList(document.getElementById("item-mesh-list"), ITEM_MESH_KEYS);
-  renderMeshKeyList(document.getElementById("door-mesh-list"), DOOR_MESH_KEYS);
+  renderMeshKeyList(document.getElementById("item-mesh-list"), allMeshKeys(), itemPagePlan(doc));
+  const rem = document.getElementById("btn-item-remove");
+  if (rem) rem.disabled = !isCustomItem(itemMeshKey);
+  document.getElementById("btn-item-spin")?.classList.toggle("active", itemSpinPreview);
+  document.getElementById("btn-item-ghost")?.classList.toggle("active", itemGhostOn);
+}
+
+/** How many placed objects (all maps) use this item. */
+function itemUseCount(name) {
+  let n = 0;
+  for (const m of Object.values(doc.maps || {})) {
+    for (const o of m.objects || []) {
+      if (o.kind === "pickup" && o.pickup === name) n++;
+      if (o.kind === "doorway" && o.doorType === name) n++;
+    }
+  }
+  return n;
+}
+
+function addCustomItem() {
+  let name = "new item";
+  for (let n = 2; itemNameProblem(name); n++) name = `new item ${n}`;
+  pushUndo();
+  if (!doc.customItems) doc.customItems = [];
+  doc.customItems.push(name);
+  setCustomItemNames(doc.customItems);
+  if (!doc.items) doc.items = {};
+  doc.items[name] = { verts: [], lines: [] };
+  setItemMeta(doc, name, { rotating: true, pickup: false, icon: null });
+  markDirty();
+  buildPalette();
+  selectItemKey(name);
+  setStatus(`Added item "${name}" (TH ${BUILTIN_ITEM_COUNT + doc.customItems.length - 1}). Name it in the inspector.`);
+}
+
+/**
+ * Inspector name field, any item or door. Custom items are their own key (placed copies are
+ * rewritten); everything else keeps its internal key and just gets a new display name.
+ * Returns the name now in effect (the old one if refused).
+ */
+function renameItem(raw) {
+  const old = itemMeshKey;
+  const cur = itemLabel(old);
+  const name = clampItemName(raw);
+  if (name === cur) return cur;
+  const bad = itemNameProblem(name, old);
+  if (bad) {
+    setStatus(bad, true);
+    return cur;
+  }
+  pushUndo();
+  if (!isCustomItem(old)) {
+    setItemMeta(doc, old, { label: name });
+    markDirty();
+    buildPalette();
+    refreshAll();
+    setStatus(`Renamed "${cur}" to "${name}"`);
+    return itemLabel(old);
+  }
+  doc.customItems[doc.customItems.indexOf(old)] = name;
+  setCustomItemNames(doc.customItems);
+  doc.items[name] = doc.items[old];
+  delete doc.items[old];
+  if (doc.itemMeta?.[old]) {
+    doc.itemMeta[name] = doc.itemMeta[old];
+    delete doc.itemMeta[old];
+  }
+  let moved = 0;
+  for (const m of Object.values(doc.maps || {})) {
+    for (const o of m.objects || []) {
+      if (o.kind === "pickup" && o.pickup === old) {
+        o.pickup = name;
+        moved++;
+      }
+      if (o.kind === "doorway" && o.doorType === old) {
+        o.doorType = name;
+        moved++;
+      }
+    }
+  }
+  itemMeshKey = name;
+  markDirty();
+  buildPalette();
+  persistEditorSettings();
+  refreshAll();
+  setStatus(`Renamed "${old}" to "${name}"${moved ? ` (${moved} placed)` : ""}`);
+  return name;
+}
+
+function removeCustomItem() {
+  const old = itemMeshKey;
+  if (!isCustomItem(old)) return;
+  const n = itemUseCount(old);
+  if (n) {
+    setStatus(`"${old}" is placed ${n}× in maps. Remove those objects first.`, true);
+    return;
+  }
+  if (!window.confirm(`Remove item "${old}"?`)) return;
+  pushUndo();
+  doc.customItems = doc.customItems.filter((k) => k !== old);
+  setCustomItemNames(doc.customItems);
+  delete doc.items[old];
+  if (doc.itemMeta) delete doc.itemMeta[old];
+  itemMeshKey = "backpack";
+  itemView.clearSelection();
+  markDirty();
+  buildPalette();
+  persistEditorSettings();
+  refreshAll();
+  setStatus(`Removed item "${old}"`);
+}
+
+const iconUrlCache = new Map();
+
+/** 8 rows of 0-f / . -> data URL (8×8 PNG). */
+function iconRowsToUrl(rows) {
+  const k = rows.join("|");
+  const hit = iconUrlCache.get(k);
+  if (hit) return hit;
+  const c = document.createElement("canvas");
+  c.width = ITEM_ICON_SIZE;
+  c.height = ITEM_ICON_SIZE;
+  const g = c.getContext("2d");
+  paintIconRows(g, rows, 1);
+  const url = c.toDataURL("image/png");
+  iconUrlCache.set(k, url);
+  return url;
+}
+
+function paintIconRows(g, rows, px) {
+  for (let y = 0; y < ITEM_ICON_SIZE; y++) {
+    for (let x = 0; x < ITEM_ICON_SIZE; x++) {
+      const ch = rows[y][x];
+      if (ch === ".") continue;
+      g.fillStyle = C64_HEX[parseInt(ch, 16)];
+      g.fillRect(x * px, y * px, px, px);
+    }
+  }
+}
+
+/** Palette icon for an item: its 8×8 icon (shipped default or edited), blank when none. */
+function thingIconUrl(key) {
+  return iconRowsToUrl(itemMeta(doc, key).icon ?? emptyItemIcon());
+}
+
+function setItemIcon(key, rows) {
+  setItemMeta(doc, key, { icon: rows });
+  markDirty();
+}
+
+function buildIconEditor(root, key) {
+  const h = document.createElement("h2");
+  h.textContent = "Icon";
+  root.appendChild(h);
+  const meta = itemMeta(doc, key);
+  let rows = meta.icon ? [...meta.icon] : emptyItemIcon();
+  const wrap = document.createElement("div");
+  wrap.className = "icon-editor";
+  const grid = document.createElement("canvas");
+  const CELL = 16;
+  grid.width = ITEM_ICON_SIZE * CELL;
+  grid.height = ITEM_ICON_SIZE * CELL;
+  grid.className = "icon-grid";
+  grid.addEventListener("contextmenu", (e) => e.preventDefault());
+  const prev = document.createElement("canvas");
+  prev.width = ITEM_ICON_SIZE;
+  prev.height = ITEM_ICON_SIZE;
+  prev.className = "icon-preview";
+  const sw = document.createElement("div");
+  sw.className = "icon-swatches";
+  const swBtns = [];
+
+  const paint = () => {
+    const g = grid.getContext("2d");
+    for (let y = 0; y < ITEM_ICON_SIZE; y++) {
+      for (let x = 0; x < ITEM_ICON_SIZE; x++) {
+        g.fillStyle = (x + y) % 2 ? "#1c1f26" : "#242831";
+        g.fillRect(x * CELL, y * CELL, CELL, CELL);
+      }
+    }
+    paintIconRows(g, rows, CELL);
+    g.strokeStyle = "rgba(255,255,255,0.12)";
+    g.lineWidth = 1;
+    for (let i = 0; i <= ITEM_ICON_SIZE; i++) {
+      g.beginPath();
+      g.moveTo(i * CELL + 0.5, 0);
+      g.lineTo(i * CELL + 0.5, grid.height);
+      g.moveTo(0, i * CELL + 0.5);
+      g.lineTo(grid.width, i * CELL + 0.5);
+      g.stroke();
+    }
+    const pg = prev.getContext("2d");
+    pg.clearRect(0, 0, ITEM_ICON_SIZE, ITEM_ICON_SIZE);
+    paintIconRows(pg, rows, 1);
+  };
+  const syncSwatches = () => swBtns.forEach((b, i) => b.classList.toggle("active", i === iconPaintColor));
+
+  C64_HEX.forEach((hex, i) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "icon-swatch";
+    b.style.background = hex;
+    b.title = `C64 colour ${i}`;
+    b.addEventListener("click", () => {
+      iconPaintColor = i;
+      syncSwatches();
+    });
+    swBtns.push(b);
+    sw.appendChild(b);
+  });
+  syncSwatches();
+
+  let painting = false;
+  let eraseStroke = false;
+  const applyAt = (e, erase) => {
+    const r = grid.getBoundingClientRect();
+    const x = Math.floor(((e.clientX - r.left) / r.width) * ITEM_ICON_SIZE);
+    const y = Math.floor(((e.clientY - r.top) / r.height) * ITEM_ICON_SIZE);
+    if (x < 0 || y < 0 || x >= ITEM_ICON_SIZE || y >= ITEM_ICON_SIZE) return;
+    const ch = erase ? "." : iconPaintColor.toString(16);
+    if (rows[y][x] === ch) return;
+    rows[y] = rows[y].slice(0, x) + ch + rows[y].slice(x + 1);
+    setItemIcon(key, rows);
+    paint();
+  };
+  grid.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0 && e.button !== 2) return;
+    e.preventDefault();
+    beginUndo();
+    painting = true;
+    eraseStroke = e.button === 2;
+    grid.setPointerCapture(e.pointerId);
+    applyAt(e, eraseStroke);
+  });
+  grid.addEventListener("pointermove", (e) => {
+    if (painting) applyAt(e, eraseStroke);
+  });
+  const endStroke = (e) => {
+    if (!painting) return;
+    painting = false;
+    endUndo();
+    try {
+      grid.releasePointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+    buildPalette();
+    renderInspector();
+  };
+  grid.addEventListener("pointerup", endStroke);
+  grid.addEventListener("pointercancel", endStroke);
+
+  const row = document.createElement("div");
+  row.className = "btn-row";
+  const mk = (label, title, fn) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = label;
+    b.title = title;
+    b.addEventListener("click", fn);
+    return b;
+  };
+  const shipped = !isCustomItem(key);
+  row.append(
+    mk(
+      shipped ? "Reset" : "Clear",
+      shipped ? "Back to the shipped icon" : "Blank the icon",
+      () => {
+        pushUndo();
+        setItemIcon(key, emptyItemIcon());
+        buildPalette();
+        renderInspector();
+      }
+    )
+  );
+
+  const side = document.createElement("div");
+  side.className = "icon-side";
+  side.append(prev, row);
+  wrap.append(grid, side);
+  root.appendChild(wrap);
+  root.appendChild(sw);
+  const hint = document.createElement("p");
+  hint.className = "muted";
+  hint.textContent = "Left paint · right erase · shown in the Maps placement picker.";
+  root.appendChild(hint);
+  paint();
+}
+
+/** Flip the door flag. Placed pickups of the item (or doorways of a un-doored type) block it. */
+function toggleItemDoor(key) {
+  const meta = itemMeta(doc, key);
+  const want = !meta.door;
+  const placed = itemUseCount(key);
+  if (placed) {
+    setStatus(
+      want
+        ? `"${itemLabel(key)}" is placed ${placed}× as a pickup/prop. Remove those first.`
+        : `"${itemLabel(key)}" is used by ${placed} doorway(s). Retype or remove them first.`,
+      true
+    );
+    return;
+  }
+  pushUndo();
+  const base = defaultItemMeta(key);
+  setItemMeta(doc, key, want ? { door: true } : { door: false, rotating: base.rotating, pickup: base.pickup });
+  markDirty();
+  buildPalette();
+  refreshAll();
+  setStatus(want ? `"${itemLabel(key)}" is now a door type` : `"${itemLabel(key)}" is no longer a door type`);
+}
+
+function buildItemFlags(root, key) {
+  const meta = itemMeta(doc, key);
+  const custom = isCustomItem(key);
+  const door = meta.door;
+  const shippedDoor = DOOR_MESH_KEYS.includes(key);
+  const flag = (label, active, locked, title, onToggle) => {
+    const f = toggleField(label, active, onToggle);
+    const b = f.querySelector("button");
+    b.disabled = locked;
+    f.title = title;
+    b.title = title;
+    return f;
+  };
+  root.appendChild(
+    flag(
+      "Door",
+      door,
+      shippedDoor,
+      shippedDoor
+        ? "Shipped door style: the game's bump crack and fallbacks use it"
+        : "Door type: appears under Doors in the Maps picker and in the doorway Type list. Mesh origin = bottom-centre of the face, X across, Z out.",
+      () => toggleItemDoor(key)
+    )
+  );
+  if (door) return;
+  root.appendChild(
+    flag("Rotating", meta.rotating, false, "Yaw-spins in the editor and in game", () => {
+      pushUndo();
+      setItemMeta(doc, key, { rotating: !meta.rotating });
+      markDirty();
+      renderInspector();
+      itemView.draw();
+    })
+  );
+  root.appendChild(
+    flag(
+      "Pickup",
+      meta.pickup,
+      !custom,
+      custom
+        ? "Pickup behaviour has to exist in the asm (grant tables); custom items cannot cook as pickups yet"
+        : "Built-in: fixed by the game grant tables",
+      () => {
+        pushUndo();
+        setItemMeta(doc, key, { pickup: !meta.pickup });
+        markDirty();
+        renderInspector();
+      }
+    )
+  );
+  if (custom && meta.pickup) {
+    const w = document.createElement("p");
+    w.className = "error";
+    w.textContent = "Flagged pickup: no grant behaviour in the asm, genitems.py will refuse to cook it.";
+    root.appendChild(w);
+  }
 }
 
 function ensureWeaponItem(key) {
@@ -2657,7 +3078,7 @@ function layoutInspectorTitle(objs) {
     label = name === undefined ? "Enemy" : name;
   } else if (kind === "pickup") {
     const name = unanimous(objs, (o) => clampPickupType(o.pickup));
-    label = name === undefined ? "Pickup" : name;
+    label = name === undefined ? "Pickup" : itemLabel(name);
   } else {
     label = KINDS[kind].label;
   }
@@ -3061,7 +3482,7 @@ function renderLayoutObjectFields(root, objs) {
         "Type",
         selectMixed(
           typeCur,
-          DOOR_TYPES.map((t) => ({ value: t, text: t })),
+          doorTypes().map((t) => ({ value: t, text: itemLabel(t) })),
           (v) => apply((obj) => (obj.doorType = v))
         )
       )
@@ -3148,15 +3569,27 @@ function renderInspector() {
     root.appendChild(h);
     if (!doc.items) doc.items = {};
     if (!doc.items[itemMeshKey]) doc.items[itemMeshKey] = { verts: [], lines: [] };
+    const nameInp = document.createElement("input");
+    nameInp.type = "text";
+    nameInp.maxLength = ITEM_NAME_MAX;
+    nameInp.value = itemLabel(itemMeshKey);
+    nameInp.spellcheck = false;
+    nameInp.title = isDoorItem(itemMeshKey)
+      ? "Editor name"
+      : "Name shown here and in game (\"You got the ...\")";
+    nameInp.addEventListener("change", () => {
+      nameInp.value = renameItem(nameInp.value);
+    });
+    root.appendChild(field("Name", nameInp));
     const stats = itemMeshStats(doc.items[itemMeshKey]);
     const p = document.createElement("p");
     p.className = stats.over ? "error" : "muted";
-    p.textContent = `${stats.nv} verts · ${stats.ne} lines · unique X ${stats.nx}/${ITEM_MAX_UNIQUE} · unique Z ${stats.nz}/${ITEM_MAX_UNIQUE} · ~${stats.bytes} B`;
+    p.textContent = `${stats.nv} verts · ${stats.ne} lines · unique X ${stats.nx}/${ITEM_MAX_UNIQUE} · unique Z ${stats.nz}/${ITEM_MAX_UNIQUE} · ~${stats.bytes} B · page ${itemPagePlan(doc).pageOf[itemMeshKey] ?? 0}`;
     root.appendChild(p);
     if (itemMeshKey !== "backpack" && !doc.items[itemMeshKey].verts.length) {
       const f = document.createElement("p");
       f.className = "muted";
-      f.textContent = isDoorMeshKey(itemMeshKey)
+      f.textContent = isDoorItem(itemMeshKey)
         ? "Empty — falls back to Tech."
         : "Empty — falls back to backpack.";
       root.appendChild(f);
@@ -3197,8 +3630,10 @@ function renderInspector() {
     root.appendChild(row);
     const hint = document.createElement("p");
     hint.className = "muted";
-    hint.textContent = "Grid −4…4 · origin at 0,0,0 · Add Vert places at origin.";
+    hint.textContent = "Grid −4…4 · origin at 0,0,0 · Add Vert places at origin · Ctrl-drag a vertex to extrude a copy with a line · drop a vertex on another to merge.";
     root.appendChild(hint);
+    buildItemFlags(root, itemMeshKey);
+    buildIconEditor(root, itemMeshKey);
     return;
   }
   if (editorMode === "weapons") {
@@ -4400,6 +4835,19 @@ function refreshAll() {
   else if (editorMode === "items") itemView.draw();
   else if (editorMode !== "build" && editorMode !== "font") animView.draw();
 }
+
+document.getElementById("btn-item-add")?.addEventListener("click", addCustomItem);
+document.getElementById("btn-item-spin")?.addEventListener("click", (e) => {
+  itemSpinPreview = !itemSpinPreview;
+  e.currentTarget.classList.toggle("active", itemSpinPreview);
+  itemView.draw();
+});
+document.getElementById("btn-item-ghost")?.addEventListener("click", (e) => {
+  itemGhostOn = !itemGhostOn;
+  e.currentTarget.classList.toggle("active", itemGhostOn);
+  itemView.draw();
+});
+document.getElementById("btn-item-remove")?.addEventListener("click", removeCustomItem);
 
 document.getElementById("btn-mode-layout").addEventListener("click", () => {
   setMode("layout");

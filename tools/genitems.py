@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -19,6 +20,8 @@ ITEM_BIAS = 1
 ITEM_MAX_VERTS = 16
 ITEM_MAX_LINES = 16
 ITEM_MAX_UNIQUE = 6
+ITEM_OFFSET_MAX = 255  # per-slot vo/eo/uo/zo are one byte
+ITEM_PAGES_MAX = 2  # keep in sync with editor/js/model.js
 
 # Index = BP_*
 BP_MESH_KEY = [
@@ -352,11 +355,125 @@ def btable(name: str, vals: list[int]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def custom_items(doc: dict) -> list[str]:
+    """User-defined item names, in TH order (TH 19..). Mirrors parseCustomItems."""
+    out: list[str] = []
+    taken = {k.lower() for k in BP_MESH_KEY} | {k.lower() for k in DOOR_MESH_KEY}
+    for src in doc.get("customItems") or []:
+        if not isinstance(src, str):
+            continue
+        name = src.strip()
+        if not name or name.lower() in taken:
+            continue
+        taken.add(name.lower())
+        out.append(name)
+    return out
+
+
+def item_rotates(meta: dict, key: str, custom: bool) -> int:
+    """Per-slot spin flag. Built-in props (lightpost, barrel) default still."""
+    base = custom or key not in ("lightpost", "barrel")
+    m = meta.get(key)
+    if isinstance(m, dict) and m.get("rotating") is not None:
+        return 1 if m["rotating"] else 0
+    return 1 if base else 0
+
+
+def pack_pages(cooked: list[dict | None], names: list[str]) -> tuple[list[dict], list[int], list[tuple[int, int, int, int]]]:
+    """First-fit, in slot order. A mesh fits a page while every offset it would
+    get (verts, edges, unique X, unique Z so far) is <= ITEM_OFFSET_MAX; its data
+    may run past 255 because the asm carries into the pointer hi byte.
+    Returns (pages, page_of_slot, (vo, eo, uo, zo) per slot). Empty slots: page 0, offsets 0.
+    Mirrors itemPagePlan in editor/js/model.js."""
+    pages: list[dict] = []
+    page_of: list[int] = []
+    offs: list[tuple[int, int, int, int]] = []
+
+    def new_page() -> dict:
+        pg = {k: [] for k in ("ux", "uz", "vy", "xid", "zid", "col", "ea", "eb")}
+        pages.append(pg)
+        return pg
+
+    for c, name in zip(cooked, names):
+        if c is None:
+            page_of.append(0)
+            offs.append((0, 0, 0, 0))
+            continue
+        pi = -1
+        for i, pg in enumerate(pages):
+            if max(len(pg["vy"]), len(pg["ea"]), len(pg["ux"]), len(pg["uz"])) <= ITEM_OFFSET_MAX:
+                pi = i
+                break
+        if pi < 0:
+            new_page()
+            pi = len(pages) - 1
+            if pi >= ITEM_PAGES_MAX:
+                raise SystemExit(
+                    f"genitems: item {name!r} needs mesh page {pi} (max {ITEM_PAGES_MAX} pages of 8-bit offsets)"
+                )
+        pg = pages[pi]
+        offs.append((len(pg["vy"]), len(pg["ea"]), len(pg["ux"]), len(pg["uz"])))
+        for k in pg:
+            pg[k].extend(c[k])
+        page_of.append(pi)
+    if not pages:
+        new_page()
+    return pages, page_of, offs
+
+
+# In-game "You got the <name>" text. Index = TH_* (0..TH_NTYPES-1). Only these slots can be
+# granted, so only these get a name. Defaults reproduce the old hand-written hud.asm strings.
+GAME_NAME_DEFAULT = {"small health": "stimpack", "large health": "medikit"}
+GAME_NAME_GLYPH = {
+    "red keycard": "HUD_CH_KEY_RED",
+    "yellow keycard": "HUD_CH_KEY_YEL",
+    "blue keycard": "HUD_CH_KEY_BLU",
+}
+ITEM_NAME_MAX = 24  # keep in sync with editor/js/model.js
+HUD_MSG_W = 40  # src/mem.asm
+HUD_GOT_LEN = 12  # len("You got the ")
+
+
+def clamp_item_name(s) -> str:
+    """Mirror of clampItemName in editor/js/model.js."""
+    t = re.sub(r"[^A-Za-z0-9 _-]", "", str(s or ""))
+    t = re.sub(r"\s+", " ", t).strip()[:ITEM_NAME_MAX].strip()
+    return t
+
+
+def th_names(meta: dict) -> str:
+    """Name strings + th_name_lo/hi for the grantable TH types."""
+    lines = ["; TH_* names for hud_got (editor item names; keycards keep their glyph until renamed)"]
+    for i, key in enumerate(BP_MESH_KEY):
+        m = meta.get(key)
+        label = clamp_item_name(m.get("label")) if isinstance(m, dict) else ""
+        if label:
+            text, glyph = label, None
+        elif key in GAME_NAME_GLYPH:
+            text, glyph = " keycard", GAME_NAME_GLYPH[key]
+        else:
+            text, glyph = GAME_NAME_DEFAULT.get(key, key), None
+        if len(text) + (1 if glyph else 0) + HUD_GOT_LEN > HUD_MSG_W:
+            raise SystemExit(f"genitems: name of item {key!r} is too long for the HUD message line")
+        lines.append(f"thn_{i}")
+        if glyph:
+            lines.append(f"\t!byte {glyph}")
+        lines.append(f'\t!text "{text}",0')
+    lo = ", ".join(f"<thn_{i}" for i in range(len(BP_MESH_KEY)))
+    hi = ", ".join(f">thn_{i}" for i in range(len(BP_MESH_KEY)))
+    lines.append(f"th_name_lo\n\t!byte {lo}")
+    lines.append(f"th_name_hi\n\t!byte {hi}")
+    return "\n".join(lines)
+
+
 def main() -> None:
-    ntypes = len(BP_MESH_KEY)
     items = dict(DEFAULT_MESHES)
+    custom: list[str] = []
+    meta: dict = {}
     if DOC.exists():
         doc = json.loads(DOC.read_text(encoding="utf-8"))
+        custom = custom_items(doc)
+        meta = doc.get("itemMeta") or {}
         raw = migrate_items(doc.get("items") or {}, int(doc.get("version") or 0))
         if isinstance(raw, dict):
             for k, v in raw.items():
@@ -368,66 +485,52 @@ def main() -> None:
                     continue
                 items[key] = mesh if mesh["verts"] else items.get(key, {"verts": [], "lines": []})
 
-    ux_blob, uz_blob, vy_blob = [], [], []
-    xid_blob, zid_blob, col_blob = [], [], []
-    ea_blob: list[int] = []
-    eb_blob: list[int] = []
+    for name in custom:
+        m = meta.get(name)
+        if isinstance(m, dict) and m.get("pickup"):
+            raise SystemExit(
+                f"genitems: item {name!r} is flagged pickup but has no grant behaviour in the asm"
+            )
 
-    def append_mesh(c: dict) -> tuple[int, int, int, int]:
-        vo, eo, uo, zo = len(vy_blob), len(ea_blob), len(ux_blob), len(uz_blob)
-        ux_blob.extend(c["ux"])
-        uz_blob.extend(c["uz"])
-        vy_blob.extend(c["vy"])
-        xid_blob.extend(c["xid"])
-        zid_blob.extend(c["zid"])
-        col_blob.extend(c["col"])
-        ea_blob.extend(c["ea"])
-        eb_blob.extend(c["eb"])
-        return vo, eo, uo, zo
-
-    nv = [0] * ntypes
-    ne = [0] * ntypes
-    nx = [0] * ntypes
-    nz = [0] * ntypes
-    vo = [0] * ntypes
-    eo = [0] * ntypes
-    uo = [0] * ntypes
-    zo = [0] * ntypes
-    for i, key in enumerate(BP_MESH_KEY):
-        if not key:
-            continue
+    item_keys = BP_MESH_KEY + custom
+    ntypes = len(item_keys)
+    slot_names = item_keys + DOOR_MESH_KEY
+    cooked: list[dict | None] = []
+    for key in item_keys:
         mesh = items.get(key) or {"verts": [], "lines": []}
         if not mesh.get("verts") or not mesh.get("lines"):
+            cooked.append(None)
             continue
-        c = cook(mesh, key)
-        nv[i], ne[i], nx[i], nz[i] = c["nv"], c["ne"], c["nx"], c["nz"]
-        vo[i], eo[i], uo[i], zo[i] = append_mesh(c)
-
-    # Door meshes are slots ntypes.. in the same tables (fill_door_slot adds ITEM_DOOR_BASE).
+        cooked.append(cook(mesh, key))
+    # Door meshes are slots ntypes.. in the same tables. A door type byte is any slot (editor Door flag).
     for key in DOOR_MESH_KEY:
         mesh = items.get(key) or DEFAULT_MESHES[key]
         if not mesh.get("verts") or not mesh.get("lines"):
             mesh = DEFAULT_MESHES[key]
-        c = cook(mesh, key)
-        nv.append(c["nv"])
-        ne.append(c["ne"])
-        nx.append(c["nx"])
-        nz.append(c["nz"])
-        a2, b2, c_uo, c_zo = append_mesh(c)
-        vo.append(a2)
-        eo.append(b2)
-        uo.append(c_uo)
-        zo.append(c_zo)
+        cooked.append(cook(mesh, key))
 
-    for nm, blob in (("ux", ux_blob), ("uz", uz_blob), ("vy", vy_blob), ("ea", ea_blob)):
-        if len(blob) > 255:
-            raise SystemExit(f"genitems: {nm} blob {len(blob)} > 255 (8-bit offsets)")
+    if len(slot_names) > 127:
+        raise SystemExit(f"genitems: {len(slot_names)} item slots; a door type is 7 bits (DOOR_HIDDEN is bit 7)")
+    pages, page_of, offs = pack_pages(cooked, slot_names)
 
+    nv = [c["nv"] if c else 0 for c in cooked]
+    ne = [c["ne"] if c else 0 for c in cooked]
+    nx = [c["nx"] if c else 0 for c in cooked]
+    nz = [c["nz"] if c else 0 for c in cooked]
+    vo = [o[0] for o in offs]
+    eo = [o[1] for o in offs]
+    uo = [o[2] for o in offs]
+    zo = [o[3] for o in offs]
+    rot = [item_rotates(meta, k, k in custom) for k in item_keys] + [0] * len(DOOR_MESH_KEY)
+
+    blob_names = ("ux", "uz", "vy", "xid", "zid", "col", "ea", "eb")
     parts = [
         "; Generated by tools/genitems.py — do not edit",
-        f"ITEM_ORIGIN\t= {ITEM_ORIGIN}",
-        f"ITEM_BIAS\t= {ITEM_BIAS}",
-        f"ITEM_DOOR_BASE\t= {ntypes}",
+        f"ITEM_ORIGIN	= {ITEM_ORIGIN}",
+        f"ITEM_BIAS	= {ITEM_BIAS}",
+        f"ITEM_DOOR_BASE	= {ntypes}",
+        f"ITEM_NSLOTS	= {len(slot_names)}",
+        f"ITEM_NPAGES	= {len(pages)}",
         "",
         btable("item_nv", nv).rstrip(),
         btable("item_ne", ne).rstrip(),
@@ -437,20 +540,29 @@ def main() -> None:
         btable("item_eo", eo).rstrip(),
         btable("item_uo", uo).rstrip(),
         btable("item_zo", zo).rstrip(),
-        "",
-        btable("item_ux", ux_blob or [0]).rstrip(),
-        btable("item_uz", uz_blob or [0]).rstrip(),
-        btable("item_vy", vy_blob or [0]).rstrip(),
-        btable("item_xid", xid_blob or [0]).rstrip(),
-        btable("item_zid", zid_blob or [0]).rstrip(),
-        btable("item_col", col_blob or [0]).rstrip(),
-        btable("item_ea", ea_blob or [0]).rstrip(),
-        btable("item_eb", eb_blob or [0]).rstrip(),
+        btable("item_pg", page_of).rstrip(),
+        "; 1 = yaw-spins about box+ITEM_BIAS (editor Rotating flag)",
+        btable("item_rot", rot).rstrip(),
         "",
     ]
+    for b in blob_names:
+        for pi, pg in enumerate(pages):
+            parts.append(btable(f"item_{b}_{pi}", pg[b] or [0]).rstrip())
+    parts.append("")
+    for b in blob_names:
+        lo = ",".join(f"<item_{b}_{pi}" for pi in range(len(pages)))
+        hi = ",".join(f">item_{b}_{pi}" for pi in range(len(pages)))
+        parts.append(f"pg_{b}_lo\n\t!byte {lo}")
+        parts.append(f"pg_{b}_hi\n\t!byte {hi}")
+    parts.append("")
+    parts.append(th_names(meta))
+    parts.append("")
     OUT.write_text("\n".join(parts), encoding="utf-8")
-    n_custom = sum(1 for n in nv if n)
-    print(f"Wrote {OUT.relative_to(ROOT)}: {n_custom} item meshes + {len(DOOR_MESH_KEY)} door meshes")
+    n_custom = sum(1 for c in cooked[:ntypes] if c)
+    print(
+        f"Wrote {OUT.relative_to(ROOT)}: {n_custom} item meshes ({len(custom)} custom) "
+        f"+ {len(DOOR_MESH_KEY)} door meshes, {len(pages)} page(s)"
+    )
 
 
 if __name__ == "__main__":
