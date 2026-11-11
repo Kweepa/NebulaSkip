@@ -570,6 +570,7 @@ def cook_one(level: dict, map_key: str) -> bytes:
     TRIG_UNLOCK = 6
     TRIG_UNHIDE = 7
     TRIG_HURT_SM = 9
+    TRIG_TERM = 10  # message while inside; fire opens the DNA terminal
     TRIG_PURPOSE = {
         "message": TRIG_MSG,
         "end_level": TRIG_END,
@@ -580,6 +581,7 @@ def cook_one(level: dict, map_key: str) -> bytes:
         "unlock": TRIG_UNLOCK,
         "unhide": TRIG_UNHIDE,
         "spawn": TRIG_SPAWN,
+        "terminal": TRIG_TERM,
     }
     SW_DEST_DOOR = 0
     SW_DEST_ELEV = 1
@@ -1022,9 +1024,11 @@ def cook_one(level: dict, map_key: str) -> bytes:
             raise SystemExit(f"unknown trigger purpose {purpose_s!r}")
         purpose = TRIG_PURPOSE[purpose_s]
         arg = 0
-        if purpose == TRIG_MSG:
+        if purpose in (TRIG_MSG, TRIG_TERM):
             text = t.get("text") or ""
             arg = len(text_blob)
+            if arg > 255:
+                raise SystemExit(f"{map_key} trigger message text offset {arg} exceeds 255 (tr_arg is one byte)")
             chars = ascii_screen(text)
             text_blob.extend(chars)
             text_blob.append(0)  # NUL
@@ -1406,6 +1410,7 @@ TRIG_SUMMON	= 5
 TRIG_UNLOCK	= 6
 TRIG_UNHIDE	= 7
 TRIG_HURT_SM	= 9
+TRIG_TERM	= 10
 TRIG_PURPOSE_MASK	= $0F
 TRIG_GATED_MASK	= $F0
 SW_DEST_DOOR	= 0

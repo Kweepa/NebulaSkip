@@ -42,7 +42,7 @@ init_vic_go
 	sta $d01b				; PRIOR
 	lda #$00
 	sta $d01a				; COLBK
-	lda #HUD_PF2_TOP			; orange hue, lum 0: title and map
+	lda #HUD_PF2_TOP			; purple hue, lum 0: title and map
 	sta $d018				; COLPF2
 	lda #HUD_PF1_TOP
 	sta $d017				; COLPF1 HUD luminance
@@ -77,14 +77,14 @@ dl_top	!byte $70				; 8
 }
 
 ; Enter card. enter_card points dl_top's JMP here for the hold.
-; 12×8 + 4 blanks, plus dl_top's 8, put the 24-line block on the
-; NTSC center. PAL keeps the extra black below.
+; The two text rows are adjacent (one purple block, no stripe gap). 12×8 + 8
+; blanks, plus dl_top's 8, put the 16-line block on the NTSC center.
+; PAL keeps the extra black below.
 enter_dl
 	!byte $70,$70,$70,$70,$70,$70,$70,$70,$70,$70,$70,$70
-	!byte $30
+	!byte $70
 	!byte $42				; mode 2 LMS, "entering"
 	!word HUD_SCR
-	!byte $70				; the blank line
 	!byte $02				; map name, HUD_SCR+40
 	!byte $41				; JVB
 	!word dl_top

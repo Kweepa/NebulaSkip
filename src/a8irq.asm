@@ -12,6 +12,10 @@ stick_bits	!byte 0
 dli_phase	!byte 0
 dli_paper	!byte 0				; seam colours, set by the VBI
 dli_ink		!byte 0
+dli_msg2	!byte 0				; row-4 message hue (COLPF2) / lum (COLPF1), set by the VBI
+dli_msg1	!byte 0
+MSG_CYC_SHIFT	= 3				; frames per step = 1 << n
+msg_cyc		!byte $08,$18,$28,$38,$48,$38,$28,$18
 m_snap		!byte 0				; read_input copy of mouse_turn
 m_snap_h	!byte 0
 m_base		!byte 0				; mouse_turn already consumed
@@ -207,6 +211,8 @@ a8_nmi_out
 	cmp #1
 	beq .nm_msg
 .nm_samp
+	lda term_on
+	bne .nm_term
 	; Mouse sample only (top blank, shells row, bitmap). Top and shells exist with the mouse on.
 	inc dli_phase
 	sta $d40f				; ack
@@ -215,6 +221,21 @@ a8_nmi_out
 	jsr mouse_poll_go
 	pla
 	tax
+	pla
+	rti
+.nm_term
+	; DNA terminal: DLIs after the seam raise PF1 luminance for the cursor row
+	; (odd phase) and drop it again on the next row (even). WSYNC first: the
+	; colour must land before the playfield starts on the new line.
+	sta $d40f				; ack
+	sta $d40a				; WSYNC
+	lda dli_phase
+	inc dli_phase
+	lsr
+	lda #TERM_LUM_N
+	bcc +
+	lda #TERM_LUM_HI
++	sta $d017
 	pla
 	rti
 .nm_stat
@@ -235,10 +256,10 @@ a8_nmi_out
 .nm_msg
 	inc dli_phase
 	sta $d40f
-	lda #HUD_PF2_STAT
+	lda dli_msg2
 	sta $d40a
 	sta $d018
-	lda #HUD_PF1_MSG
+	lda dli_msg1
 	sta $d017
 	txa
 	pha
@@ -362,7 +383,37 @@ suit_col
 	and #$f0
 	ora #$0c
 	sta dli_ink
-	lda #HUD_PF2_TOP			; orange hue, lum 0: title and map
+	lda term_on				; DNA terminal: blue paper (PF1 lum is the
+	beq +					; dli_blood operand, set at terminal entry)
+	lda term_pf2
+	sta dli_ink
++
+	; Row-4 message colour. Mode 2 background is COLPF2 itself, so a hue
+	; other than 1 tints the whole row: cycle only while a message shows.
+	lda msg_on
+	ora status_ms_l
+	ora status_ms_h
+	bne .mc_cyc
+	lda #HUD_PF2_IDLE			; idle row: black background
+	sta dli_msg2
+	lda #HUD_PF1_MSG
+	sta dli_msg1
+	bne .mc_done				; HUD_PF1_MSG != 0
+.mc_cyc
+	lda vbi_count_l
+	!for i, 1, MSG_CYC_SHIFT {
+	lsr
+	}
+	and #7
+	tax
+	lda msg_cyc,x
+	and #$f0
+	sta dli_msg2				; hue
+	lda msg_cyc,x
+	and #$0f
+	sta dli_msg1				; text lum
+.mc_done
+	lda #HUD_PF2_TOP			; purple hue, lum 0: title and map
 	sta $d018
 	lda #HUD_PF1_TOP
 	sta $d017

@@ -1,48 +1,49 @@
 You owe some pretty seedy folks some
 pretty serious bits. Fortunately the
-Outer Nebula Authority just made skip
+Deep Nebula Authority just made skip
 tracing legal. Time to hunt down some
 bounties.
 
 You read over the blip one more time.
 ^
---priority hadron blip // 1040.3--
+--priority hadron blip // 1042.3--
 
-source: outer neb auth // dept of
+source: deep neb auth // dept of
 civic sanitation & maritime order
 
-subject: edict 451-f: unrestricted
+subject: edict 451-f. unrestricted
 fugitive reclamation
 ^
-attention. effective immediately,
-the ona has deregulated fugitive
+attention: effective immediately,
+the dna has deregulated fugitive
 extraction. if a space rogue, pirate,
 or wing commander wannabe has an
 active warrant, their head is now
 public tender.
 
-let's be honest. we don't have the
-brig space and fuel isn't cheap.
-warm deliveries are optional. a
-tissue punch and hi-res dead-scan
-will do.
+let's be frank. we don't have the
+brig space and you don't have the
+hold space. warm deliveries are
+optional. a tissue punch and hi-res
+dead-scan will do.
 ^
 for now operations are running
-through your local ona post.
-stop by to
+through your local dna post.
+stop by to:
 
 - pick up a corkscrew.
-  one end draws the dna tap, the
+  one end bites the meat tap, the
   other reads the carcass print.
   upload your cold voucher for
   instant bits.
-- pull a slip. targets, leads,
-  and risk assessments are all
-  live on the terminal.
+- check bounties.
+  targets, leads, and risk
+  assessments are all live on the
+  terminal.
 ^
-check your seals, watch your back,
+check your o-rings, watch your back,
 and happy hunting.
 
 let's clean this nebula up.
 
---end priority blip // 1040.3--
+--end priority blip // 1042.3--

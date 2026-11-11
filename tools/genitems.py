@@ -522,6 +522,17 @@ def main() -> None:
     uo = [o[2] for o in offs]
     zo = [o[3] for o in offs]
     rot = [item_rotates(meta, k, k in custom) for k in item_keys] + [0] * len(DOOR_MESH_KEY)
+    # Thing cull radius (units, Chebyshev about box+ITEM_BIAS). Worst case over every facing/spin,
+    # so draw_world needs no per-frame yaw maths. Min 1 = the old 2x2 foot box.
+    def s8_abs(v: int) -> int:
+        return abs(v - 256 if v > 127 else v)  # cooked ux/uz are u8-masked
+
+    cr = [
+        max(1, math.ceil(math.hypot(max(map(s8_abs, c["ux"])), max(map(s8_abs, c["uz"]))) / ITEM_POS_Q))
+        if c
+        else 1
+        for c in cooked
+    ]
 
     blob_names = ("ux", "uz", "vy", "xid", "zid", "col", "ea", "eb")
     parts = [
@@ -543,6 +554,8 @@ def main() -> None:
         btable("item_pg", page_of).rstrip(),
         "; 1 = yaw-spins about box+ITEM_BIAS (editor Rotating flag)",
         btable("item_rot", rot).rstrip(),
+        "; thing frustum-cull half-extent in units about box+ITEM_BIAS (th_cull_hit)",
+        btable("item_cr", cr).rstrip(),
         "",
     ]
     for b in blob_names:

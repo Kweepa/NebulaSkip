@@ -30,6 +30,7 @@
 * One placeable **trigger** volume (undrawn AABB; editor shows it dashed / ghosted).
 * Inspector has a **purpose** dropdown, then fields that depend on it. Purposes:
   * **Display message** — one-line HUD text while the player is inside (text field; no tag).
+  * **DNA terminal** — same HUD text as a message; while inside, fire opens the DNA terminal (shop / bounties, from `shop.csv` and `bounties.csv`) instead of shooting (text field; no tag).
   * **End of level** — fires once on entry; no HUD. Level transitions come later.
   * **Hurt player** — 10% health on enter, then every 2 seconds while inside (no tag).
   * **Activate elevator** — destination **tag** targets an elevator; toggles to the other stop on entry if that elevator is idle.

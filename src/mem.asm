@@ -80,30 +80,31 @@ UI_CHARSET	= $F800
 UI_FONT_PAGES	= 8			; 256 glyphs, ASCII-indexed from doomfont.png
 ; 40-col HUD. Seven stored rows; the two gaps are ANTIC $70 blanks
 ; and do not advance the memory scan.
-;  0FFF              Doom64          orange
-;  1          The Slipgate Complex   orange
+;  0FFF              Doom64          purple
+;  1          The Slipgate Complex   purple
 ;    (8 blank lines)
-;  2        B000   Health  Armour        bullets, blue key
-;  3        S000                        shells, yellow key
-;  4        R000    100     000         rockets, red key
+;  2                                    yellow, blue key
+;  3        bits   Health  Shield  gear
+;  4        0042    100     000    fire   red key
 ;    (8 blank lines)
 ;  5                  trigger message   brighter yellow
 ;  6 seam
 HUD_ROW		= 0			; frame ms FFF
 HUD_ROW_TITLE	= 0			; "Doom64" (same row as FFF)
 HUD_ROW_MAP	= 1			; map display name
-HUD_ROW_SHELL	= 2
-HUD_ROW_SHELLS	= 3			; shells
-HUD_ROW_RKT	= 4			; rockets + health / armour values
+HUD_ROW_SHELL	= 2			; yellow / blue keys
+HUD_ROW_SHELLS	= 3			; labels: bits, health, shield, gear
+HUD_ROW_RKT	= 4			; values: bits, health, shield
 HUD_ROW4	= 5			; trigger message
 HUD_ROW_SEAM	= 6
 HUD_ROW2	= HUD_ROW_SHELL		; HUD_POS writes this row
 ; Mode 2 takes hue from PF2 and luminance from PF1. Lum $E is the top.
-HUD_PF2_TOP	= $20			; orange, lum 0 (bar stays black)
+HUD_PF2_TOP	= $62			; purple, background lum 2: title and map
 HUD_PF1_TOP	= $0e
-HUD_PF2_STAT	= $10			; yellow
-HUD_PF1_STAT	= $0d			; one below the message
+HUD_PF2_STAT	= $22			; the old title yellow, background lum 2: status rows
+HUD_PF1_STAT	= $0e
 HUD_PF1_MSG	= $0e
+HUD_PF2_IDLE	= $10			; idle message row: black background
 HUD_COL		= 0
 HUD_OFF		= HUD_ROW * 40 + HUD_COL
 HUD_OFF_TITLE	= HUD_ROW_TITLE * 40 + HUD_COL
@@ -115,14 +116,13 @@ HUD_OFF_RKT	= HUD_ROW_RKT * 40 + HUD_COL
 HUD_OFF3	= HUD_OFF_MAP		; PROFILE vertex counts, on the map line
 HUD_OFF4	= HUD_ROW4 * 40 + HUD_COL
 HUD_TITLE_COL	= 14			; (40 - len "Nebula Skip") / 2
-HUD_ABIL_COL	= 28			; "fire" / "jump" on the rockets row, icon above
-HUD_AMMO_ICON	= 8
-HUD_AMMO_NUM	= 9
+HUD_ABIL_COL	= 28			; "weap" / "jump" on the values row, "gear" above
+HUD_BITS_COL	= 8			; "bits" label (row 3) over its 4 digits (row 4)
 HUD_HP_LABEL	= 13
-HUD_AR_LABEL	= 21
+HUD_AR_LABEL	= 21			; "shield"
 HUD_HP_NUM	= 15
 HUD_AR_NUM	= 22
-HUD_KEY_COL_BLU	= 30			; keycard glyphs, one per ammo row
+HUD_KEY_COL_BLU	= 30			; keycard glyphs: yellow + blue on row 2, red on row 4
 HUD_KEY_COL_YEL	= 29
 HUD_KEY_COL_RED	= 32			; clear of the ability text at cols 28-31
 HUD_CH_SP	= $20			; ASCII space / digits / letters in UI charset
@@ -187,7 +187,43 @@ enter_wait_h	= enter_wait_l + 1
 portb_cur	= enter_wait_h + 1		; PORTB value play wants outside a screen leaf
 stamp_rowbuf	= portb_cur + 1			; STAMP_ROW_MAX: one blitted row, copied out of the bank
 STAMP_ROW_MAX	= 40
-play_bss_free	= stamp_rowbuf + STAMP_ROW_MAX	; up to a8_pal_hue
+; DNA terminal (terminal.asm) state. All of it is initialised in term_init (start).
+BITS_MAX	= 9999			; 4 HUD digits; tools/genterminal.py caps prices the same
+TERM_LUM_N	= $0c			; terminal ink luminance (PF1)
+TERM_LUM_HI	= $0f			; the highlighted row
+TERM_COLS	= 32			; narrow playfield = the 3D viewport width
+T_DESC_RULE	= 10			; list screens: rule row, description rows 11..15
+TERM_ROWS	= 16			; 128 lines
+TERM_DL_LEN	= 13 + 3 + (TERM_ROWS - 1) + 3
+term_row	= stamp_rowbuf + STAMP_ROW_MAX	; one composed row, blitted to TERM_SCR under PORTB_MAIN
+term_dl		= term_row + TERM_COLS		; live DL[0..12] + LMS + rows + JVB (no 1K crossing, asserted)
+term_in		= term_dl + TERM_DL_LEN		; update_triggers: player is inside a terminal volume
+term_arm	= term_in + 1			; 1 = fire was seen released while inside
+term_on		= term_arm + 1			; 1 = terminal DL is up (VBI uses term_pf2)
+term_pf2	= term_on + 1			; paper colour, PAL-corrected at entry
+term_blood_sv	= term_pf2 + 1			; saved dli_blood operand
+term_scr	= term_blood_sv + 1		; 0 main, 1 shop, 2 bounties
+term_sel	= term_scr + 1			; highlighted row on this screen
+term_n		= term_sel + 1			; rows on this screen incl. the return/quit row
+term_old	= term_n + 1			; last input bits (edge detect)
+term_tmp	= term_old + 1			; scratch
+term_tmp2	= term_tmp + 1
+dec5		= term_tmp2 + 1			; 5 ASCII digits from bin16_dec5
+d5_lo		= dec5 + 5
+d5_hi		= d5_lo + 1
+d5_t		= d5_hi + 1
+bits_l		= d5_t + 1			; currency (starts at 42), 16-bit
+bits_h		= bits_l + 1
+bounty_sel	= bits_h + 1			; 0 none, else accepted bounty index + 1
+bounty_map	= bounty_sel + 1		; its map number (1..MAP_NLEVELS)
+shop_owned	= bounty_map + 1		; 16-bit mask, bit N = shop item N bought
+shop_owned_h	= shop_owned + 1
+TERM_BSS_END	= shop_owned_h + 1
+play_bss_free	= TERM_BSS_END			; up to a8_pal_hue
+TERM_SCR	= BMP_B				; 16 x 32 = 512 B of ANTIC text, main RAM under the window
+!if  >term_dl != >(term_dl + TERM_DL_LEN - 1) {
+	!error "term_dl crosses a page (DL must not cross 1K)"
+}
 ; Menu set_video_ms writes this while the boot loader ($0480–boot_end) is still
 ; live. Fixed above that image, below skip_n. GAME loads at $0900 and leaves it.
 ; NTSC never reads it.

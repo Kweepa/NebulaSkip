@@ -37,7 +37,7 @@ QSO_SAVE	= 0
 QSO_VERIFY	= 1
 QSO_RESTORE	= 2
 QSO_MAGIC	= $a5
-QSO_VER		= 2
+QSO_VER		= 3			; 3: bits, bounty and shop fields added to INV
 QSO_HDR		= 9
 QSO_BYTES	= QSAVE_N * 128
 OP_READ		= $52			; same values as the SIO commands qs_sector takes
@@ -572,6 +572,12 @@ qso_tab
 	+qf pu_kind, 0
 	+qf pu_ms_l, 0
 	+qf pu_ms_h, 0
+	+qf bits_l, 0
+	+qf bits_h, 0
+	+qf bounty_sel, 0
+	+qf bounty_map, 0
+	+qf shop_owned, 0
+	+qf shop_owned_h, 0
 	+qf 0, $ff
 qso_wld
 	+qf room_idx, 0

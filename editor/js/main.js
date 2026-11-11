@@ -3402,7 +3402,7 @@ function renderLayoutObjectFields(root, objs) {
         )
       )
     );
-    if (purpose === "message") {
+    if (purpose === "message" || purpose === "terminal") {
       const textCur = unanimous(objs, (o) => o.text || "");
       const row = field(
         "Text",

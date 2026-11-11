@@ -2727,6 +2727,7 @@ trig_arm_tag
 update_triggers
 	lda #0
 	sta trig_seen
+	sta term_in
 	ldy room_idx
 	+lda_my room_trig_o
 	tax
@@ -2771,8 +2772,14 @@ update_triggers
 	jmp .ut_out
 .ut_yok
 	+lda_mx tr_purpose
+	cmp #TRIG_TERM
+	bne .ut_chkmsg
+	sta term_in			; nonzero: nebula.asm term_poll takes fire
+	beq .ut_ismsg			; Z still set from the cmp: always
+.ut_chkmsg
 	cmp #TRIG_MSG
 	bne .ut_nmsg
+.ut_ismsg
 	lda trig_seen
 	ora #2
 	sta trig_seen
@@ -2801,6 +2808,8 @@ update_triggers
 .ut_hold
 	+lda_mx tr_purpose
 	cmp #TRIG_MSG
+	beq .ut_msghold
+	cmp #TRIG_TERM
 	beq .ut_msghold
 	cmp #TRIG_HURT
 	beq .ut_hurt
@@ -2899,6 +2908,8 @@ hurt_amount
 trig_enter
 	+lda_mx tr_purpose
 	cmp #TRIG_MSG
+	beq .te_msg
+	cmp #TRIG_TERM
 	beq .te_msg
 	lda msg_on
 	beq .te_act

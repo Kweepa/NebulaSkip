@@ -69,19 +69,27 @@ init_hud
 	bcc .imap
 .imap_done
 
-	lda #HUD_CH_BULLET
-	sta HUD_SCR + HUD_OFF_SHELL + HUD_AMMO_ICON
-	lda #HUD_CH_SHELL
-	sta HUD_SCR + HUD_OFF_SHELLS + HUD_AMMO_ICON
-	lda #HUD_CH_ROCKET
-	sta HUD_SCR + HUD_OFF_RKT + HUD_AMMO_ICON
+	ldx #0					; bits label over its value, like health / shield
+
+	lda #<HUD_SCR + HUD_OFF_SHELLS + HUD_BITS_COL
+	sta init_ptr
+	lda #>HUD_SCR + HUD_OFF_SHELLS + HUD_BITS_COL
+	sta init_ptr+1
+
+-	lda hud_str_bits,x
+	beq +
+
+	jsr hud_stax
 
 
+	inx
+	bne -
++
 	ldx #0
 
-	lda #<HUD_SCR + HUD_OFF_SHELL + HUD_HP_LABEL
+	lda #<HUD_SCR + HUD_OFF_SHELLS + HUD_HP_LABEL
 	sta init_ptr
-	lda #>HUD_SCR + HUD_OFF_SHELL + HUD_HP_LABEL
+	lda #>HUD_SCR + HUD_OFF_SHELLS + HUD_HP_LABEL
 	sta init_ptr+1
 
 -	lda hud_str_health,x
@@ -95,12 +103,28 @@ init_hud
 +
 	ldx #0
 
-	lda #<HUD_SCR + HUD_OFF_SHELL + HUD_AR_LABEL
+	lda #<HUD_SCR + HUD_OFF_SHELLS + HUD_AR_LABEL
 	sta init_ptr
-	lda #>HUD_SCR + HUD_OFF_SHELL + HUD_AR_LABEL
+	lda #>HUD_SCR + HUD_OFF_SHELLS + HUD_AR_LABEL
 	sta init_ptr+1
 
 -	lda hud_str_armour,x
+	beq +
+
+	jsr hud_stax
+
+
+	inx
+	bne -
++
+	ldx #0					; "gear" over the fire / jump ability
+
+	lda #<HUD_SCR + HUD_OFF_SHELLS + HUD_ABIL_COL
+	sta init_ptr
+	lda #>HUD_SCR + HUD_OFF_SHELLS + HUD_ABIL_COL
+	sta init_ptr+1
+
+-	lda hud_str_gear,x
 	beq +
 
 	jsr hud_stax
@@ -346,28 +370,11 @@ hud_ability
 	sta HUD_SCR + HUD_OFF_RKT + HUD_ABIL_COL + 3
 	rts
 
-; Bullets, shells, rockets + health + armour (+ ability label).
+; Bits + health + shield (+ ability label); ammo is not drawn.
 ; Call on init, spend, backpack, damage — not every frame.
 hud_ammo
 	jsr hud_ability
-	lda #<HUD_SCR + HUD_OFF_SHELL + HUD_AMMO_NUM
-	sta dst_ptr
-	lda #>HUD_SCR + HUD_OFF_SHELL + HUD_AMMO_NUM
-	sta dst_ptr+1
-	lda ammo_bullets
-	jsr .u8_3at
-	lda #<HUD_SCR + HUD_OFF_SHELLS + HUD_AMMO_NUM
-	sta dst_ptr
-	lda #>HUD_SCR + HUD_OFF_SHELLS + HUD_AMMO_NUM
-	sta dst_ptr+1
-	lda ammo_shells
-	jsr .u8_3at
-	lda #<HUD_SCR + HUD_OFF_RKT + HUD_AMMO_NUM
-	sta dst_ptr
-	lda #>HUD_SCR + HUD_OFF_RKT + HUD_AMMO_NUM
-	sta dst_ptr+1
-	lda ammo_rockets
-	jsr .u8_3at
+	jsr hud_bits				; ammo is not shown; its variables and plumbing stay
 	lda #<HUD_SCR + HUD_OFF_RKT + HUD_HP_NUM
 	sta dst_ptr
 	lda #>HUD_SCR + HUD_OFF_RKT + HUD_HP_NUM
@@ -730,7 +737,7 @@ hud_msg_center
 hud_keys
 	lda #HUD_CH_SP
 	sta HUD_SCR + HUD_OFF_SHELL + HUD_KEY_COL_BLU
-	sta HUD_SCR + HUD_OFF_SHELLS + HUD_KEY_COL_YEL
+	sta HUD_SCR + HUD_OFF_SHELL + HUD_KEY_COL_YEL
 	sta HUD_SCR + HUD_OFF_RKT + HUD_KEY_COL_RED
 	lda have_keys
 	and #HAVE_BLUE
@@ -742,7 +749,7 @@ hud_keys
 	and #HAVE_YELLOW
 	beq +
 	lda #HUD_CH_KEY_YEL
-	sta HUD_SCR + HUD_OFF_SHELLS + HUD_KEY_COL_YEL
+	sta HUD_SCR + HUD_OFF_SHELL + HUD_KEY_COL_YEL
 +
 	lda have_keys
 	and #HAVE_RED
@@ -883,6 +890,8 @@ hud_str_remote_req	!text "This door is opened elsewhere",0
 ; ASCII (UI charset), not PETSCII
 hud_str_title	!text "Nebula Skip",0
 hud_str_entering	!text "entering",0
-hud_str_abil	!text "firejump"		; ABIL_* x 4
+hud_str_abil	!text "weapjump"		; ABIL_* x 4
 hud_str_health	!text "health",0
-hud_str_armour	!text "armour",0
+hud_str_armour	!text "shield",0
+hud_str_bits	!text "bits",0
+hud_str_gear	!text "gear",0

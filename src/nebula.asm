@@ -49,6 +49,7 @@ start
 .start_ok
 	jsr play_up1
 	jsr init_weapon
+	jsr term_init				; bits = 42; death / level change keep it
 	jsr play_up2
 	jsr enter_card
 
@@ -95,6 +96,7 @@ main
 	sta draw_buf
 	jsr set_draw_ptrs
 	jsr read_input
+	jsr term_poll				; inside a terminal volume fire opens it, never shoots
 	jsr apply_cheats
 	jsr update_weapon
 	jsr apply_move_world
@@ -167,6 +169,10 @@ mod_splat_spr
 !source "splat_spr.asm"
 mod_enemy_muzzle
 !source "enemy_muzzle.asm"
+mod_terminal_data
+!source "terminal_data.asm"
+mod_terminal_text
+!source "terminal_text.asm"
 static_end = *
 !if static_end > STATIC_END {
 	!error "static data runs into QS_OVL; end=$", static_end
@@ -185,6 +191,8 @@ mod_cheats
 !source "cheats.asm"
 mod_loader
 !source "loader.asm"
+mod_terminal
+!source "terminal.asm"
 
 !source "a8tabs.asm"
 !source "a8reboot.asm"

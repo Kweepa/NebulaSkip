@@ -2,9 +2,8 @@
 ; credits.txt / readthis.txt / ending.txt pages split on lines that are only '^'
 
 control_text
-	!scr "^Joystick...^ Move and use ability.",0
-	!scr "^12345......^ Change weapon",0
-	!scr "^Space......^ Cycle ability",0
+	!scr "^Joystick...^ Move and use gear",0
+	!scr "^Space......^ Cycle gear",0
 	!scr "^Shift-S....^ Quick save",0
 	!scr "^Shift-L....^ Quick load",0
 	!scr " ",0
@@ -31,7 +30,7 @@ credits1_text
 	!scr " ",0
 	!scr "Thanks y'all!",0
 	!scr " ",0
-	!scr "Nebula Skip v1.0, built 10 Nov 2026",0
+	!scr "Nebula Skip v1.0, built 11 Nov 2026",0
 	!byte 0
 
 credits_lo
@@ -44,7 +43,7 @@ READTHIS_PAGES = 5
 readthis1_text
 	!scr "You owe some pretty seedy folks some",0
 	!scr "pretty serious bits. Fortunately the",0
-	!scr "Outer Nebula Authority just made skip",0
+	!scr "Deep Nebula Authority just made skip",0
 	!scr "tracing legal. Time to hunt down some",0
 	!scr "bounties.",0
 	!scr " ",0
@@ -52,52 +51,53 @@ readthis1_text
 	!byte 0
 
 readthis2_text
-	!scr "--priority hadron blip // 1040.3--",0
+	!scr "--priority hadron blip // 1042.3--",0
 	!scr " ",0
-	!scr "source: outer neb auth // dept of",0
+	!scr "source: deep neb auth // dept of",0
 	!scr "civic sanitation & maritime order",0
 	!scr " ",0
-	!scr "subject: edict 451-f: unrestricted",0
+	!scr "subject: edict 451-f. unrestricted",0
 	!scr "fugitive reclamation",0
 	!byte 0
 
 readthis3_text
-	!scr "attention. effective immediately,",0
-	!scr "the ona has deregulated fugitive",0
+	!scr "attention: effective immediately,",0
+	!scr "the dna has deregulated fugitive",0
 	!scr "extraction. if a space rogue, pirate,",0
 	!scr "or wing commander wannabe has an",0
 	!scr "active warrant, their head is now",0
 	!scr "public tender.",0
 	!scr " ",0
-	!scr "let's be honest. we don't have the",0
-	!scr "brig space and fuel isn't cheap.",0
-	!scr "warm deliveries are optional. a",0
-	!scr "tissue punch and hi-res dead-scan",0
-	!scr "will do.",0
+	!scr "let's be frank. we don't have the",0
+	!scr "brig space and you don't have the",0
+	!scr "hold space. warm deliveries are",0
+	!scr "optional. a tissue punch and hi-res",0
+	!scr "dead-scan will do.",0
 	!byte 0
 
 readthis4_text
 	!scr "for now operations are running",0
-	!scr "through your local ona post.",0
-	!scr "stop by to",0
+	!scr "through your local dna post.",0
+	!scr "stop by to:",0
 	!scr " ",0
 	!scr "- pick up a corkscrew.",0
-	!scr "  one end draws the dna tap, the",0
+	!scr "  one end bites the meat tap, the",0
 	!scr "  other reads the carcass print.",0
 	!scr "  upload your cold voucher for",0
 	!scr "  instant bits.",0
-	!scr "- pull a slip. targets, leads,",0
-	!scr "  and risk assessments are all",0
-	!scr "  live on the terminal.",0
+	!scr "- check bounties.",0
+	!scr "  targets, leads, and risk",0
+	!scr "  assessments are all live on the",0
+	!scr "  terminal.",0
 	!byte 0
 
 readthis5_text
-	!scr "check your seals, watch your back,",0
+	!scr "check your o-rings, watch your back,",0
 	!scr "and happy hunting.",0
 	!scr " ",0
 	!scr "let's clean this nebula up.",0
 	!scr " ",0
-	!scr "--end priority blip // 1040.3--",0
+	!scr "--end priority blip // 1042.3--",0
 	!byte 0
 
 readthis_lo

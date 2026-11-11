@@ -389,6 +389,18 @@ def steps(exe: str) -> list[Step]:
             also_stale=credits_date_stale,
         ),
         Step(
+            "genterminal",
+            lambda: [
+                TOOLS / "genterminal.py",
+                ROOT / "terminal.txt",
+                ROOT / "shop.csv",
+                ROOT / "bounties.csv",
+                SRC / "map_counts.asm",
+            ],
+            lambda: [SRC / "terminal_data.asm"],
+            lambda: tool("genterminal.py"),
+        ),
+        Step(
             "gen_menu_title",
             lambda: [TOOLS / "gen_menu_title.py", ROOT / "ui" / "NEBULASKIPlogo.png"],
             lambda: [SRC / "menu_title.asm"],

@@ -365,9 +365,10 @@ export function usesLinkTag(kind) {
 }
 
 /** Trigger purposes. Tag is used for elevator / summon / unlock / unhide. */
-export const TRIGGER_PURPOSES = ["message", "end_level", "hurt", "hurt_small", "elevator", "summon", "unlock", "unhide", "spawn"];
+export const TRIGGER_PURPOSES = ["message", "end_level", "hurt", "hurt_small", "elevator", "summon", "unlock", "unhide", "spawn", "terminal"];
 export const TRIGGER_PURPOSE_LABELS = {
   message: "Display message",
+  terminal: "DNA terminal",
   end_level: "End of level",
   hurt: "Large hurt",
   hurt_small: "Small hurt",
@@ -3233,7 +3234,10 @@ export function mapStats(doc) {
         c64Bytes += nx + nz + g.verts.length * 4 + g.edges.length * 3;
       }
     }
-    if (kind === "trigger" && clampTriggerPurpose(obj.purpose) === "message") {
+    if (
+      kind === "trigger" &&
+      (clampTriggerPurpose(obj.purpose) === "message" || clampTriggerPurpose(obj.purpose) === "terminal")
+    ) {
       const text = String(obj.text || "")
         .replace(/\r\n/g, "\n")
         .split("\n", 1)[0]

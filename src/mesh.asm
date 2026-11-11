@@ -1515,11 +1515,10 @@ draw_world
 	sta box_y
 	+lda_mx th_z
 	sta box_z
-	jsr set_th_foot_box
 	+lda_mx th_ori
 	cmp #$40
-	bcs .dw_bpd				; scaled (bits 6-7): the 2x2 foot box no longer bounds it, so skip the cull
-	jsr frustum_hits
+	bcs .dw_bpd				; scaled (bits 6-7): the per-slot box no longer bounds it, so skip the cull
+	jsr th_cull_hit			; frustum_hits on the item_cr box; box_x/z stay the draw position
 	bcc .dw_bpr
 .dw_bpd
 	jsr draw_thing_mesh

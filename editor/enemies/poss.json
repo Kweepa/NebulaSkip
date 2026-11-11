@@ -3119,7 +3119,7 @@
   "weaponVert": 12,
   "hp": 20,
   "painChance": 160,
-  "blockR": 1,
+  "blockR": 2,
   "exportClips": [
     "stand",
     "walk",

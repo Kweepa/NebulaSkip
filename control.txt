@@ -1,6 +1,5 @@
-^Joystick...^ Move and use ability.
-^12345......^ Change weapon
-^Space......^ Cycle ability
+^Joystick...^ Move and use gear
+^Space......^ Cycle gear
 ^Shift-S....^ Quick save
 ^Shift-L....^ Quick load
 
