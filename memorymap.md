@@ -39,7 +39,7 @@ Segment A/B/C/D slack is printed by `build-report.json` (`game.segments`); ACME
 
 | Range | Use |
 | :--- | :--- |
-| `$4000-$5DFF` | Heap (`DYN_BASE`..`HEAP_LIM`), 7680 B: packed map + prefix, then up to two fused enemy banks, relocated as before. E1M5 is the tightest (~1.1K spare). |
+| `$4000-$5DFF` | Heap (`DYN_BASE`..`HEAP_LIM`), 7680 B: packed map + prefix, then up to two fused enemy banks, relocated as before. Check `tools/checkheap.py` for the tightest map. |
 | `$5E00-$6A95` | Code zone (`CODE0_BASE`..`CODE0_END`=`STATIC_BASE`, 3392 B, 170 B spare): weapon, process, elevator, cheats_apply. Main-loop-only code: runs with `PORTB_PLAY`, no trampolines. |
 | `$6B40-$72F6` | `STATIC_BASE`: weapon sprites, splat, enemy muzzle (1546 B spare below `QS_OVL`). Item/door meshes moved to segment A (`item_mesh.asm`, 1503 B, paged by `tools/genitems.py`). |
 | `$7900-$7FB8` | `QS_OVL`: QSAVE overlay (code 1079 B + 640 B payload buffer), called in place |
@@ -158,7 +158,7 @@ Macros-only (no bytes): `mem.asm`, `zp.asm`, `map_counts.asm`, `mapacc.asm`, `ma
 
 ### Heap `$9712`–`$C000`
 
-Grows down from `SCR_A`. `LoadLevel` one-shots each E1Mn (4-byte header +
+Grows down from `SCR_A`. `LoadLevel` one-shots each map (4-byte header +
 PIC overlay + reloc dest words + packed map). `bind_map` copies the 23-byte
 header and name, SMC-`jsr`s the overlay (`bind_apply` then `patch_map_smc`),
 then `heap_top = map_base` dumps the prefix. At most `ROOM_MAX_TYPES` (2)
@@ -175,15 +175,9 @@ Current gate (`build-report.json`, avail 6975, `LEVEL_PREFIX` 2239):
 
 | Level | Map | Worst room | Need | Slack |
 | :--- | ---: | :--- | ---: | ---: |
-| E1M1 | 2023 | 1965 (room 5: imp) | 4262 | 2713 |
-| E1M2 | 3900 | 1965 (room 2: imp) | 6139 | 836 |
-| E1M3 | 3465 | 1965 (room 9: imp) | 5704 | 1271 |
-| E1M4 | 2182 | 1800 (room 1: baron) | 4421 | 2554 |
-| E1M5 | 3351 | 1800 (room 0: baron) | 5590 | 1385 |
-| E1M6 | 2284 | 1965 (room 8: imp) | 4523 | 2452 |
-| E1M7 | 718 | 0 (no enemies) | 2957 | 4018 |
+| MAPA | 2023 | 1965 (room 5: imp) | 4262 | 2713 |
 
-E1M2 is the tightest.
+(Figures are from the old E1M1; rerun `tools/build.py` for current numbers.)
 Caps: `MAP_MAX_BYTES` 4096, pose payload 4096, fused bank 8192.
 
 ## VIC Bank 3 overview

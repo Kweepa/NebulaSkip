@@ -8,7 +8,7 @@ Runtime lessons. Prefer these over re-deriving the same dead ends.
 
 ## Door / room floor alignment
 
-Door verts are one coplanar face (constant X or Z), not an 8-corner box. The BL–TR triangle split is correct. On E1M1 start the door BL sits on room edge 2–3 (far floor, `y=104`, `z=123`). A visible gap there is a **projection/clip** bug, not a mesh bug.
+Door verts are one coplanar face (constant X or Z), not an 8-corner box. The BL–TR triangle split is correct. On MAPA start the door BL sits on room edge 2–3 (far floor, `y=104`, `z=123`). A visible gap there is a **projection/clip** bug, not a mesh bug.
 
 **Do not** lerp door verts onto the room’s face corners in view or screen space. That needs a perspective-correct parameter, and doors are not always on a wall edge.
 

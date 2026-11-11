@@ -2,7 +2,7 @@
 """Simulate LoadLevel heap vs GAME size; fail the build if a map cannot load.
 
 Heap grows down from HEAP_LIM ($BC00 on the Atari, SCR_A on the C64).
-LoadLevel: one E1Mn (prefix overlay+reloc, then packed map), dump prefix
+LoadLevel: one map (prefix overlay+reloc, then packed map), dump prefix
 (heap_top = map_base), then pose banks. heap_alloc fails when new top
 <= end_game, so need must be strictly less than HEAP_LIM - end_game.
 
@@ -24,6 +24,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import mapnames
 from mkreloc import parse_labels, parse_mem_const
 from perroom import ROOM_MAX_TYPES, packed_payload, per_room_types
 
@@ -34,7 +35,6 @@ ENEMY_DIR = ROOT / "enemies"
 ENEMY_SIZES = ROOT / "src" / "enemy_sizes.asm"
 PREFIX_ASM = ROOT / "src" / "level_prefix.asm"
 
-LEVEL_NAMES = [f"E1M{i}" for i in range(1, 9)]
 DOS_NAME = ["poss", "baron", "pinky", "imp"]
 ENEMY_NTYPES = len(DOS_NAME)
 
@@ -88,8 +88,9 @@ def enemy_sizes() -> list[int]:
 def level_room_names() -> dict[str, list[str]]:
     """Room names in packed-index order. Blank when the editor left the room unnamed."""
     out: dict[str, list[str]] = {}
-    for key in LEVEL_NAMES:
-        path = EDITOR_MAPS / f"{key.lower()}.json"
+    for letter in mapnames.map_letters():
+        key = mapnames.key(letter)
+        path = mapnames.json_path(letter)
         if not path.is_file():
             raise SystemExit(f"missing {path}")
         level = json.loads(path.read_text(encoding="utf-8"))
@@ -168,8 +169,9 @@ def heap_report(labels_path: Path | str) -> tuple[dict, bool]:
         "enemy_sizes": {DOS_NAME[i]: poses[i] for i in range(ENEMY_NTYPES)},
         "levels": {},
     }
-    for key in LEVEL_NAMES:
-        prg = MAP_DIR / f"{key.lower()}.prg"
+    for letter in mapnames.map_letters():
+        key = mapnames.key(letter)
+        prg = mapnames.prg_path(letter)
         if not prg.is_file() or prg.stat().st_size <= 2:
             continue
         payload = prg_payload(prg)

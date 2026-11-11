@@ -7,7 +7,7 @@
 
 ; Filenames are 0-terminated.
 level_dos_name
-	!text "E1M1"
+	!text "MAPA"
 	!byte 0
 
 en_name_lo
@@ -23,17 +23,17 @@ en_n2	!text "PINKY"
 en_n3	!text "IMP"
 	!byte 0
 
-; E1MN from level_num (1..8).
+; MAP<letter> from level_num (1..MAP_NLEVELS -> A..).
 FormatDosName
-	lda #'E'
-	sta level_dos_name
-	lda #'1'
-	sta level_dos_name + 1
 	lda #'M'
+	sta level_dos_name
+	lda #'A'
+	sta level_dos_name + 1
+	lda #'P'
 	sta level_dos_name + 2
 	lda level_num
 	clc
-	adc #'0'
+	adc #'A' - 1
 	sta level_dos_name + 3
 	rts
 
@@ -119,7 +119,7 @@ heap_alloc
 	sec
 	rts
 
-; LoadLevel — blank + one E1Mn load (prefix overlay+reloc, then packed map).
+; LoadLevel — blank + one map load (prefix overlay+reloc, then packed map).
 ; Heap grows down from SCR_A. Prefix is bind/patch overlay + dest words;
 ; bind_map header/name, SMC-jsr overlay, heap_top = map_base (dump prefix).
 ; load_in_play=0: cold. =1: in-play. C=0 ok, C=1 error. Caller re-inits VIC/IRQ.
@@ -138,7 +138,7 @@ LoadLevel
 
 	jsr FormatDosName
 	ldx level_num
-	dex					; 0..7
+	dex					; 0..MAP_NLEVELS-1
 	cpx #MAP_NLEVELS
 	bcs .ll_fail
 	lda map_size_lo,x

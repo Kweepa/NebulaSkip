@@ -83,6 +83,8 @@ import {
   normalizeDocument,
   uid,
   LEVEL_NAMES,
+  MAX_LEVELS,
+  addLevel,
   activeMap,
   mapStats,
   formatMapStats,
@@ -781,7 +783,7 @@ function markUi() {
   schedulePersistEditor();
 }
 
-/** Per-map layout cameras (E1M1 …). */
+/** Per-map layout cameras (MAPA …). */
 let layoutCamerasByLevel = {};
 
 function snapshotLayoutCamera() {
@@ -1846,6 +1848,16 @@ function switchLevel(name) {
   setStatus(name);
 }
 
+function addLevelAndSwitch() {
+  if (LEVEL_NAMES.length >= MAX_LEVELS) return;
+  pushUndo();
+  const name = addLevel(doc);
+  if (!name) return;
+  markDirty();
+  switchLevel(name);
+  setStatus(`Added ${name}`);
+}
+
 function updateCenterChrome() {
   const titleEl = document.getElementById("center-title");
   const statsEl = document.getElementById("map-stats");
@@ -1913,6 +1925,17 @@ function renderLevelList() {
     if (name === doc.activeLevel) btn.classList.add("active");
     if (mapMatchesLayoutSearch(map, terms)) btn.classList.add("search-hit");
     btn.addEventListener("click", () => switchLevel(name));
+    li.appendChild(btn);
+    ul.appendChild(li);
+  }
+  if (LEVEL_NAMES.length < MAX_LEVELS) {
+    const li = document.createElement("li");
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "level-add";
+    btn.textContent = "+";
+    btn.title = "Add a map";
+    btn.addEventListener("click", addLevelAndSwitch);
     li.appendChild(btn);
     ul.appendChild(li);
   }

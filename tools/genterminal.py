@@ -2,7 +2,7 @@
 """shop.csv + bounties.csv -> src/terminal_data.asm (DNA terminal text).
 
 shop.csv      name, description, price           (no header)
-bounties.csv  name, description, difficulty, map (no header; map is mapN / e1mN)
+bounties.csv  name, description, difficulty, map (no header; map is mapa..mapz)
 
 Descriptions are word-wrapped here to <= DESC_LINES lines of DESC_COLS chars
 and stored as NUL-terminated lines followed by an empty line, so the runtime
@@ -45,7 +45,7 @@ def map_levels():
             return int(m.group(1))
     except OSError:
         pass
-    return 8
+    return 1
 
 
 def rows(path, ncols):
@@ -150,13 +150,14 @@ def main():
         d = DIFF_ALIAS.get(diff.lower(), diff.lower())
         if d not in DIFFS:
             die(f"bounties.csv line {n}: difficulty {diff!r} must be one of {DIFFS}")
-        m = re.fullmatch(r"(?:map|e1m)(\d+)", mp.lower())
-        if not m or not 1 <= int(m.group(1)) <= nlev:
-            die(f"bounties.csv line {n}: map {mp!r} must be map1..map{nlev}")
+        m = re.fullmatch(r"map([a-z])", mp.lower())
+        idx = ord(m.group(1)) - ord("a") + 1 if m else 0
+        if not 1 <= idx <= nlev:
+            die(f"bounties.csv line {n}: map {mp!r} must be mapa..map{chr(ord('a') + nlev - 1)}")
         names.append(f"btn{i}")
         descs.append(f"btd{i}")
         diffs.append(DIFFS.index(d) * DIFF_W)
-        maps.append(int(m.group(1)))
+        maps.append(idx)
         body.append(f"btn{i}\n" + asm_str(name) + f"btd{i}\n" + desc_block(BOUNTIES, n, desc))
     p.append("".join(body))
     p.append(table("bty_name", names))

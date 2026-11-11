@@ -21,6 +21,9 @@ import sys
 from datetime import date
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import mapnames
+
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 TOOLS = ROOT / "tools"
@@ -29,7 +32,6 @@ MAPS = ROOT / "maps"
 STAMPS = ROOT / "build" / "stamps"
 
 DOS = ["poss", "baron", "pinky", "imp"]
-DISK_MAPS = [f"e1m{i}" for i in range(1, 9)]
 
 SOURCE_RE = re.compile(
     r'(?m)^[ \t]*!(?:source|src|binary|bin)\s+"([^"]+)"'
@@ -217,7 +219,7 @@ def enemy_json() -> list[Path]:
 
 def map_json() -> list[Path]:
     folder = ROOT / "editor" / "maps"
-    return [folder, *(folder / f"e1m{i}.json" for i in range(1, 9))]
+    return [folder, *(mapnames.json_path(l) for l in mapnames.all_letters())]
 
 
 def weapon_pngs() -> list[Path]:
@@ -250,7 +252,7 @@ def ai_sources(name: str) -> list[Path]:
 
 
 def map_prgs() -> list[Path]:
-    return [MAPS / f"{name}.prg" for name in DISK_MAPS]
+    return [mapnames.prg_path(l) for l in mapnames.map_letters()]
 
 
 def enemy_prgs() -> list[Path]:
@@ -413,10 +415,10 @@ def steps(exe: str) -> list[Step]:
             lambda: tool("gen_drive_cursor.py"),
         ),
         Step(
-            "genpokey",
-            lambda: [TOOLS / "genpokey.py", ROOT / "ref" / "At_Dooms_Gate_E1M1.sid"],
-            lambda: [ROOT / "music" / "at_dooms_gate.asm"],
-            lambda: tool("genpokey.py"),
+            "genmenutune",
+            lambda: [TOOLS / "genmenutune.py", TOOLS / "genpokey.py"],
+            lambda: [ROOT / "music" / "menu_tunes.asm"],
+            lambda: tool("genmenutune.py"),
         ),
         Step(
             "acme enemy_data_blob.asm",

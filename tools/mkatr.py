@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import math
 import re
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import mapnames
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "nebula.atr"
@@ -35,7 +39,7 @@ FILES = [
     ("BANK1", None, None),
     ("BANK0", None, None),
     ("MENU", ROOT / "menu.prg", None),
-] + [(f"E1M{i}", ROOT / "maps" / f"e1m{i}.prg", None) for i in range(1, 9)] + [
+] + [(mapnames.key(l), mapnames.prg_path(l), None) for l in mapnames.map_letters()] + [
     ("POSS", ROOT / "enemies" / "poss.prg", None),
     ("BARON", ROOT / "enemies" / "baron.prg", None),
     ("PINKY", ROOT / "enemies" / "pinky.prg", None),

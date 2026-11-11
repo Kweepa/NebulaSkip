@@ -96,7 +96,7 @@ bty_desc_hi
 bty_diff	; offset into bty_diff_str
 	!byte 0,6
 bty_map
-	!byte 1,3
+	!byte 1,1
 bty_diff_str
 	!text "low   "
 	!text "medium"

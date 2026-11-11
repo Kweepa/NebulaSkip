@@ -100,6 +100,7 @@ run_menu
 
 	jsr copy_menu_sprites
 !if  JUKEBOX {
+	jsr music_pick
 	jsr sync_juke_title
 }
 	jsr menu_sfx_init
@@ -508,37 +509,12 @@ draw_menu
 	bcc .dm_l
 
 	jsr draw_hint
-!if  JUKEBOX {
-	jsr draw_track_credit
-}
 	lda #1
 	sta cursor_spr_en
 
 	jsr a8_stamp_cursor
 
 	jmp menu_unblank
-
-; Jukebox only: "Tracks by Mandy Kane" one blank row under the option box.
-draw_track_credit
-	lda menu_id
-	cmp #3
-	beq .dtc
-	rts
-.dtc
-	lda #COL_MAIN
-	sta cell_bg
-	lda #TEXT_COL
-	sta ui_text_col
-	lda box_top
-	clc
-	adc menu_size
-	adc #BOX_VGAP
-	adc #BOX_VGAP
-	adc #1
-	tax
-	lda #<str_track_credit
-	ldy #>str_track_credit
-	jmp print_centered
 
 ; Title two lines above the box. Empty string (main menu) = no heading.
 draw_section_title
@@ -1590,7 +1566,7 @@ menu_mux_phase	!byte 0
 menu_raster_en	!byte 0
 music_en	!byte 0
 music_ok	!byte 0				; 1 = MUSn resident at $9000
-music_track	!byte 0				; 0..2 playing / selected
+music_track	!byte 0				; 0..MUSIC_TRACKS-1 playing / selected
 music_zp	!fill MUSIC_ZP_N, 0		; player's $f0-$f7 while the menu owns ZP
 hint_spr_x	!byte 0, 0, 0
 cursor_col	!byte 0
@@ -1639,7 +1615,6 @@ glyph_w_tab	!fill 96, 0
 glyph_lj	!fill 768, 0			; lead-justified copies of MENU_FONT
 ft_sink		!fill 8, 0			; dummy right-cell when col=39
 
-str_track_credit !scr "Tracks by Mandy Kane",0
 str_hint_move	!scr "move",0
 str_hint_adjust	!scr "adjust",0
 str_hint_select	!scr "select",0
@@ -1651,9 +1626,6 @@ str_read_this	!scr "Read this!",0
 str_credits	!scr "Credits",0
 str_quit	!scr "Quit",0
 str_back	!scr "Back",0
-str_trk1	!scr "Searching for Doom",0
-str_trk2	!scr "Through the Slipgate",0
-str_trk3	!scr "Realms of Chthon",0
 str_fx_vol	!scr "Audio volume 15",0
 
 str_mouse	!scr "Mouse (port 2) "
@@ -1666,9 +1638,7 @@ str_spacebast	!scr "Space Bastard",0
 str_sec_main	!byte 0				; main: logo only, no heading
 str_sec_skill	!scr "Skill Level",0
 str_sec_sound	!scr "Options",0
-str_now1	!scr "Now playing: Searching for Doom",0
-str_now2	!scr "Now playing: Through the Slipgate",0
-str_now3	!scr "Now playing: Realms of Chthon",0
+; str_trkN / str_nowN / juke_now_lo/hi: music/menu_tunes.asm (genmenutune.py)
 
 section_lo
 	!byte <str_sec_main, <str_sec_skill, <str_sec_sound, <str_now1
@@ -1713,6 +1683,9 @@ menu_str_hi
 
 !source "a8menuhw.asm"
 !source "a8music.asm"
+!if  JUKEBOX & (MUSIC_TRACKS != 3) {
+	!error "jukebox menu rows (next_menu / menu_str / menu_sizes) assume 3 tracks"
+}
 
 
 end_menu = *

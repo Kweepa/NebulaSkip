@@ -262,8 +262,8 @@ nv_clip
 	!fill 2, 0
 }
 
-; The heap is bank 0 [DYN_BASE, HEAP_LIM): no GAME code lives there. E1M1 map is 2373.
+; The heap is bank 0 [DYN_BASE, HEAP_LIM): no GAME code lives there. MAPA is 2373.
 !if  DYN_BASE + LEVEL_PREFIX + 2373 >= HEAP_LIM {
-	!error "bank 0 heap too small for e1m1"
+	!error "bank 0 heap too small for mapa"
 }
 

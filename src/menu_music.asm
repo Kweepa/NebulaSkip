@@ -1,18 +1,27 @@
-; Jukebox track switch. The menu ships one embedded POKEY tune (a8music.asm).
-; JUKEBOX=0, so the switch below is not assembled.
+; Jukebox. All tracks are embedded in the menu (music/menu_tunes.asm, played by
+; a8music.asm); switching is a player restart, no disk access.
 
 !zone menu_music
 
-; Atari: the one tune is embedded in the menu and played by a8music.asm.
-
-
-; Jukebox is off by default (JUKEBOX in build_flags.asm). Nothing below is
-; reachable from the menu while it is 0.
 !if  JUKEBOX {
-; A = track 0..2, menu IRQs live. Silences, reloads, restarts, repaints.
+; run_menu, before menu_sfx_init: random track on entry (POKEY RANDOM).
+music_pick
+	lda $d20a
+.mp_mod
+	cmp #MUSIC_TRACKS
+	bcc .mp_ok
+	sbc #MUSIC_TRACKS			; C already set
+	bcs .mp_mod
+.mp_ok
+	sta music_track
+	rts
+
+; A = track 0..MUSIC_TRACKS-1, menu VBI live. Silences, restarts, repaints.
 jukebox_select
 	sta music_track
-
+	jsr a8_music_stop
+	lda music_track
+	jsr a8_music_start
 	jsr sync_juke_title
 	jmp draw_menu
 
@@ -24,9 +33,4 @@ sync_juke_title
 	lda juke_now_hi,x
 	sta section_hi + 3
 	rts
-
-juke_now_lo	!byte <str_now1, <str_now2, <str_now3
-juke_now_hi	!byte >str_now1, >str_now2, >str_now3
 }
-
-

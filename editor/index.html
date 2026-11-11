@@ -907,6 +907,11 @@ button:disabled {
   min-height: 0;
 }
 
+.level-list button.level-add {
+  text-align: center;
+  font-weight: 600;
+}
+
 .panel .muted,
 .muted {
   color: var(--muted);
@@ -5891,7 +5896,41 @@ function applyBackpackProportions(obj) {
   return obj;
 }
 
-const LEVEL_NAMES = ["E1M1", "E1M2", "E1M3", "E1M4", "E1M5", "E1M6", "E1M7", "E1M8"];
+/**
+ * Map keys in play order: MAPA, MAPB, ... Mutated in place (importers hold the array):
+ * the doc owns which maps exist, so normalizeDocument / createDefaultDocument / addLevel
+ * keep this in step with doc.maps. Always at least MAPA.
+ */
+const LEVEL_NAMES = ["MAPA"];
+const MAX_LEVELS = 26;
+const LEVEL_KEY = /^MAP([A-Z])$/;
+
+function levelKeyAt(i) {
+  return `MAP${String.fromCharCode(65 + i)}`;
+}
+
+/** Legacy E1M1 (the first map before the MAPA rename) → MAPA; anything else unchanged. */
+function migrateLevelKey(name) {
+  return name === "E1M1" ? "MAPA" : name;
+}
+
+/** LEVEL_NAMES = the contiguous run MAPA.. present in `maps` (at least MAPA). */
+function syncLevelNames(maps) {
+  let n = 1;
+  while (n < MAX_LEVELS && maps && maps[levelKeyAt(n)]) n++;
+  LEVEL_NAMES.length = 0;
+  for (let i = 0; i < n; i++) LEVEL_NAMES.push(levelKeyAt(i));
+}
+
+/** Append the next map (empty). Returns its key, or null at MAX_LEVELS. */
+function addLevel(doc) {
+  if (LEVEL_NAMES.length >= MAX_LEVELS) return null;
+  const name = levelKeyAt(LEVEL_NAMES.length);
+  if (!doc.maps) doc.maps = {};
+  doc.maps[name] = emptyMap();
+  LEVEL_NAMES.push(name);
+  return name;
+}
 
 function clipForFrame(clips, index) {
   const list = Array.isArray(clips) ? clips : [];
@@ -8449,14 +8488,14 @@ function parseEditorState(raw) {
   d.layoutCameras = {};
   if (raw.layoutCameras && typeof raw.layoutCameras === "object") {
     for (const name of LEVEL_NAMES) {
-      if (raw.layoutCameras[name]) {
-        d.layoutCameras[name] = parseLayoutCamera(raw.layoutCameras[name], d.layoutCamera);
-      }
+      const cam = raw.layoutCameras[name] || (name === "MAPA" ? raw.layoutCameras.E1M1 : null);
+      if (cam) d.layoutCameras[name] = parseLayoutCamera(cam, d.layoutCamera);
     }
   }
+  const rawActive = migrateLevelKey(raw.activeLevel);
   const camLevel =
-    typeof raw.activeLevel === "string" && LEVEL_NAMES.includes(raw.activeLevel)
-      ? raw.activeLevel
+    typeof rawActive === "string" && LEVEL_NAMES.includes(rawActive)
+      ? rawActive
       : d.activeLevel || LEVEL_NAMES[0];
   if (raw.layoutCamera && !d.layoutCameras[camLevel]) {
     d.layoutCameras[camLevel] = { ...d.layoutCamera };
@@ -8481,8 +8520,8 @@ function parseEditorState(raw) {
     d.orthoMode = raw.orthoMode;
   }
   if (Array.isArray(raw.collapsedRooms)) d.collapsedRooms = raw.collapsedRooms.map(String);
-  if (typeof raw.activeLevel === "string" && LEVEL_NAMES.includes(raw.activeLevel)) {
-    d.activeLevel = raw.activeLevel;
+  if (typeof rawActive === "string" && LEVEL_NAMES.includes(rawActive)) {
+    d.activeLevel = rawActive;
   } else {
     d.activeLevel = null;
   }
@@ -8516,12 +8555,11 @@ function gameDocument(doc) {
 function createDefaultDocument() {
   setCustomItemNames([]);
   syncItemRegistry({});
-  const maps = {};
-  for (const name of LEVEL_NAMES) maps[name] = emptyMap();
-  maps.E1M1 = { name: "Slipgate Complex", objects: starterObjects() };
+  const maps = { MAPA: { name: "Slipgate Complex", objects: starterObjects() } };
+  syncLevelNames(maps);
   return {
     version: DOC_VERSION,
-    activeLevel: "E1M1",
+    activeLevel: "MAPA",
     maps,
     enemies: createAllCreatures(),
     weapons: defaultWeapons(),
@@ -8580,8 +8618,13 @@ function normalizeDocument(raw) {
   const itemMetaParsed = parseItemMetaMap(raw.itemMeta, customItems);
   syncItemRegistry(itemMetaParsed);
   if (raw.maps && typeof raw.maps === "object") {
+    // Pre-rename docs keyed the first map E1M1.
+    const rawMaps = { ...raw.maps };
+    if (rawMaps.E1M1 && !rawMaps.MAPA) rawMaps.MAPA = rawMaps.E1M1;
+    syncLevelNames(rawMaps);
+    doc.maps = {};
     for (const name of LEVEL_NAMES) {
-      const src = raw.maps[name] || {};
+      const src = rawMaps[name] || {};
       doc.maps[name] = {
         name: clampName(src.name),
         enterVerb: clampVerb(src.enterVerb),
@@ -8591,7 +8634,7 @@ function normalizeDocument(raw) {
       };
     }
   } else {
-    doc.maps.E1M1 = {
+    doc.maps.MAPA = {
       name: clampName(raw.map?.name),
       enterVerb: clampVerb(raw.map?.enterVerb),
       jumpSpeed: clampJumpSpeed(raw.map?.jumpSpeed),
@@ -8599,7 +8642,8 @@ function normalizeDocument(raw) {
       objects: parseObjects(raw.map?.objects || raw.objects),
     };
   }
-  doc.activeLevel = LEVEL_NAMES.includes(raw.activeLevel) ? raw.activeLevel : "E1M1";
+  const rawLevel = migrateLevelKey(raw.activeLevel);
+  doc.activeLevel = LEVEL_NAMES.includes(rawLevel) ? rawLevel : "MAPA";
   doc.enemies = [];
   const stale = !raw.version || raw.version < 2;
   if (stale) {
@@ -9331,7 +9375,7 @@ async function writeEnemyFiles(records) {
   }
 }
 
-const MAP_FILE_KEYS = ["e1m1", "e1m2", "e1m3", "e1m4", "e1m5", "e1m6", "e1m7", "e1m8"];
+const MAP_FILE_RE = /^map([a-z])\.json$/i;
 
 async function mapDir(create) {
   if (!projectDirHandle) return null;
@@ -9339,7 +9383,7 @@ async function mapDir(create) {
   return editor.getDirectoryHandle("maps", create ? { create: true } : undefined);
 }
 
-/** Per-map records keyed by E1M1..E1M8. Null when editor/maps is not there yet. */
+/** Per-map records keyed by MAPA, MAPB, ... Null when editor/maps has none yet. */
 async function readMapFiles() {
   let dir;
   try {
@@ -9350,14 +9394,23 @@ async function readMapFiles() {
   if (!dir) return null;
   const out = {};
   let any = false;
-  for (const key of MAP_FILE_KEYS) {
+  const names = [];
+  try {
+    for await (const name of dir.keys()) {
+      if (MAP_FILE_RE.test(name)) names.push(name);
+    }
+  } catch {
+    return null;
+  }
+  names.sort();
+  for (const name of names) {
     try {
-      const fh = await dir.getFileHandle(`${key}.json`);
+      const fh = await dir.getFileHandle(name);
       const text = await (await fh.getFile()).text();
-      out[key.toUpperCase()] = JSON.parse(text);
+      out[`MAP${name.match(MAP_FILE_RE)[1].toUpperCase()}`] = JSON.parse(text);
       any = true;
     } catch {
-      /* missing file */
+      /* unreadable file */
     }
   }
   return any ? out : null;
@@ -9366,11 +9419,8 @@ async function readMapFiles() {
 async function writeMapFiles(records) {
   const dir = await mapDir(true);
   if (!dir) return;
-  const byFile = new Map(records.map((rec) => [rec.file, rec.data]));
-  for (const key of MAP_FILE_KEYS) {
-    const file = `${key}.json`;
-    const data = byFile.get(file);
-    if (!data) continue;
+  for (const { file, data } of records) {
+    if (!data || !MAP_FILE_RE.test(file)) continue;
     const fh = await dir.getFileHandle(file, { create: true });
     const w = await fh.createWritable();
     await w.write(JSON.stringify(data, null, 2));
@@ -17874,7 +17924,7 @@ function markUi() {
   schedulePersistEditor();
 }
 
-/** Per-map layout cameras (E1M1 …). */
+/** Per-map layout cameras (MAPA …). */
 let layoutCamerasByLevel = {};
 
 function snapshotLayoutCamera() {
@@ -18939,6 +18989,16 @@ function switchLevel(name) {
   setStatus(name);
 }
 
+function addLevelAndSwitch() {
+  if (LEVEL_NAMES.length >= MAX_LEVELS) return;
+  pushUndo();
+  const name = addLevel(doc);
+  if (!name) return;
+  markDirty();
+  switchLevel(name);
+  setStatus(`Added ${name}`);
+}
+
 function updateCenterChrome() {
   const titleEl = document.getElementById("center-title");
   const statsEl = document.getElementById("map-stats");
@@ -19006,6 +19066,17 @@ function renderLevelList() {
     if (name === doc.activeLevel) btn.classList.add("active");
     if (mapMatchesLayoutSearch(map, terms)) btn.classList.add("search-hit");
     btn.addEventListener("click", () => switchLevel(name));
+    li.appendChild(btn);
+    ul.appendChild(li);
+  }
+  if (LEVEL_NAMES.length < MAX_LEVELS) {
+    const li = document.createElement("li");
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "level-add";
+    btn.textContent = "+";
+    btn.title = "Add a map";
+    btn.addEventListener("click", addLevelAndSwitch);
     li.appendChild(btn);
     ul.appendChild(li);
   }

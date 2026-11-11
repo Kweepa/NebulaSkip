@@ -1754,7 +1754,41 @@ export function applyBackpackProportions(obj) {
   return obj;
 }
 
-export const LEVEL_NAMES = ["E1M1", "E1M2", "E1M3", "E1M4", "E1M5", "E1M6", "E1M7", "E1M8"];
+/**
+ * Map keys in play order: MAPA, MAPB, ... Mutated in place (importers hold the array):
+ * the doc owns which maps exist, so normalizeDocument / createDefaultDocument / addLevel
+ * keep this in step with doc.maps. Always at least MAPA.
+ */
+export const LEVEL_NAMES = ["MAPA"];
+export const MAX_LEVELS = 26;
+const LEVEL_KEY = /^MAP([A-Z])$/;
+
+export function levelKeyAt(i) {
+  return `MAP${String.fromCharCode(65 + i)}`;
+}
+
+/** Legacy E1M1 (the first map before the MAPA rename) → MAPA; anything else unchanged. */
+export function migrateLevelKey(name) {
+  return name === "E1M1" ? "MAPA" : name;
+}
+
+/** LEVEL_NAMES = the contiguous run MAPA.. present in `maps` (at least MAPA). */
+export function syncLevelNames(maps) {
+  let n = 1;
+  while (n < MAX_LEVELS && maps && maps[levelKeyAt(n)]) n++;
+  LEVEL_NAMES.length = 0;
+  for (let i = 0; i < n; i++) LEVEL_NAMES.push(levelKeyAt(i));
+}
+
+/** Append the next map (empty). Returns its key, or null at MAX_LEVELS. */
+export function addLevel(doc) {
+  if (LEVEL_NAMES.length >= MAX_LEVELS) return null;
+  const name = levelKeyAt(LEVEL_NAMES.length);
+  if (!doc.maps) doc.maps = {};
+  doc.maps[name] = emptyMap();
+  LEVEL_NAMES.push(name);
+  return name;
+}
 
 export function clipForFrame(clips, index) {
   const list = Array.isArray(clips) ? clips : [];
@@ -4312,14 +4346,14 @@ export function parseEditorState(raw) {
   d.layoutCameras = {};
   if (raw.layoutCameras && typeof raw.layoutCameras === "object") {
     for (const name of LEVEL_NAMES) {
-      if (raw.layoutCameras[name]) {
-        d.layoutCameras[name] = parseLayoutCamera(raw.layoutCameras[name], d.layoutCamera);
-      }
+      const cam = raw.layoutCameras[name] || (name === "MAPA" ? raw.layoutCameras.E1M1 : null);
+      if (cam) d.layoutCameras[name] = parseLayoutCamera(cam, d.layoutCamera);
     }
   }
+  const rawActive = migrateLevelKey(raw.activeLevel);
   const camLevel =
-    typeof raw.activeLevel === "string" && LEVEL_NAMES.includes(raw.activeLevel)
-      ? raw.activeLevel
+    typeof rawActive === "string" && LEVEL_NAMES.includes(rawActive)
+      ? rawActive
       : d.activeLevel || LEVEL_NAMES[0];
   if (raw.layoutCamera && !d.layoutCameras[camLevel]) {
     d.layoutCameras[camLevel] = { ...d.layoutCamera };
@@ -4344,8 +4378,8 @@ export function parseEditorState(raw) {
     d.orthoMode = raw.orthoMode;
   }
   if (Array.isArray(raw.collapsedRooms)) d.collapsedRooms = raw.collapsedRooms.map(String);
-  if (typeof raw.activeLevel === "string" && LEVEL_NAMES.includes(raw.activeLevel)) {
-    d.activeLevel = raw.activeLevel;
+  if (typeof rawActive === "string" && LEVEL_NAMES.includes(rawActive)) {
+    d.activeLevel = rawActive;
   } else {
     d.activeLevel = null;
   }
@@ -4379,12 +4413,11 @@ export function gameDocument(doc) {
 export function createDefaultDocument() {
   setCustomItemNames([]);
   syncItemRegistry({});
-  const maps = {};
-  for (const name of LEVEL_NAMES) maps[name] = emptyMap();
-  maps.E1M1 = { name: "Slipgate Complex", objects: starterObjects() };
+  const maps = { MAPA: { name: "Slipgate Complex", objects: starterObjects() } };
+  syncLevelNames(maps);
   return {
     version: DOC_VERSION,
-    activeLevel: "E1M1",
+    activeLevel: "MAPA",
     maps,
     enemies: createAllCreatures(),
     weapons: defaultWeapons(),
@@ -4443,8 +4476,13 @@ export function normalizeDocument(raw) {
   const itemMetaParsed = parseItemMetaMap(raw.itemMeta, customItems);
   syncItemRegistry(itemMetaParsed);
   if (raw.maps && typeof raw.maps === "object") {
+    // Pre-rename docs keyed the first map E1M1.
+    const rawMaps = { ...raw.maps };
+    if (rawMaps.E1M1 && !rawMaps.MAPA) rawMaps.MAPA = rawMaps.E1M1;
+    syncLevelNames(rawMaps);
+    doc.maps = {};
     for (const name of LEVEL_NAMES) {
-      const src = raw.maps[name] || {};
+      const src = rawMaps[name] || {};
       doc.maps[name] = {
         name: clampName(src.name),
         enterVerb: clampVerb(src.enterVerb),
@@ -4454,7 +4492,7 @@ export function normalizeDocument(raw) {
       };
     }
   } else {
-    doc.maps.E1M1 = {
+    doc.maps.MAPA = {
       name: clampName(raw.map?.name),
       enterVerb: clampVerb(raw.map?.enterVerb),
       jumpSpeed: clampJumpSpeed(raw.map?.jumpSpeed),
@@ -4462,7 +4500,8 @@ export function normalizeDocument(raw) {
       objects: parseObjects(raw.map?.objects || raw.objects),
     };
   }
-  doc.activeLevel = LEVEL_NAMES.includes(raw.activeLevel) ? raw.activeLevel : "E1M1";
+  const rawLevel = migrateLevelKey(raw.activeLevel);
+  doc.activeLevel = LEVEL_NAMES.includes(rawLevel) ? rawLevel : "MAPA";
   doc.enemies = [];
   const stale = !raw.version || raw.version < 2;
   if (stale) {

@@ -1,5 +1,6 @@
-; Menu music (Atari). Decodes the stream tools/genpokey.py writes into
-; music/at_dooms_gate.asm and drives POKEY from the menu VBI (a8_music_tick).
+; Menu music (Atari). Decodes the jukebox streams tools/genmenutune.py writes
+; into music/menu_tunes.asm (format: tools/genpokey.py) and drives POKEY from
+; the menu VBI (a8_music_tick).
 ; ch1+2 joined 16-bit @1.79 MHz (AUDCTL bit 4+6), ch3 / ch4 8-bit.
 ;
 ; Stream: LZ tokens into a 4 KB ring, giving mask + changed-column bytes per
@@ -42,15 +43,22 @@ mus_loop_l	= MUS_BSS + 33
 mus_loop_h	= MUS_BSS + 34
 mus_ad		= MUS_BSS + 35
 mus_sr		= MUS_BSS + 36
+mus_ib		= MUS_BSS + 41		; track's byte offset into mus_inst
+mus_trk		= MUS_BSS + 42
 
-; Caller holds I=1 (run_menu). POKEY is already zeroed by a8_init_vic.
+; A = track 0..MUSIC_TRACKS-1. POKEY silent (a8_init_vic or a8_music_stop).
+; mus_en is cleared first, so the VBI skips the tick while state is rebuilt.
 a8_music_start
-	lda #0
-	sta mus_en
-	lda #<mus_tokens
+	ldx #0
+	stx mus_en
+	tax
+	stx mus_trk
+	lda mus_tok_lo,x
 	sta mus_fetch + 1
-	lda #>mus_tokens
+	lda mus_tok_hi,x
 	sta mus_fetch + 2
+	lda mus_inst_off,x
+	sta mus_ib
 	jsr mus_state
 	jsr mus_reset
 	lda $d014				; PAL reads $01, NTSC $0F
@@ -59,6 +67,9 @@ a8_music_start
 	lda #1
 .pal
 	sta mus_ntsc
+	lda mus_trk				; rate index = track * 2 + standard
+	asl
+	ora mus_ntsc
 	tay
 	lda mus_rate_lo,y
 	sta mus_rl
@@ -75,7 +86,8 @@ a8_music_start
 	asl
 	sta mus_spfb				; 16 SPF entries per video standard
 	jsr set_video_ms
-	lda mus_audctl
+	ldx mus_trk
+	lda mus_audctl,x
 	sta $d208
 	lda #1
 	sta mus_en
@@ -228,7 +240,8 @@ mus_tick
 mus_env
 	lda mus_col + 4,x
 	and #$0f
-	asl
+	asl					; C = 0 (inst <= 15)
+	adc mus_ib
 	tay
 	lda mus_inst,y
 	sta mus_ad
@@ -511,4 +524,4 @@ mus_fetch
 mus_dist	!byte $a0, $c0, $80, $00	; pure, poly4, noise, silent
 mus_vmask	!byte $0f, $0f, $0f, $00
 
-!source "../music/at_dooms_gate.asm"
+!source "../music/menu_tunes.asm"

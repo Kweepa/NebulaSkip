@@ -899,6 +899,11 @@ button:disabled {
   min-height: 0;
 }
 
+.level-list button.level-add {
+  text-align: center;
+  font-weight: 600;
+}
+
 .panel .muted,
 .muted {
   color: var(--muted);

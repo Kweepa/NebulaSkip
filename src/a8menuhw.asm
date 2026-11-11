@@ -2136,6 +2136,7 @@ a8_wipe_y
 ; Menu music (a8music.asm). Raster off / done silence POKEY before the game.
 !zone
 menu_sfx_init
+	lda music_track
 	jmp a8_music_start
 !zone
 menu_raster_off

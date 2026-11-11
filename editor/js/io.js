@@ -182,7 +182,7 @@ export async function writeEnemyFiles(records) {
   }
 }
 
-const MAP_FILE_KEYS = ["e1m1", "e1m2", "e1m3", "e1m4", "e1m5", "e1m6", "e1m7", "e1m8"];
+const MAP_FILE_RE = /^map([a-z])\.json$/i;
 
 async function mapDir(create) {
   if (!projectDirHandle) return null;
@@ -190,7 +190,7 @@ async function mapDir(create) {
   return editor.getDirectoryHandle("maps", create ? { create: true } : undefined);
 }
 
-/** Per-map records keyed by E1M1..E1M8. Null when editor/maps is not there yet. */
+/** Per-map records keyed by MAPA, MAPB, ... Null when editor/maps has none yet. */
 export async function readMapFiles() {
   let dir;
   try {
@@ -201,14 +201,23 @@ export async function readMapFiles() {
   if (!dir) return null;
   const out = {};
   let any = false;
-  for (const key of MAP_FILE_KEYS) {
+  const names = [];
+  try {
+    for await (const name of dir.keys()) {
+      if (MAP_FILE_RE.test(name)) names.push(name);
+    }
+  } catch {
+    return null;
+  }
+  names.sort();
+  for (const name of names) {
     try {
-      const fh = await dir.getFileHandle(`${key}.json`);
+      const fh = await dir.getFileHandle(name);
       const text = await (await fh.getFile()).text();
-      out[key.toUpperCase()] = JSON.parse(text);
+      out[`MAP${name.match(MAP_FILE_RE)[1].toUpperCase()}`] = JSON.parse(text);
       any = true;
     } catch {
-      /* missing file */
+      /* unreadable file */
     }
   }
   return any ? out : null;
@@ -217,11 +226,8 @@ export async function readMapFiles() {
 export async function writeMapFiles(records) {
   const dir = await mapDir(true);
   if (!dir) return;
-  const byFile = new Map(records.map((rec) => [rec.file, rec.data]));
-  for (const key of MAP_FILE_KEYS) {
-    const file = `${key}.json`;
-    const data = byFile.get(file);
-    if (!data) continue;
+  for (const { file, data } of records) {
+    if (!data || !MAP_FILE_RE.test(file)) continue;
     const fh = await dir.getFileHandle(file, { create: true });
     const w = await fh.createWritable();
     await w.write(JSON.stringify(data, null, 2));
