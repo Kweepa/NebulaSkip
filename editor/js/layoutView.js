@@ -1254,7 +1254,7 @@ export class LayoutView {
     }
     if (obj.kind === "pickup") {
       const mesh = itemMeshFor(doc, obj.pickup);
-      for (const s of itemMeshWorldSegs(obj, mesh, itemYawFor(doc, obj.pickup))) segs.push(s);
+      for (const s of itemMeshWorldSegs(obj, mesh, itemYawFor(doc, obj.pickup, obj.rot))) segs.push(s);
       return segs;
     }
     if (obj.kind === "slope") {
@@ -1886,7 +1886,7 @@ export class LayoutView {
       if (obj.kind === "spawn" && obj.showJump) this.#drawJumpArc(ctx, doc, obj, cam, w, h);
     } else if (obj.kind === "pickup") {
       const mesh = itemMeshFor(doc, obj.pickup);
-      for (const seg of itemMeshWorldSegs(obj, mesh, itemYawFor(doc, obj.pickup))) {
+      for (const seg of itemMeshWorldSegs(obj, mesh, itemYawFor(doc, obj.pickup, obj.rot))) {
         this.#line3(ctx, seg.a, seg.b, cam, w, h);
       }
     } else if (obj.kind === "room") {

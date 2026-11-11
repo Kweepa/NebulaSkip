@@ -1679,9 +1679,41 @@ export function itemSpinAngle(nowMs = performance.now()) {
   return ((nowMs % ITEM_SPIN_PERIOD_MS) / ITEM_SPIN_PERIOD_MS) * Math.PI * 2;
 }
 
-/** Yaw to draw this placed item at: spin when its type rotates, else 0. */
-export function itemYawFor(doc, type) {
-  return itemMeta(doc, clampPickupType(type)).rotating ? itemSpinAngle() : 0;
+/**
+ * Yaw to draw this placed item at: spin when its type rotates, else the placed facing
+ * (`rot`, 0..7 octants, 0 = +Z; same convention as enemy rot and the game's th_ori bits 0-2).
+ */
+export function itemYawFor(doc, type, rot = 0) {
+  if (itemMeta(doc, clampPickupType(type)).rotating) return itemSpinAngle();
+  return (clampEnemyRot(rot) * Math.PI) / 4;
+}
+
+/** True when the placed item holds a fixed facing (its type does not spin). */
+export function itemHoldsFacing(doc, type) {
+  return !itemMeta(doc, clampPickupType(type)).rotating;
+}
+
+/** Placed-item scales: a left shift of 0..3 in the game (cube.asm / item_xf.asm). */
+export const ITEM_SCALES = [1, 2, 4, 8];
+
+export function clampItemScale(n) {
+  const v = Number(n);
+  return ITEM_SCALES.includes(v) ? v : 1;
+}
+
+/** 8.8 world coords wrap past +-128: scaled verts must stay within 127/scale of the item origin. */
+export function itemScaleMax(scale) {
+  return 127 / clampItemScale(scale);
+}
+
+/** True when mesh * scale stays inside the game's 8.8 range (XZ radius and |y|). */
+export function itemScaleFits(mesh, scale) {
+  const max = itemScaleMax(scale);
+  for (const v of mesh?.verts || []) {
+    if (Math.hypot(Number(v.x), Number(v.z)) > max) return false;
+    if (Math.abs(Number(v.y)) > max) return false;
+  }
+  return true;
 }
 
 /** True when any pickup object in the list uses a rotating item. */
@@ -1696,12 +1728,13 @@ export function itemMeshWorldSegs(obj, mesh, yaw = 0) {
   const m = mesh && itemMeshHasGeom(mesh) ? mesh : defaultItemMeshes().backpack;
   const c = Math.cos(yaw);
   const s = Math.sin(yaw);
+  const k = clampItemScale(obj.scale ?? (obj.big ? 8 : 1));
   const verts = m.verts.map((v) => {
-    const lx = Number(v.x);
-    const lz = Number(v.z);
+    const lx = Number(v.x) * k;
+    const lz = Number(v.z) * k;
     return {
       x: obj.x + (lx * c + lz * s) + ITEM_WORLD_BIAS,
-      y: obj.y + Number(v.y),
+      y: obj.y + Number(v.y) * k,
       z: obj.z + (-lx * s + lz * c) + ITEM_WORLD_BIAS,
     };
   });
@@ -2015,7 +2048,7 @@ export function applyYawQuarterMeta(obj, delta) {
   if (!obj) return obj;
   const steps = ((delta | 0) % 4 + 4) % 4;
   if (!steps) return obj;
-  if (obj.kind === "enemy" || obj.kind === "spawn") {
+  if (obj.kind === "enemy" || obj.kind === "spawn" || obj.kind === "pickup") {
     obj.rot = clampEnemyRot((obj.rot | 0) + 2 * steps);
   }
   if (obj.kind === "doorway" || obj.kind === "switch") {
@@ -2318,7 +2351,17 @@ export function clampObject(obj) {
     if (obj.elevSlow) obj.elevSlow = true;
     else delete obj.elevSlow;
   }
-  if (obj.kind === "pickup") obj.pickup = clampPickupType(obj.pickup);
+  if (obj.kind === "pickup") {
+    obj.pickup = clampPickupType(obj.pickup);
+    const facing = clampEnemyRot(obj.rot ?? 0);
+    if (facing) obj.rot = facing;
+    else delete obj.rot;
+    // "big" was the old 8x flag.
+    const scale = clampItemScale(obj.scale ?? (obj.big ? 8 : 1));
+    delete obj.big;
+    if (scale > 1) obj.scale = scale;
+    else delete obj.scale;
+  }
   if (obj.kind === "switch") {
     if (obj.shootable) obj.shootable = true;
     else delete obj.shootable;
@@ -2421,7 +2464,12 @@ export function createObject(kind, x, y, z, extra = {}) {
     if (extra.elevHigh != null) obj.elevHigh = extra.elevHigh | 0;
     if (extra.elevSlow) obj.elevSlow = true;
   }
-  if (kind === "pickup") obj.pickup = clampPickupType(extra.pickup);
+  if (kind === "pickup") {
+    obj.pickup = clampPickupType(extra.pickup);
+    if (extra.rot) obj.rot = clampEnemyRot(extra.rot);
+    const scale = clampItemScale(extra.scale ?? (extra.big ? 8 : 1));
+    if (scale > 1) obj.scale = scale;
+  }
   if (kind === "doorway") {
     obj.lockKey = clampDoorLock(extra.lockKey ?? (extra.locked ? "yellow" : "unlocked"));
     obj.doorType = clampDoorType(extra.doorType);
@@ -4014,6 +4062,8 @@ function parseObjects(list) {
       elevSlow: o.elevSlow,
       pickup: o.pickup,
       backpack: o.backpack,
+      big: o.big,
+      scale: o.scale,
       order: o.order,
       collide: o.collide,
       enabled: o.enabled,

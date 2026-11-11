@@ -17,7 +17,25 @@ stamp_bh	!byte 0
 stamp_tmp	!byte 0
 stamp_y0	!byte 0			; viewport Y restored by stamp_at_x
 
+; Fire mode: the weapon and its flashes. Jump mode: the black crosshair at
+; the viewport centre instead. World effects (enemy muzzle, splat) draw in both.
 stamp_view
+	lda ability_cur
+	cmp #ABIL_JUMP
+	bne .sv_wpn
+	lda #<spr_xhair_b
+	sta init_ptr
+	lda #>spr_xhair_b
+	sta init_ptr+1
+	lda #0
+	sta stamp_xb			; header x_byte / y are absolute viewport coords
+	sta stamp_y
+	sta stamp_red
+	lda #1
+	sta stamp_and
+	jsr blit_rect
+	jmp .sv_fx
+.sv_wpn
 	jsr wpn_y_bob
 	jsr saw_dy
 	sec
@@ -65,6 +83,7 @@ stamp_view
 	beq .no5
 	jsr stamp_flash
 .no5
+.sv_fx
 	lda emuz_on
 	beq .noe
 	lda emuz_vx

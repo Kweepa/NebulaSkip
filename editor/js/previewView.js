@@ -438,7 +438,7 @@ export class PreviewView {
     }
     if (obj.kind === "pickup") {
       const mesh = itemMeshFor(doc, obj.pickup);
-      for (const seg of itemMeshWorldSegs(obj, mesh, itemYawFor(doc, obj.pickup))) {
+      for (const seg of itemMeshWorldSegs(obj, mesh, itemYawFor(doc, obj.pickup, obj.rot))) {
         this.#stroke(ctx, cam, seg.a, seg.b, color);
       }
       return;

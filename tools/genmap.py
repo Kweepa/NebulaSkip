@@ -1133,6 +1133,7 @@ def cook_one(level: dict, map_key: str) -> bytes:
 
     # Things
     th_x, th_y, th_z, th_type, th_room = [], [], [], [], []
+    th_ori = []  # bits 0-2 = Y facing in 45-degree steps (static items), bits 6-7 = scale shift (1x/2x/4x/8x)
     th_id = []
     for b in things:
         kind = b.get("kind")
@@ -1155,6 +1156,10 @@ def cook_one(level: dict, map_key: str) -> bytes:
         th_z.append(b["z"])
         th_type.append(bt)
         th_room.append(ri)
+        sc = int(b.get("scale") or (8 if b.get("big") else 1))  # "big" = legacy 8x flag
+        if sc not in (1, 2, 4, 8):
+            fail(f"{map_key}: item scale {sc} (must be 1, 2, 4 or 8)")
+        th_ori.append((int(b.get("rot") or 0) & 7) | ({1: 0, 2: 1, 4: 2, 8: 3}[sc] << 6))
         th_id.append(map_id[id(b)])
 
     spawn_room = room_index(rooms, spawn, "spawn")
@@ -1358,6 +1363,7 @@ def cook_one(level: dict, map_key: str) -> bytes:
     add(th_z)
     add(th_type)
     add(th_room)
+    add(th_ori)
     # room_<type>_o: first index of each room's slice (nrooms+1; last = count)
     for lst in (slope_room, plat_room, tr_room, th_room):
         add([sum(1 for r in lst if r < i) for i in range(len(rooms) + 1)])

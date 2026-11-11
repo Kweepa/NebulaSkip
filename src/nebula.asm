@@ -151,6 +151,8 @@ mod_a8sio
 ; main RAM, so it lives in A rather than the full bank-0 static block.
 mod_item_mesh
 !source "item_mesh.asm"
+mod_item_xf
+!source "item_xf.asm"
 
 seg_a_end = *
 !if seg_a_end > $4000 {

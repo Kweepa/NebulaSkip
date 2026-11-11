@@ -84,7 +84,7 @@ Caps used by the mesh path: **16 verts**, **32 edges**, **6 unique world X** and
 | `$0002`–`$00FF` | 254 | Zero page — [`src/zp.asm`](src/zp.asm) |
 | `$0100`–`$01FF` | 256 | Stack |
 | `$0200`–`$03FF` | 512 | Mostly free. `MAP_SMC_HI` `$02` is a GAME operand sentinel, not occupancy. Live KERNAL shadows: `$02A1` (CIA2 ICR), `$02A6` (PAL/NTSC), `$0314`/`$0318` (IRQ/NMI vectors, also `$FFFA`) |
-| `$0400`–`$050B` | 268 | Map header + SoA pointers (`map_bss.asm`; `bind_map`). `$0417` unused. `$050C`–`$0523` free |
+| `$0400`–`$050D` | 270 | Map header + SoA pointers (`map_bss.asm`; `bind_map`). `$0417` unused. `$050E`–`$0523` free |
 | `$0524`–`$06D4` | 433 | Play BSS (enemy/pose pointers, streamed-SFX state; `$056A`–`$06D4` free) |
 | `$06D5`–`$0700` | 44 | PAL hue tables (`a8_pal_hue`, `a8_hue_lo`), then boot scratch (`$06F0`+) |
 | `$0701`–`$084F` | 335 | Boot-loaded immutable enemy metadata (`enemydata.prg`) |

@@ -8,7 +8,7 @@ control_text
 	!scr "^Shift-S....^ Quick save",0
 	!scr "^Shift-L....^ Quick load",0
 	!scr " ",0
-	!scr "If you have an ST mouse in port 2",0
+	!scr "If you have an st mouse in port 2",0
 	!scr "and you have enabled it in the",0
 	!scr "options, you can turn with",0
 	!scr "it. The joystick then strafes.",0

@@ -163,7 +163,7 @@ MAP_SMC_BASE	= $0200
 }
 
 ; Play BSS: default VIC matrix / leftover boot. VIC matrix in play is $C000.
-; map_bss.asm occupies $0400–$0523. $08F6 video_ms, $08F9–$08FF reboot stub + selectors.
+; map_bss.asm occupies $0400–$050D (play BSS starts $0524). $08F6 video_ms, $08F9–$08FF reboot stub + selectors.
 ENEMY_PTR_N	= 4			; must == ENEMY_NTYPES (nebula.asm asserts)
 enemy_gx_lo	= $0524
 enemy_gx_hi	= enemy_gx_lo + ENEMY_PTR_N
@@ -878,7 +878,9 @@ gr_vyh		= $CF05 + A8_OFF
 gr_vzl		= $CF09 + A8_OFF
 gr_vzh		= $CF0D + A8_OFF
 ; Unused (was the grenade fuse). Life follows; do not slide.
-gr_fuse_l	= $CF11 + A8_OFF
+; th_draw_fl is gr_fuse_l[0]: live only inside draw_thing_mesh -> fill_item_verts, cleared after.
+; Bits 0-2 facing (x45 deg), bits 6-7 = scale shift (0..3 = 1x 2x 4x 8x). Same layout as th_ori.
+th_draw_fl	= $CF11 + A8_OFF
 gr_fuse_h	= $CF15 + A8_OFF
 gr_life_l	= $CF19 + A8_OFF
 gr_life_h	= $CF1D + A8_OFF

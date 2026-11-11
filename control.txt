@@ -4,7 +4,7 @@
 ^Shift-S....^ Quick save
 ^Shift-L....^ Quick load
 
-If you have an ST mouse in port 2
+If you have an st mouse in port 2
 and you have enabled it in the
 options, you can turn with
 it. The joystick then strafes.

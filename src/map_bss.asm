@@ -160,11 +160,12 @@ th_room	= $0504
 room_th_o	= $0506
 map_name	= $0508
 map_text	= $050A
-!if (map_text - room_x) & 1 {
+th_ori	= $050C		; things: bits 0-2 Y facing (x45 deg, static items), bits 6-7 = scale shift (1x/2x/4x/8x)
+!if (th_ori - room_x) & 1 {
 	!error "map pointer table is not aligned words"
 }
-!if (map_text - room_x) / 2 > 255 {
-	!error "map pointer table exceeds 256 fields"
+!if (th_ori - room_x) / 2 > 127 {
+	!error "map pointer table exceeds 128 bind fields"
 }
-; MAP_BSS_END = $050C  size=268
-; $050C..$0523 is a gap; play BSS still starts at $0524.
+; MAP_BSS_END = $050E  size=270
+; $050E..$0523 is a gap; play BSS still starts at $0524.

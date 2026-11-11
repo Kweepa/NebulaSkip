@@ -602,14 +602,20 @@ draw_plat_mesh
 	jmp stroke_mesh
 
 ; Pickup mesh: type in A (TH_*). nv=0 → backpack mesh.
+; draw_thing_mesh latches th_ori (facing + scale shift) for fill_item_verts; draw_pickup_mesh
+; (death drops) always sees th_draw_fl = 0 because it is cleared after every fill.
 draw_thing_mesh
 	ldx obj_i
+	+lda_mx th_ori
+	sta th_draw_fl
 	+lda_mx th_type
 draw_pickup_mesh
 	pha
 	jsr load_view_trig
 	pla
 	jsr fill_item_verts
+	lda #0
+	sta th_draw_fl
 	jmp stroke_mesh
 
 fill_item_verts
@@ -625,12 +631,10 @@ fill_item_verts
 	lda #0
 	sta rot1				; no door scale
 	jsr fill_item_slot
-	; item_rot (editor Rotating flag): 1 yaw-spins about box+ITEM_BIAS, 0 stays put.
+	; item_rot (editor Rotating flag): 1 yaw-spins about box+ITEM_BIAS, 0 holds the placed
+	; facing (th_draw_fl bits 0-2, x32 = 45 deg steps in 256-unit yaw).
 	ldy rot0
-	lda item_rot,y
-	beq .fi_spin			; A = 0
-	lda item_spin
-.fi_spin
+	jsr item_pick_rot
 	sta ent_rot
 	jmp xform_item_spin
 
@@ -770,23 +774,7 @@ door_mesh_scale
 	stx rot1
 	rts
 
-; A = signed local coord. rot1: 0=×1, 1=×3/2, 2=×2. Y preserved.
-scale_door_u
-	ldx rot1
-	beq .sdu_rts
-	dex
-	beq .sdu_15
-	asl
-	rts
-.sdu_15
-	sta pv4
-	asl
-	clc
-	adc pv4
-	cmp #$80
-	ror
-.sdu_rts
-	rts
+; scale_door_u lives in item_xf.asm (segment A).
 
 ; Door type mesh: local X across, Y up, Z thickness. Origin = face bottom-centre.
 fill_door_type_verts
@@ -1528,8 +1516,12 @@ draw_world
 	+lda_mx th_z
 	sta box_z
 	jsr set_th_foot_box
+	+lda_mx th_ori
+	cmp #$40
+	bcs .dw_bpd				; scaled (bits 6-7): the 2x2 foot box no longer bounds it, so skip the cull
 	jsr frustum_hits
 	bcc .dw_bpr
+.dw_bpd
 	jsr draw_thing_mesh
 .dw_bpr
 	ldx obj_i

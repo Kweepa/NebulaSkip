@@ -42,6 +42,8 @@ FLASHES = [
 # pistol_lines.png and shotgun_lines.png are 2×1 pixels. Even origin,
 # so each pair lands on one mode-E pixel. Pistol columns 12–13 and
 # shotgun columns 20–21 sit on the muzzle stem (clock 47).
+XHAIR_CX = 96				# viewport centre, hires x / row
+XHAIR_CY = 64
 PISTOL_OX = 10
 SHOT_OX = 2
 COCK_OX = 18
@@ -148,6 +150,36 @@ def line_png(name: str) -> list[list[int]]:
                 pix[y][x] = 1
     print(f"  occupancy {path.stem}: {path.name} {iw}×{ih}")
     return pix
+
+
+def crosshair_rect() -> list[int]:
+    """ui/crosshair.png, black pixels = ink, centred on the 192x128 viewport.
+
+    8 hires wide, so the centre (96) falls mid-byte: origin 92 gives a
+    2-byte rect at column 11 with the glyph shifted four hires inside it.
+    """
+    path = ROOT / "ui" / "crosshair.png"
+    if not path.is_file():
+        raise SystemExit(f"missing {path}")
+    from PIL import Image
+
+    im = Image.open(path).convert("RGB")
+    iw, ih = im.size
+    pix = [[0] * iw for _ in range(ih)]
+    src = im.load()
+    for y in range(ih):
+        for x in range(iw):
+            r, g, b = src[x, y][:3]
+            if r <= 16 and g <= 16 and b <= 16:
+                pix[y][x] = 1
+    print(f"  occupancy crosshair: {path.name} {iw}×{ih}")
+    return pack_clipped(
+        pix,
+        black=True,
+        x_origin=XHAIR_CX - iw // 2,
+        y_origin=XHAIR_CY - ih // 2,
+        name="crosshair",
+    )
 
 
 def pistol_canvas() -> list[list[int]]:
@@ -286,6 +318,8 @@ def main() -> None:
     parts += emit_bytes("spr_saw_b", saw_b)
     for label, data in flashes:
         parts += emit_bytes(label, data)
+    xhair_b = crosshair_rect()
+    parts += emit_bytes("spr_xhair_b", xhair_b)
 
     OUT.write_text("\n".join(parts) + "\n", encoding="utf-8")
     print(f"Wrote {OUT.relative_to(ROOT)}")
@@ -294,6 +328,7 @@ def main() -> None:
     print(f"  shot {rect_note(shot_b)}  cock {rect_note(cock_b)}  pist {rect_note(pist_b)}")
     for label, data in flashes:
         print(f"  {label}: {rect_note(data)}")
+    print(f"  xhair {rect_note(xhair_b)}")
 
     write_sheet(
         [

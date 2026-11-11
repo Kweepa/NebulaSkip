@@ -369,6 +369,7 @@ def steps(exe: str) -> list[Step]:
                 TOOLS / "genweapons.py",
                 TOOLS / "sprmask.py",
                 doc,
+                ROOT / "ui" / "crosshair.png",
                 *weapon_pngs(),
             ],
             lambda: [SRC / "weapon_spr.asm"],

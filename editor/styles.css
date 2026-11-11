@@ -925,6 +925,26 @@ button:disabled {
   margin-bottom: 0.12rem;
 }
 
+.slider-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.slider-row input[type="range"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  accent-color: var(--accent);
+}
+
+.slider-row output {
+  flex: 0 0 3rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 .field.level-stat > span:last-child {
   flex: 1 1 auto;
   min-width: 0;

@@ -36,7 +36,7 @@ MAP_FIELDS = {
     "en_x", "en_y", "en_z", "en_type", "en_rot", "en_room", "en_id",
     "tr_x", "tr_y", "tr_z", "tr_sx", "tr_sy", "tr_sz",
     "tr_room", "tr_purpose", "tr_arg", "tr_id",
-    "th_x", "th_y", "th_z", "th_type", "th_room", "th_id",
+    "th_x", "th_y", "th_z", "th_type", "th_room", "th_ori", "th_id",
     "map_name", "map_text",
 }
 

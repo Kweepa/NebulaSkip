@@ -933,6 +933,26 @@ button:disabled {
   margin-bottom: 0.12rem;
 }
 
+.slider-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.slider-row input[type="range"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  accent-color: var(--accent);
+}
+
+.slider-row output {
+  flex: 0 0 3rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 .field.level-stat > span:last-child {
   flex: 1 1 auto;
   min-width: 0;
@@ -5796,9 +5816,41 @@ function itemSpinAngle(nowMs = performance.now()) {
   return ((nowMs % ITEM_SPIN_PERIOD_MS) / ITEM_SPIN_PERIOD_MS) * Math.PI * 2;
 }
 
-/** Yaw to draw this placed item at: spin when its type rotates, else 0. */
-function itemYawFor(doc, type) {
-  return itemMeta(doc, clampPickupType(type)).rotating ? itemSpinAngle() : 0;
+/**
+ * Yaw to draw this placed item at: spin when its type rotates, else the placed facing
+ * (`rot`, 0..7 octants, 0 = +Z; same convention as enemy rot and the game's th_ori bits 0-2).
+ */
+function itemYawFor(doc, type, rot = 0) {
+  if (itemMeta(doc, clampPickupType(type)).rotating) return itemSpinAngle();
+  return (clampEnemyRot(rot) * Math.PI) / 4;
+}
+
+/** True when the placed item holds a fixed facing (its type does not spin). */
+function itemHoldsFacing(doc, type) {
+  return !itemMeta(doc, clampPickupType(type)).rotating;
+}
+
+/** Placed-item scales: a left shift of 0..3 in the game (cube.asm / item_xf.asm). */
+const ITEM_SCALES = [1, 2, 4, 8];
+
+function clampItemScale(n) {
+  const v = Number(n);
+  return ITEM_SCALES.includes(v) ? v : 1;
+}
+
+/** 8.8 world coords wrap past +-128: scaled verts must stay within 127/scale of the item origin. */
+function itemScaleMax(scale) {
+  return 127 / clampItemScale(scale);
+}
+
+/** True when mesh * scale stays inside the game's 8.8 range (XZ radius and |y|). */
+function itemScaleFits(mesh, scale) {
+  const max = itemScaleMax(scale);
+  for (const v of mesh?.verts || []) {
+    if (Math.hypot(Number(v.x), Number(v.z)) > max) return false;
+    if (Math.abs(Number(v.y)) > max) return false;
+  }
+  return true;
 }
 
 /** True when any pickup object in the list uses a rotating item. */
@@ -5813,12 +5865,13 @@ function itemMeshWorldSegs(obj, mesh, yaw = 0) {
   const m = mesh && itemMeshHasGeom(mesh) ? mesh : defaultItemMeshes().backpack;
   const c = Math.cos(yaw);
   const s = Math.sin(yaw);
+  const k = clampItemScale(obj.scale ?? (obj.big ? 8 : 1));
   const verts = m.verts.map((v) => {
-    const lx = Number(v.x);
-    const lz = Number(v.z);
+    const lx = Number(v.x) * k;
+    const lz = Number(v.z) * k;
     return {
       x: obj.x + (lx * c + lz * s) + ITEM_WORLD_BIAS,
-      y: obj.y + Number(v.y),
+      y: obj.y + Number(v.y) * k,
       z: obj.z + (-lx * s + lz * c) + ITEM_WORLD_BIAS,
     };
   });
@@ -6132,7 +6185,7 @@ function applyYawQuarterMeta(obj, delta) {
   if (!obj) return obj;
   const steps = ((delta | 0) % 4 + 4) % 4;
   if (!steps) return obj;
-  if (obj.kind === "enemy" || obj.kind === "spawn") {
+  if (obj.kind === "enemy" || obj.kind === "spawn" || obj.kind === "pickup") {
     obj.rot = clampEnemyRot((obj.rot | 0) + 2 * steps);
   }
   if (obj.kind === "doorway" || obj.kind === "switch") {
@@ -6435,7 +6488,17 @@ function clampObject(obj) {
     if (obj.elevSlow) obj.elevSlow = true;
     else delete obj.elevSlow;
   }
-  if (obj.kind === "pickup") obj.pickup = clampPickupType(obj.pickup);
+  if (obj.kind === "pickup") {
+    obj.pickup = clampPickupType(obj.pickup);
+    const facing = clampEnemyRot(obj.rot ?? 0);
+    if (facing) obj.rot = facing;
+    else delete obj.rot;
+    // "big" was the old 8x flag.
+    const scale = clampItemScale(obj.scale ?? (obj.big ? 8 : 1));
+    delete obj.big;
+    if (scale > 1) obj.scale = scale;
+    else delete obj.scale;
+  }
   if (obj.kind === "switch") {
     if (obj.shootable) obj.shootable = true;
     else delete obj.shootable;
@@ -6538,7 +6601,12 @@ function createObject(kind, x, y, z, extra = {}) {
     if (extra.elevHigh != null) obj.elevHigh = extra.elevHigh | 0;
     if (extra.elevSlow) obj.elevSlow = true;
   }
-  if (kind === "pickup") obj.pickup = clampPickupType(extra.pickup);
+  if (kind === "pickup") {
+    obj.pickup = clampPickupType(extra.pickup);
+    if (extra.rot) obj.rot = clampEnemyRot(extra.rot);
+    const scale = clampItemScale(extra.scale ?? (extra.big ? 8 : 1));
+    if (scale > 1) obj.scale = scale;
+  }
   if (kind === "doorway") {
     obj.lockKey = clampDoorLock(extra.lockKey ?? (extra.locked ? "yellow" : "unlocked"));
     obj.doorType = clampDoorType(extra.doorType);
@@ -8131,6 +8199,8 @@ function parseObjects(list) {
       elevSlow: o.elevSlow,
       pickup: o.pickup,
       backpack: o.backpack,
+      big: o.big,
+      scale: o.scale,
       order: o.order,
       collide: o.collide,
       enabled: o.enabled,
@@ -11908,7 +11978,7 @@ class LayoutView {
     }
     if (obj.kind === "pickup") {
       const mesh = itemMeshFor(doc, obj.pickup);
-      for (const s of itemMeshWorldSegs(obj, mesh, itemYawFor(doc, obj.pickup))) segs.push(s);
+      for (const s of itemMeshWorldSegs(obj, mesh, itemYawFor(doc, obj.pickup, obj.rot))) segs.push(s);
       return segs;
     }
     if (obj.kind === "slope") {
@@ -12540,7 +12610,7 @@ class LayoutView {
       if (obj.kind === "spawn" && obj.showJump) this.#drawJumpArc(ctx, doc, obj, cam, w, h);
     } else if (obj.kind === "pickup") {
       const mesh = itemMeshFor(doc, obj.pickup);
-      for (const seg of itemMeshWorldSegs(obj, mesh, itemYawFor(doc, obj.pickup))) {
+      for (const seg of itemMeshWorldSegs(obj, mesh, itemYawFor(doc, obj.pickup, obj.rot))) {
         this.#line3(ctx, seg.a, seg.b, cam, w, h);
       }
     } else if (obj.kind === "room") {
@@ -13325,7 +13395,7 @@ class PreviewView {
     }
     if (obj.kind === "pickup") {
       const mesh = itemMeshFor(doc, obj.pickup);
-      for (const seg of itemMeshWorldSegs(obj, mesh, itemYawFor(doc, obj.pickup))) {
+      for (const seg of itemMeshWorldSegs(obj, mesh, itemYawFor(doc, obj.pickup, obj.rot))) {
         this.#stroke(ctx, cam, seg.a, seg.b, color);
       }
       return;
@@ -19987,6 +20057,37 @@ function toggleField(label, active, onToggle) {
   return field(label, btn);
 }
 
+// Readout follows the drag and onInput fires continuously (callers redraw the views
+// only); onChange fires on release / key step only, because the inspector callers
+// rebuild the panel on every commit.
+function sliderField(label, current, { min, max, step, unit = "", format, onInput, onChange }) {
+  const wrap = document.createElement("div");
+  wrap.className = "slider-row";
+  const slider = document.createElement("input");
+  slider.type = "range";
+  slider.min = String(min);
+  slider.max = String(max);
+  slider.step = String(step);
+  slider.value = String(current === undefined ? min : current);
+  const out = document.createElement("output");
+  const show = () => {
+    out.textContent = current === undefined && !slider.dataset.touched
+        ? "Mixed"
+        : format
+          ? format(Number(slider.value))
+          : `${slider.value}${unit}`;
+  };
+  slider.addEventListener("input", () => {
+    slider.dataset.touched = "1";
+    show();
+    if (onInput) onInput(Number(slider.value));
+  });
+  slider.addEventListener("change", () => onChange(Number(slider.value)));
+  show();
+  wrap.append(slider, out);
+  return field(label, wrap);
+}
+
 function rotateRow(onClick) {
   const btn = document.createElement("button");
   btn.type = "button";
@@ -20275,6 +20376,78 @@ function renderLayoutObjectFields(root, objs) {
 
   if (isFigureObject(objs[0])) {
     root.appendChild(rotateRow(() => apply((obj) => (obj.rot = cycleEnemyRot(obj.rot ?? 0)))));
+  }
+
+  if (kind === "pickup") {
+    const holds = objs.filter((o) => itemHoldsFacing(doc, o.pickup));
+    // Live: mutate in place so the views show the change while dragging; the undo snapshot
+    // is taken before the first mutation and the release commits without a second one.
+    const liveSlider = (label, targets, current, spec, set) => {
+      let live = false;
+      return sliderField(label, current, {
+        ...spec,
+        onInput: (v) => {
+          if (!live) {
+            pushUndo();
+            live = true;
+          }
+          for (const obj of targets) set(obj, v);
+          markDirty();
+          overheadView.draw();
+          previewView.draw();
+          layoutView.draw();
+        },
+        onChange: (v) => {
+          if (!live) pushUndo();
+          live = false;
+          for (const obj of targets) {
+            set(obj, v);
+            clampObject(obj);
+          }
+          markDirty();
+          refreshAll();
+        },
+      });
+    };
+    if (holds.length) {
+      // Only non-rotating items hold a facing; rotating ones ignore it, so leave them alone.
+      const facing = unanimous(holds, (o) => clampEnemyRot(o.rot ?? 0));
+      root.appendChild(
+        liveSlider(
+          "Facing",
+          holds,
+          facing === undefined ? undefined : facing * 45,
+          { min: 0, max: 315, step: 45, unit: "°" },
+          (obj, deg) => (obj.rot = clampEnemyRot(Math.round(deg / 45)))
+        )
+      );
+    }
+    // Slider position 0..3 = 1x 2x 4x 8x (evenly spaced, not linear in the scale).
+    const scaleIdx = (o) => ITEM_SCALES.indexOf(clampItemScale(o.scale ?? (o.big ? 8 : 1)));
+    const scaleCur = unanimous(objs, scaleIdx);
+    const scaleRow = liveSlider(
+      "Scale",
+      objs,
+      scaleCur,
+      { min: 0, max: ITEM_SCALES.length - 1, step: 1, format: (i) => `${ITEM_SCALES[i]}x` },
+      (obj, i) => {
+        delete obj.big;
+        obj.scale = ITEM_SCALES[i];
+      }
+    );
+    scaleRow.title = "Draw larger about the item origin (pickup box is unchanged)";
+    root.appendChild(scaleRow);
+    const badScale = objs.find((o) => {
+      const k = clampItemScale(o.scale ?? (o.big ? 8 : 1));
+      return k > 1 && !itemScaleFits(itemMeshFor(doc, o.pickup), k);
+    });
+    if (badScale) {
+      const k = clampItemScale(badScale.scale ?? (badScale.big ? 8 : 1));
+      const warn = document.createElement("p");
+      warn.className = "muted";
+      warn.textContent = `Mesh reaches past ${itemScaleMax(k).toFixed(1)} units from its origin: ${k}x overflows the game's 8.8 range and wraps.`;
+      root.appendChild(warn);
+    }
   }
 
   if (kind === "enemy") {
@@ -22173,6 +22346,19 @@ window.addEventListener("keydown", (e) => {
       }
       markDirty();
       refreshAll();
+    }
+    if (kind === "pickup") {
+      const holds = objs.filter((o) => itemHoldsFacing(doc, o.pickup));
+      if (holds.length) {
+        e.preventDefault();
+        pushUndo();
+        for (const obj of holds) {
+          obj.rot = cycleEnemyRot(obj.rot ?? 0);
+          clampObject(obj);
+        }
+        markDirty();
+        refreshAll();
+      }
     }
     if (kind === "slope") {
       e.preventDefault();

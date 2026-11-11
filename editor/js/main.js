@@ -64,6 +64,12 @@ import {
   clampItemName,
   itemNameProblem,
   itemMeta,
+  itemMeshFor,
+  itemHoldsFacing,
+  itemScaleFits,
+  itemScaleMax,
+  clampItemScale,
+  ITEM_SCALES,
   setItemMeta,
   emptyItemIcon,
   C64_HEX,
@@ -2968,6 +2974,37 @@ function toggleField(label, active, onToggle) {
   return field(label, btn);
 }
 
+// Readout follows the drag and onInput fires continuously (callers redraw the views
+// only); onChange fires on release / key step only, because the inspector callers
+// rebuild the panel on every commit.
+function sliderField(label, current, { min, max, step, unit = "", format, onInput, onChange }) {
+  const wrap = document.createElement("div");
+  wrap.className = "slider-row";
+  const slider = document.createElement("input");
+  slider.type = "range";
+  slider.min = String(min);
+  slider.max = String(max);
+  slider.step = String(step);
+  slider.value = String(current === undefined ? min : current);
+  const out = document.createElement("output");
+  const show = () => {
+    out.textContent = current === undefined && !slider.dataset.touched
+        ? "Mixed"
+        : format
+          ? format(Number(slider.value))
+          : `${slider.value}${unit}`;
+  };
+  slider.addEventListener("input", () => {
+    slider.dataset.touched = "1";
+    show();
+    if (onInput) onInput(Number(slider.value));
+  });
+  slider.addEventListener("change", () => onChange(Number(slider.value)));
+  show();
+  wrap.append(slider, out);
+  return field(label, wrap);
+}
+
 function rotateRow(onClick) {
   const btn = document.createElement("button");
   btn.type = "button";
@@ -3256,6 +3293,78 @@ function renderLayoutObjectFields(root, objs) {
 
   if (isFigureObject(objs[0])) {
     root.appendChild(rotateRow(() => apply((obj) => (obj.rot = cycleEnemyRot(obj.rot ?? 0)))));
+  }
+
+  if (kind === "pickup") {
+    const holds = objs.filter((o) => itemHoldsFacing(doc, o.pickup));
+    // Live: mutate in place so the views show the change while dragging; the undo snapshot
+    // is taken before the first mutation and the release commits without a second one.
+    const liveSlider = (label, targets, current, spec, set) => {
+      let live = false;
+      return sliderField(label, current, {
+        ...spec,
+        onInput: (v) => {
+          if (!live) {
+            pushUndo();
+            live = true;
+          }
+          for (const obj of targets) set(obj, v);
+          markDirty();
+          overheadView.draw();
+          previewView.draw();
+          layoutView.draw();
+        },
+        onChange: (v) => {
+          if (!live) pushUndo();
+          live = false;
+          for (const obj of targets) {
+            set(obj, v);
+            clampObject(obj);
+          }
+          markDirty();
+          refreshAll();
+        },
+      });
+    };
+    if (holds.length) {
+      // Only non-rotating items hold a facing; rotating ones ignore it, so leave them alone.
+      const facing = unanimous(holds, (o) => clampEnemyRot(o.rot ?? 0));
+      root.appendChild(
+        liveSlider(
+          "Facing",
+          holds,
+          facing === undefined ? undefined : facing * 45,
+          { min: 0, max: 315, step: 45, unit: "°" },
+          (obj, deg) => (obj.rot = clampEnemyRot(Math.round(deg / 45)))
+        )
+      );
+    }
+    // Slider position 0..3 = 1x 2x 4x 8x (evenly spaced, not linear in the scale).
+    const scaleIdx = (o) => ITEM_SCALES.indexOf(clampItemScale(o.scale ?? (o.big ? 8 : 1)));
+    const scaleCur = unanimous(objs, scaleIdx);
+    const scaleRow = liveSlider(
+      "Scale",
+      objs,
+      scaleCur,
+      { min: 0, max: ITEM_SCALES.length - 1, step: 1, format: (i) => `${ITEM_SCALES[i]}x` },
+      (obj, i) => {
+        delete obj.big;
+        obj.scale = ITEM_SCALES[i];
+      }
+    );
+    scaleRow.title = "Draw larger about the item origin (pickup box is unchanged)";
+    root.appendChild(scaleRow);
+    const badScale = objs.find((o) => {
+      const k = clampItemScale(o.scale ?? (o.big ? 8 : 1));
+      return k > 1 && !itemScaleFits(itemMeshFor(doc, o.pickup), k);
+    });
+    if (badScale) {
+      const k = clampItemScale(badScale.scale ?? (badScale.big ? 8 : 1));
+      const warn = document.createElement("p");
+      warn.className = "muted";
+      warn.textContent = `Mesh reaches past ${itemScaleMax(k).toFixed(1)} units from its origin: ${k}x overflows the game's 8.8 range and wraps.`;
+      root.appendChild(warn);
+    }
   }
 
   if (kind === "enemy") {
@@ -5154,6 +5263,19 @@ window.addEventListener("keydown", (e) => {
       }
       markDirty();
       refreshAll();
+    }
+    if (kind === "pickup") {
+      const holds = objs.filter((o) => itemHoldsFacing(doc, o.pickup));
+      if (holds.length) {
+        e.preventDefault();
+        pushUndo();
+        for (const obj of holds) {
+          obj.rot = cycleEnemyRot(obj.rot ?? 0);
+          clampObject(obj);
+        }
+        markDirty();
+        refreshAll();
+      }
     }
     if (kind === "slope") {
       e.preventDefault();

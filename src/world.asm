@@ -39,6 +39,7 @@ world_init
 	sta pickup_ms_h
 	sta item_spin
 	sta item_spin_l
+	sta th_draw_fl
 	sta crack_ms_l
 	sta crack_ms_h
 	sta crack_flags

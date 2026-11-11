@@ -270,6 +270,7 @@ bind_tab
 	+bind_add th_z, map_nthings
 	+bind_add th_type, map_nthings
 	+bind_add th_room, map_nthings
+	+bind_add th_ori, map_nthings
 	+bind_set_n1
 	+bind_add room_slope_o, bind_n
 	+bind_add room_plat_o, bind_n

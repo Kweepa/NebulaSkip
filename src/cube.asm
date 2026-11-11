@@ -1562,6 +1562,7 @@ xform_item_cam
 	beq .xi_z
 	lda UX,x
 	jsr scale_q4_88
+	jsr item_big_shl
 	lda nlo
 	sta e0x
 	lda nhi
@@ -1592,6 +1593,7 @@ xform_item_cam
 	beq .xi_v
 	lda UZ,x
 	jsr scale_q4_88
+	jsr item_big_shl
 	lda nlo
 	sta e0x
 	lda nhi
@@ -1656,6 +1658,7 @@ xform_item_cam
 	sta CAM_ZH,x
 	lda VY,x
 	jsr scale_q4_88
+	jsr item_big_shl
 	clc
 	lda nhi
 	adc box_y
@@ -1684,6 +1687,8 @@ xform_item_cam
 } else {
 	rts
 }
+
+; item_big_shl (8x thing scale) lives in item_xf.asm (segment A).
 
 ; CAM[] filled, mesh_nv/mesh_ne and edge pointers set. Per-vertex project.
 enemy_project
