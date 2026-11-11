@@ -3217,6 +3217,15 @@ function renderLayoutObjectFields(root, objs) {
       )
     );
     root.appendChild(roomPaletteEditor(objs, apply));
+    const allNoCombat = objs.every((o) => !!o.noCombat);
+    root.appendChild(
+      toggleField("No combat", allNoCombat, () =>
+        apply((obj) => {
+          if (allNoCombat) delete obj.noCombat;
+          else obj.noCombat = true;
+        })
+      )
+    );
 
     const shapeRow = document.createElement("div");
     shapeRow.className = "btn-row shape-picker";

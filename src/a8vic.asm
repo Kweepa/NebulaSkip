@@ -265,6 +265,7 @@ fill_viewport_colour
 apply_room_palette
 	ldx room_idx
 	+lda_mx room_bg
+	and #$fe			; bit 0 = ROOM_NOCOMBAT, not colour
 	jsr a8_to_pal
 	sta col_bg
 	lda #1

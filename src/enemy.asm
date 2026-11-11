@@ -45,6 +45,12 @@ enemies_update
 	jmp .eu_anim
 
 .eu_think
+	ldy room_idx			; no-combat room: no think, so nobody wakes. Idle
+	+lda_my room_bg			; enemies keep looping their stand clip (anim above).
+	and #ROOM_NOCOMBAT
+	beq .eu_think_go
+	jmp .eu_done
+.eu_think_go
 	ldx #0
 .eu_lp
 	cpx	map_nenemies

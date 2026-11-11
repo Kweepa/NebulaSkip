@@ -22,7 +22,8 @@
       "rx": 0,
       "ry": 0,
       "rz": 0,
-      "cuts": []
+      "cuts": [],
+      "noCombat": true
     },
     {
       "id": "62cd88b3-3808-435c-bbde-0dbbd9a53259",
@@ -130,7 +131,8 @@
       "rx": 0,
       "ry": 0,
       "rz": 0,
-      "cuts": []
+      "cuts": [],
+      "noCombat": true
     },
     {
       "id": "0a3d097c-1224-44f3-bc52-f019ec62cb1b",
@@ -199,8 +201,8 @@
       "doorType": "Tech",
       "doorScale": 2,
       "tag": "",
-      "locked": false,
-      "otherRoomId": "e51d4c40-59cd-4848-b6b2-b7a01b69c7f2"
+      "otherRoomId": "e51d4c40-59cd-4848-b6b2-b7a01b69c7f2",
+      "locked": false
     },
     {
       "id": "e51d4c40-59cd-4848-b6b2-b7a01b69c7f2",
@@ -220,7 +222,41 @@
       "rx": 0,
       "ry": 0,
       "rz": 0,
-      "cuts": []
+      "cuts": [],
+      "noCombat": true
+    },
+    {
+      "id": "20026549-4029-4487-8d3d-ddc00950846d",
+      "kind": "enemy",
+      "x": 114,
+      "y": 64,
+      "z": 90,
+      "sx": 2,
+      "sy": 4,
+      "sz": 2,
+      "face": "+z",
+      "axis": "z",
+      "dir": 1,
+      "rot": 4,
+      "enemy": "Possessed",
+      "roomId": "db241be9-929a-4455-ba75-6b573e52cd96"
+    },
+    {
+      "id": "ab071a4a-98b5-4f7e-8de9-e817fe962518",
+      "kind": "trigger",
+      "x": 113,
+      "y": 64,
+      "z": 86,
+      "sx": 4,
+      "sy": 4,
+      "sz": 6,
+      "face": "+z",
+      "axis": "z",
+      "dir": 1,
+      "purpose": "message",
+      "text": "Press fire to talk",
+      "tag": "",
+      "roomId": "db241be9-929a-4455-ba75-6b573e52cd96"
     }
   ]
 }

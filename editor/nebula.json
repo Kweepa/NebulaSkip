@@ -1896,53 +1896,6 @@
         ]
       ]
     },
-    "new door": {
-      "verts": [
-        {
-          "x": 0,
-          "y": 0,
-          "z": 0
-        },
-        {
-          "x": -1.25,
-          "y": 0,
-          "z": 0
-        },
-        {
-          "x": -1.25,
-          "y": 3,
-          "z": 0
-        },
-        {
-          "x": 1,
-          "y": 3,
-          "z": 0
-        },
-        {
-          "x": 1,
-          "y": 0,
-          "z": 0
-        }
-      ],
-      "lines": [
-        [
-          0,
-          1
-        ],
-        [
-          1,
-          2
-        ],
-        [
-          2,
-          3
-        ],
-        [
-          3,
-          4
-        ]
-      ]
-    },
     "terminal": {
       "verts": [
         {
@@ -2292,7 +2245,6 @@
     }
   },
   "customItems": [
-    "new door",
     "terminal",
     "ship",
     "ona sign"
@@ -2381,21 +2333,6 @@
         "00004000"
       ],
       "label": "wall hit"
-    },
-    "new door": {
-      "rotating": false,
-      "pickup": false,
-      "door": true,
-      "icon": [
-        ".ffffff.",
-        ".f....f.",
-        ".f....f.",
-        ".f....f.",
-        ".f....f.",
-        ".f....f.",
-        ".f....f.",
-        ".f..fff."
-      ]
     },
     "terminal": {
       "rotating": false,

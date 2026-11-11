@@ -453,6 +453,7 @@ FALL_SAFE	= 8			; no damage if eye-drop <= this
 FALL_DAMAGE	= 15			; HP on hard landing
 ABIL_FIRE	= 0			; joystick button ability (space toggles)
 ABIL_JUMP	= 1
+ROOM_NOCOMBAT	= 1			; room_bg bit 0 (unused by the paper byte): no fire mode, enemies stand
 HURT_FLASH_MS	= 300			; red border duration
 ENEMY_CULL_R	= 2			; view-space |x| vs z+R (8.8 high)
 ENEMY_CULL_H	= 6			; view-space |y| vs z+H (figure height)

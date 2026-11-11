@@ -53,6 +53,9 @@ DOOR_SIZE_BY_SCALE = {1: (4, 5, 1), 1.5: (6, 8, 1), 2: (8, 10, 1)}
 ROOM_BG_DEFAULT = 0x24  # brown
 ROOM_BG_GREY_DARK = 0x04
 ROOM_BG_GREY_LIGHT = 0x0A
+# Bit 0 of the room byte is free (norm_bg clears it): editor "noCombat" room flag.
+# Keep in sync with ROOM_NOCOMBAT in src/mem.asm.
+ROOM_NOCOMBAT = 0x01
 
 
 def norm_bg(val) -> int:
@@ -662,7 +665,11 @@ def cook_one(level: dict, map_key: str) -> bytes:
     room_sx = [r["sx"] for r in rooms]
     room_sy = [r["sy"] for r in rooms]
     room_sz = [r["sz"] for r in rooms]
-    room_bg = [norm_bg(r["a8Bg"]) if "a8Bg" in r else ROOM_BG_DEFAULT for r in rooms]
+    room_bg = [
+        (norm_bg(r["a8Bg"]) if "a8Bg" in r else ROOM_BG_DEFAULT)
+        | (ROOM_NOCOMBAT if r.get("noCombat") else 0)
+        for r in rooms
+    ]
     room_id = [map_id[id(r)] for r in rooms]
 
     col_x: list[int] = []

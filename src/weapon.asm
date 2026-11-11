@@ -329,6 +329,21 @@ hide_flash
 
 ; ------------------------------------------------------------------
 update_weapon
+	ldy room_idx			; no-combat room: pin jump mode, swallow the toggle.
+	+lda_my room_bg			; Nothing is cached; leaving the room leaves jump.
+	and #ROOM_NOCOMBAT
+	beq .uw_abk
+	lda #0
+	sta key_ability
+	lda ability_cur
+	cmp #ABIL_JUMP
+	beq .uw_abk
+	lda #ABIL_JUMP
+	sta ability_cur
+	lda #1
+	sta jump_held			; a held fire button must not take off on entry
+	jsr hud_ability
+.uw_abk
 	lda key_ability
 	beq .uw_ab
 	lda ability_cur
