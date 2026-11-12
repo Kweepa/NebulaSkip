@@ -1029,7 +1029,6 @@ restart_level
 	bcs .rl_fail
 	jsr play_up1
 	jsr init_weapon_hw
-	ldx cur_weapon
 	jsr setup_weapon
 	jsr play_up2
 	clc

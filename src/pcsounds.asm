@@ -6,51 +6,38 @@
 
 !zone pcsounds
 
-SOUND_SHOTGN	= 0
-SOUND_PISTOL	= 1
-SOUND_RLAUNC	= 2
-SOUND_PUNCH	= 3
-SOUND_OOF	= 4
-SOUND_PLPAIN	= 5
-SOUND_PLDETH	= 6
-SOUND_DOROPN	= 7
-SOUND_SWTCHN	= 8
-SOUND_ITEMUP	= 9
-SOUND_WPNUP	= 10
-SOUND_RXPLOD	= 11
-SOUND_POSIT1	= 12
-SOUND_POPAIN	= 13
-SOUND_PISTOL_E	= 14
-SOUND_PODTH1	= 15
-SOUND_BGSIT1	= 16
-SOUND_CLAW	= 17
-SOUND_BGDTH1	= 18
-SOUND_SGTSIT	= 19
-SOUND_DMPAIN	= 20
-SOUND_SGTATK	= 21
-SOUND_SGTDTH	= 22
-SOUND_BRSSIT	= 23
-SOUND_BRSDTH	= 24
-SOUND_RLAUNC_E	= 25
-SOUND_SGCOCK	= 26
-SOUND_DORCLS	= 27
-SOUND_COUNT	= 28
-SOUND_RESIDENT_N	= 28
+SOUND_PISTOL	= 0
+SOUND_OOF	= 1
+SOUND_PLPAIN	= 2
+SOUND_PLDETH	= 3
+SOUND_DOROPN	= 4
+SOUND_SWTCHN	= 5
+SOUND_ITEMUP	= 6
+SOUND_WPNUP	= 7
+SOUND_RXPLOD	= 8
+SOUND_POSIT1	= 9
+SOUND_POPAIN	= 10
+SOUND_PISTOL_E	= 11
+SOUND_PODTH1	= 12
+SOUND_BGSIT1	= 13
+SOUND_CLAW	= 14
+SOUND_BGDTH1	= 15
+SOUND_SGTSIT	= 16
+SOUND_DMPAIN	= 17
+SOUND_SGTATK	= 18
+SOUND_SGTDTH	= 19
+SOUND_BRSSIT	= 20
+SOUND_BRSDTH	= 21
+SOUND_FIREBALL	= 22
+SOUND_DORCLS	= 23
+SOUND_COUNT	= 24
+SOUND_RESIDENT_N	= 24
 !if SOUND_COUNT * 2 > SOUND_TABLE_MAX {
 	!error "sound_table does not fit its BSS window"
 }
 
-pc_shotgn
-	!byte 16, 0, 50, 64, 90, 76, 94, 76, 83, 104, 110, 90, 116, 123, 131, 116
-	!byte 110, 131, 177
 pc_pistol
 	!byte 9, 0, 50, 83, 83, 76, 94, 76, 104, 140, 151, 140
-pc_rlaunc
-	!byte 17, 0, 50, 76, 54, 68, 58, 60, 58, 44, 55, 44, 37, 36, 44, 29
-	!byte 40, 25, 26, 21
-pc_punch
-	!byte 20, 0, 50, 64, 40, 62, 40, 60, 40, 68, 40, 71, 99, 76, 86, 90
-	!byte 110, 116, 140, 151, 151, 163, 163
 pc_oof
 	!byte 4, 0, 50, 131, 123, 123, 140
 pc_plpain
@@ -97,22 +84,17 @@ pc_brssit
 pc_brsdth
 	!byte 22, 1, 99, 177, 177, 0, 163, 0, 163, 0, 0, 163, 0, 0, 151, 0
 	!byte 131, 0, 0, 0, 110, 0, 0, 0, 110
-pc_rlaunc_e
+pc_fireball
 	!byte 17, 1, 50, 76, 54, 68, 58, 60, 58, 44, 55, 44, 37, 36, 44, 29
 	!byte 40, 25, 26, 21
-pc_sgcock
-	!byte 12, 0, 50, 94, 64, 0, 0, 0, 0, 0, 0, 0, 60, 60, 83
 pc_dorcls
 	!byte 16, 2, 20, 71, 163, 83, 140, 94, 110, 110, 94, 116, 110, 116, 123, 140
 	!byte 140, 151, 163
 
-; resident sound payload 442 bytes
+; resident sound payload 365 bytes
 ; copied into sound_table[0..SOUND_RESIDENT_N-1] by play_sound_init
 sound_res_words
-	!word pc_shotgn
 	!word pc_pistol
-	!word pc_rlaunc
-	!word pc_punch
 	!word pc_oof
 	!word pc_plpain
 	!word pc_pldeth
@@ -134,6 +116,5 @@ sound_res_words
 	!word pc_sgtdth
 	!word pc_brssit
 	!word pc_brsdth
-	!word pc_rlaunc_e
-	!word pc_sgcock
+	!word pc_fireball
 	!word pc_dorcls

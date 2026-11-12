@@ -732,7 +732,7 @@
       "face": "+z",
       "axis": "z",
       "dir": 1,
-      "name": "Acid Pit",
+      "name": "Connector",
       "a8Bg": 36,
       "shape": "box",
       "rx": 0,

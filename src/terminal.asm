@@ -261,11 +261,6 @@ t_leave
 	sta mouse_turn_h
 	sta in_fire
 	sta in_ability
-	sta in_wpn_1
-	sta in_wpn_shot
-	sta in_wpn_chain
-	sta in_wpn_rkt
-	sta in_wpn_pist
 	sta term_arm
 	lda vbi_count_l
 	sta vbi_last_l
@@ -805,9 +800,9 @@ hud_bits
 	lda bits_l
 	ldx bits_h
 	jsr bin16_dec5
-	lda #<HUD_SCR + HUD_OFF_RKT + HUD_BITS_COL
+	lda #<HUD_SCR + HUD_OFF_VALUE + HUD_BITS_COL
 	sta dst_ptr
-	lda #>HUD_SCR + HUD_OFF_RKT + HUD_BITS_COL
+	lda #>HUD_SCR + HUD_OFF_VALUE + HUD_BITS_COL
 	sta dst_ptr + 1
 	ldy #3
 .hb_l

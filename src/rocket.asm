@@ -1,6 +1,7 @@
-; Player rockets fly straight and explode on impact. Faction owner (contact
+; Projectiles fly straight and explode on impact. Faction owner (contact
 ; skips allies; splash does not). One explosion at a time via fx_on.
-; Fireballs are imp and baron shots: clear on impact, no splash.
+; Fireballs are imp and baron shots: clear on impact, no splash. Barrels
+; and any player-owned projectile detonate through rkt_explode.
 !zone rocket
 
 init_rockets
@@ -84,33 +85,6 @@ rkt_fill_slot
 +
 	lda rot2
 	jmp rkt_set_vel
-
-; Player center: cam xz, Y = feet + 2 (eye − (EYE_HEIGHT − 2)).
-spawn_player_rocket
-	jsr rkt_alloc
-	bcc .spg_rts
-	stx obj_i
-	lda cam_xl
-	sta org_xl
-	lda cam_xh
-	sta org_xh
-	lda cam_zl
-	sta org_zl
-	lda cam_zh
-	sta org_zh
-	lda cam_yl
-	sta org_yl
-	lda cam_yh
-	sec
-	sbc #EYE_HEIGHT - 2
-	sta org_yh
-	ldx obj_i
-	lda yaw
-	sta rot2
-	lda #RKT_OWN_PL
-	jsr rkt_fill_slot
-.spg_rts
-	rts
 
 update_rockets
 	ldx #0
@@ -238,7 +212,7 @@ rkt_step_dead
 	sec
 	rts
 
-; Wall, floor, ceiling, or solid. Fireball clears. Player rocket splashes.
+; Wall, floor, ceiling, or solid. Fireball clears. Anything else splashes.
 rkt_impact
 	ldx obj_i
 	lda gr_flags,x
@@ -378,9 +352,9 @@ rkt_col_xz
 	sta col_z
 	rts
 
-; C=1 allowed (room colliders only — doors do not pass rockets)
+; C=1 allowed (room colliders only — doors do not pass projectiles)
 rkt_pos_ok
-	; Rockets are points: the PLAYER_R wall margin killed them at the launcher.
+	; Projectiles are points: the PLAYER_R wall margin killed them at the muzzle.
 	lda col_room
 	jsr room_mul3
 	tax
@@ -401,7 +375,7 @@ rkt_pos_ok
 	clc
 	rts
 
-; Point as player AABB of height PLAYER_H at rocket Y (feet).
+; Point as player AABB of height PLAYER_H at projectile Y (feet).
 rkt_solid_at
 	lda cam_yh
 	pha
@@ -660,7 +634,7 @@ rkt_splash
 .gsp_rts
 	rts
 
-; Player rocket only (caller is rkt_hit_enemies). Overlap consumes the
+; Player-owned only (caller is rkt_hit_enemies). Overlap consumes the
 ; rocket with its own splash, then detonates the barrel. Not rkt_explode:
 ; that pends on fx_on and would wait out the chain.
 rkt_touch_barrel
@@ -909,7 +883,7 @@ draw_rockets
 .dgr_rts
 	jmp rkt_red_off
 
-; Every rocket draws red. Restore ora before return so later lines stay paper.
+; Every projectile draws red. Restore ora before return so later lines stay paper.
 draw_rockets_red
 	lda #$49
 	bne rkt_red_ops

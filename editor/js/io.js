@@ -1,7 +1,6 @@
 const HANDLE_DB = "nebulaskip-editor";
 const HANDLE_STORE = "handles";
 const SHAREWARE_KEY = "shareware";
-const WEAPONS_PNG_KEY = "weapons-png";
 const REPO_KEY = "repo";
 // Project root. The old "doc" file handle is left unread so a path from another project cannot be restored.
 const PROJECT_KEY = "nebulaskip-project";
@@ -15,8 +14,6 @@ let docFileHandle = null;
 let projectDirHandle = null;
 /** @type {FileSystemDirectoryHandle | null} */
 let sharewareDirHandle = null;
-/** @type {FileSystemDirectoryHandle | null} */
-let weaponsPngDirHandle = null;
 /** @type {FileSystemDirectoryHandle | null} */
 let repoDirHandle = null;
 
@@ -483,43 +480,6 @@ export async function loadSharewarePakBuffers(dirHandle) {
     buffers.push(await file.arrayBuffer());
   }
   return buffers;
-}
-
-export async function ensureWeaponsPngDirectory() {
-  if (weaponsPngDirHandle && (await ensurePermission(weaponsPngDirHandle, "readwrite"))) {
-    return weaponsPngDirHandle;
-  }
-  const stored = await loadStoredHandle(WEAPONS_PNG_KEY);
-  if (stored && (await ensurePermission(stored, "readwrite"))) {
-    weaponsPngDirHandle = stored;
-    return stored;
-  }
-  return pickWeaponsPngDirectory();
-}
-
-export async function pickWeaponsPngDirectory() {
-  if (!window.showDirectoryPicker) {
-    throw new Error("This browser cannot open a folder (needs Chromium file access)");
-  }
-  try {
-    const opts = { id: "nebulaskip-weapons", mode: "readwrite" };
-    const startIn = weaponsPngDirHandle || (await loadStoredHandle(WEAPONS_PNG_KEY));
-    if (startIn) opts.startIn = startIn;
-    const handle = await window.showDirectoryPicker(opts);
-    weaponsPngDirHandle = handle;
-    await storeHandle(WEAPONS_PNG_KEY, handle);
-    return handle;
-  } catch (e) {
-    if (e.name === "AbortError") return null;
-    throw e;
-  }
-}
-
-export async function writePngFile(dirHandle, filename, blob) {
-  const fh = await dirHandle.getFileHandle(filename, { create: true });
-  const writable = await fh.createWritable();
-  await writable.write(blob);
-  await writable.close();
 }
 
 export function downloadJSON(doc, filename = DEFAULT_DOC_PATH) {

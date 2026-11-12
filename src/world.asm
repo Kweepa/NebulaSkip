@@ -85,7 +85,6 @@ init_things
 	sta doom_anim_ph
 	sta barrel_ch_l
 	sta barrel_ch_h
-	sta shot_abs
 	ldx #3
 .ib_pend
 	sta barrel_pend,x
@@ -1069,7 +1068,7 @@ crates_block
 	jsr player_overlaps_y
 	bcc .cb_n
 	cpy #0
-	beq .cb_wall			; rocket — volume wall
+	beq .cb_wall			; projectile — volume wall
 	sec
 	lda cam_yh
 	sbc #EYE_HEIGHT			; feet
@@ -1106,7 +1105,7 @@ crates_block
 ; ------------------------------------------------------------------
 ; solid_at — col_x/col_z blocked by crate, solid platform, or closed door?
 ; C=1 blocked. Y=1: crate rise <= STEP_UP is not a wall (player/enemy).
-; Y=0: crate volume always solid (rocket).
+; Y=0: crate volume always solid (projectile).
 ; solid_at uses room_idx; solid_at_col uses col_room (already set).
 ; ------------------------------------------------------------------
 solid_at
@@ -2276,11 +2275,10 @@ grant_th_type
 	rts
 
 GB_ADD = 0
-GB_GUN = 1
-GB_ARM = 2
-GB_PU  = 3
-GB_KEY = 4
-GB_PACK = 5
+GB_ARM = 1
+GB_PU  = 2
+GB_KEY = 3
+GB_PACK = 4
 
 PS_HP = 0
 PS_AMMO = 1
@@ -2288,62 +2286,49 @@ PS_BONUS = 2
 PS_KEY = 3
 
 gb_mh
-	!word gb_do_add, gb_do_gun, gb_do_arm, gb_do_pu, gb_do_key, gb_do_pack
+	!word gb_do_add, gb_do_arm, gb_do_pu, gb_do_key, gb_do_pack
 
 ; Row = TH_*. gb_max is the add cap, or the armor value set for GB_ARM.
 ; gb_dbl = 1: have_pack doubles that cap (byte saturates at 255).
 gb_mode
 	!byte GB_ADD, GB_ADD, GB_ARM, GB_ARM, GB_ADD
-	!byte GB_ADD, GB_ADD, GB_GUN, GB_GUN, GB_GUN
-	!byte GB_GUN, GB_PACK, GB_KEY, GB_KEY, GB_KEY
-	!byte GB_ADD, GB_PU, GB_ADD, GB_ADD
+	!byte GB_PACK, GB_KEY, GB_KEY, GB_KEY, GB_ADD
+	!byte GB_PU, GB_ADD, GB_ADD
 
 gb_ptr_lo
 	!byte <player_hp, <player_hp, 0, 0, <ammo_bullets
-	!byte <ammo_shells, <ammo_rockets, <ammo_shells, <ammo_bullets, 0
-	!byte <ammo_rockets, 0, 0, 0, 0
-	!byte <player_hp, 0, 0, 0
+	!byte 0, 0, 0, 0, <player_hp
+	!byte 0, 0, 0
 gb_ptr_hi
 	!byte >player_hp, >player_hp, 0, 0, >ammo_bullets
-	!byte >ammo_shells, >ammo_rockets, >ammo_shells, >ammo_bullets, 0
-	!byte >ammo_rockets, 0, 0, 0, 0
-	!byte >player_hp, 0, 0, 0
+	!byte 0, 0, 0, 0, >player_hp
+	!byte 0, 0, 0
 
 gb_add
 	!byte HP_STIM, HP_MEDIKIT, 0, 0, AMMO_BULLETS_BOX
-	!byte AMMO_SHELLS_BOX, AMMO_GRENADES_BOX, AMMO_SHELLS_BOX, AMMO_CHAINGUN, 0
-	!byte AMMO_GRENADES_GUN, 0, 0, 0, 0
-	!byte HP_SOUL, 0, 0, 0
+	!byte 0, 0, 0, 0, HP_SOUL
+	!byte 0, 0, 0
 
 gb_max
 	!byte PLAYER_HP_MAX, PLAYER_HP_MAX, ARMOR_GREEN, ARMOR_BLUE, AMMO_BULLETS_MAX
-	!byte AMMO_SHELLS_MAX, AMMO_GRENADES_MAX, AMMO_SHELLS_MAX, AMMO_BULLETS_MAX, 0
-	!byte AMMO_GRENADES_MAX, 0, 0, 0, 0
-	!byte HP_SOUL_MAX, 0, 0, 0
+	!byte 0, 0, 0, 0, HP_SOUL_MAX
+	!byte 0, 0, 0
 
 gb_dbl
 	!byte 0, 0, 0, 0, 1
-	!byte 1, 1, 1, 1, 0
-	!byte 1, 0, 0, 0, 0
-	!byte 0, 0, 0, 0
+	!byte 0, 0, 0, 0, 0
+	!byte 0, 0, 0
 
+; Key bit per TH_* row (have_keys).
 gb_bits
 	!byte 0, 0, 0, 0, 0
-	!byte 0, 0, HAVE_SHOT, HAVE_CHAIN, HAVE_SAW
-	!byte HAVE_ROCKET, 0, HAVE_RED, HAVE_YELLOW, HAVE_BLUE
-	!byte 0, 0, 0, 0
-
-gb_wpn
-	!byte 0, 0, 0, 0, 0
-	!byte 0, 0, WPN_SHOT, WPN_CHAIN, WPN_SAW
-	!byte WPN_ROCKET, 0, 0, 0, 0
-	!byte 0, 0, 0, 0
+	!byte 0, HAVE_RED, HAVE_YELLOW, HAVE_BLUE, 0
+	!byte 0, 0, 0
 
 gb_snd
 	!byte PS_HP, PS_HP, PS_AMMO, PS_AMMO, PS_AMMO
-	!byte PS_AMMO, PS_AMMO, PS_AMMO, PS_AMMO, PS_AMMO
-	!byte PS_AMMO, PS_BONUS, PS_KEY, PS_KEY, PS_KEY
-	!byte PS_HP, PS_BONUS, PS_AMMO, PS_AMMO
+	!byte PS_BONUS, PS_KEY, PS_KEY, PS_KEY, PS_HP
+	!byte PS_BONUS, PS_AMMO, PS_AMMO
 
 ; Y = TH_*. rot2=0 fail if at cap, 1 always add+clamp. C=1 stored. Restores Y.
 gb_add_amt
@@ -2397,30 +2382,6 @@ gb_do_add
 	lda #0
 	sta rot2
 	jmp gb_add_amt
-
-gb_do_gun
-	lda have_wpn
-	and gb_bits,y
-	beq .gg_new
-	lda gb_add,y
-	beq gb_no
-	lda #0
-	sta rot2
-	jmp gb_add_amt
-.gg_new
-	lda have_wpn
-	ora gb_bits,y
-	sta have_wpn
-	lda gb_add,y
-	beq .gg_sw
-	lda #1
-	sta rot2
-	jsr gb_add_amt
-.gg_sw
-	ldx gb_wpn,y
-	jsr switch_weapon
-	sec
-	rts
 
 gb_do_arm
 	lda player_armour

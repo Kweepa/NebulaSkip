@@ -37,7 +37,7 @@ QSO_SAVE	= 0
 QSO_VERIFY	= 1
 QSO_RESTORE	= 2
 QSO_MAGIC	= $a5
-QSO_VER		= 4			; 4: ship_seen added to INV (3: bits, bounty, shop)
+QSO_VER		= 5			; 5: weapon inventory dropped from INV (4: ship_seen, 3: bits, bounty, shop)
 QSO_HDR		= 9
 QSO_BYTES	= QSAVE_N * 128
 OP_READ		= $52			; same values as the SIO commands qs_sector takes
@@ -199,13 +199,7 @@ qso_restore
 	jsr update_floor
 	jsr sync_eye
 .rs_inv
-	lda cur_weapon
-	pha
-	lda #$ff
-	sta cur_weapon
-	pla
-	tax
-	jsr switch_weapon
+	jsr ready_weapon
 	jsr hud_ammo
 	jsr hud_keys
 	+qmsg qso_m_loaded
@@ -562,11 +556,7 @@ qso_tab
 	+qf player_hp, 0
 	+qf player_armour, 0
 	+qf combat_armor, 0
-	+qf ammo_shells, 0
-	+qf ammo_rockets, 0
 	+qf ammo_bullets, 0
-	+qf have_wpn, 0
-	+qf cur_weapon, 0
 	+qf have_keys, 0
 	+qf have_pack, 0
 	+qf pu_kind, 0

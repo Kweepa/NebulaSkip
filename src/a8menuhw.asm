@@ -1462,7 +1462,7 @@ a8_stage_dl
 	beq .nom
 	lda #$f0				; top blank + DLI
 	sta GAME_DL_STAGE
-	lda #$82				; shells + DLI
+	lda #$82				; labels + DLI
 	sta GAME_DL_STAGE + 7
 .nom
 	lda #<BMP_A
@@ -1498,9 +1498,9 @@ a8_game_dl
 	!word HUD_SCR				; title
 	!byte $82				; map + DLI
 	!byte $70				; 8 blanks
-	!byte $02				; shells
-	!byte $02				; shells
-	!byte $82				; rockets + DLI
+	!byte $02				; keys
+	!byte $02				; labels
+	!byte $82				; values + DLI
 	!byte $70				; 8 blanks
 	!byte $02				; message
 	!byte $02				; seam

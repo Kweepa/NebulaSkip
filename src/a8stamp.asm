@@ -17,7 +17,7 @@ stamp_bh	!byte 0
 stamp_tmp	!byte 0
 stamp_y0	!byte 0			; viewport Y restored by stamp_at_x
 
-; Fire mode: the weapon and its flashes. Jump mode: the black crosshair at
+; Fire mode: the pistol and its muzzle flash. Jump mode: the black crosshair at
 ; the viewport centre instead. World effects (enemy muzzle, splat) draw in both.
 stamp_view
 	lda ability_cur
@@ -37,52 +37,22 @@ stamp_view
 	jmp .sv_fx
 .sv_wpn
 	jsr wpn_y_bob
-	jsr saw_dy
 	sec
 	sbc #VIEW_SPR_Y0
 	sta stamp_y0
-	ldx cur_weapon
-	cpx #WPN_FIST
-	beq .sv_fist
-	lda wpn_x
+	lda #WPN_X0
 	jsr stamp_at_x
-	lda wpn_fr_base,x
-	clc
-	adc wpn_fr
-	tax
-	lda wpn_fr_lo,x
-	ldy wpn_fr_hi,x
+	lda #<spr_pist_b
+	ldy #>spr_pist_b
 	jsr stamp_body
-	jmp .sv_flash
-.sv_fist
-	lda wpn_x
-	jsr stamp_at_x
-	lda wpn_pose
-	bne .sv_punch
-	lda #<spr_hand_b
-	ldy #>spr_hand_b
-	bne .sv_fist_body
-.sv_punch
-	lda #<spr_fist_b
-	ldy #>spr_fist_b
-.sv_fist_body
-	jsr stamp_body
-.sv_flash
-	lda wpn_pose
-	cmp #POSE_COCK
-	beq .no5
-	lda #<spr_muzzle_b		; both flashes share this rect; stamp_flash keeps init_ptr
+	lda flash_phase
+	beq .sv_fx
+	lda #<spr_muzzle_b
 	sta init_ptr
 	lda #>spr_muzzle_b
 	sta init_ptr+1
 	lda flash_phase
-	beq .no4
 	jsr stamp_flash
-.no4
-	lda flash5_phase
-	beq .no5
-	jsr stamp_flash
-.no5
 .sv_fx
 	lda emuz_on
 	beq .noe
@@ -124,7 +94,7 @@ stamp_flash
 	sta stamp_y
 	jmp blit_rect
 
-; A = screen X (wpn_x). Restores the saved viewport Y.
+; A = screen X. Restores the saved viewport Y.
 stamp_at_x
 	sec
 	sbc #VIEW_SPR_X0
@@ -145,23 +115,6 @@ stamp_body
 	lda #0
 	sta stamp_red
 	jmp blit_rect
-
-; A = bobbed wpn_y. Chainsaw drops saw_amp when saw_flip bit 0 is set.
-; Down only, so the outline never lifts off the viewport bottom.
-saw_dy
-	ldx cur_weapon
-	cpx #WPN_SAW
-	bne .sd_rts
-	ldx saw_flip
-	cpx #1
-	beq .sd_add
-	cpx #3
-	bne .sd_rts
-.sd_add
-	clc
-	adc saw_amp
-.sd_rts
-	rts
 
 ; A = wpn_y plus the walk bob. Phase 0 (rest, firing, airborne) adds 0.
 ; (SINTAB[0..127] + 8) >> 5 is 0 at rest and 4 at the crest.

@@ -222,20 +222,6 @@ def map_json() -> list[Path]:
     return [folder, *(mapnames.json_path(l) for l in mapnames.all_letters())]
 
 
-def weapon_pngs() -> list[Path]:
-    folder = ROOT / "assets" / "weapons"
-    if not folder.is_dir():
-        return [folder]
-    pics = [
-        path
-        for path in folder.iterdir()
-        if path.is_file()
-        and path.suffix.lower() == ".png"
-        and path.name.lower() != "sheet.png"
-    ]
-    return [folder, *pics]
-
-
 def ref_audio() -> list[Path]:
     return [ROOT / "ref" / "DOOM.WAD"]
 
@@ -370,9 +356,9 @@ def steps(exe: str) -> list[Step]:
             lambda: [
                 TOOLS / "genweapons.py",
                 TOOLS / "sprmask.py",
-                doc,
                 ROOT / "ui" / "crosshair.png",
-                *weapon_pngs(),
+                ROOT / "assets" / "weapons" / "pistol_lines.png",
+                ROOT / "assets" / "weapons" / "muzzle_flash.png",
             ],
             lambda: [SRC / "weapon_spr.asm"],
             lambda: tool("genweapons.py"),

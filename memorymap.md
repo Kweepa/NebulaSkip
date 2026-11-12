@@ -25,7 +25,7 @@ LoadPrg's context save) switch to `$FE` for the write and restore `portb_cur`.
 | `$4000-$4FFF`, `$5000-$5FFF` | Bitmaps A and B, 4K each (128 rows x 32 B). Under the bank window. |
 | `$8000-$B559` | GAME segment B (`GAMEB`): hud, world, enemy, cheats (NMI half), loader, tabs, reboot |
 | `$BC00-$BDFF` | OS page 2/3 snapshot (`A8_OSPAGE`) |
-| `$BE00-$BFFF` | SIO sector/directory buffer, weapon buffers |
+| `$BE00-$BFFF` | SIO sector/directory buffer, sprite buffers |
 | `$C000-$CFF2` | GAME segment C (`GAMEC`): cube, fx. Never runs with the OS on. |
 | `$D800-$DFFF` | Play BSS, `ALOGHI`, `LOGTAB` (RAM under the OS) |
 | `$E000-$EF1D` | GAME segment D (`GAMED`): door, mesh |
@@ -40,8 +40,8 @@ Segment A/B/C/D slack is printed by `build-report.json` (`game.segments`); ACME
 | Range | Use |
 | :--- | :--- |
 | `$4000-$5DFF` | Heap (`DYN_BASE`..`HEAP_LIM`), 7680 B: packed map + prefix, then up to two fused enemy banks, relocated as before. Check `tools/checkheap.py` for the tightest map. |
-| `$5E00-$6A95` | Code zone (`CODE0_BASE`..`CODE0_END`=`STATIC_BASE`, 3392 B, 170 B spare): weapon, process, elevator, cheats_apply. Main-loop-only code: runs with `PORTB_PLAY`, no trampolines. |
-| `$6B40-$72F6` | `STATIC_BASE`: weapon sprites, splat, enemy muzzle (1546 B spare below `QS_OVL`). Item/door meshes moved to segment A (`item_mesh.asm`, 1503 B, paged by `tools/genitems.py`). |
+| `$5E00-$6A95` | Code zone (`CODE0_BASE`..`CODE0_END`=`STATIC_BASE`, 3392 B, 170 B spare): pistol, process, elevator, cheats_apply. Main-loop-only code: runs with `PORTB_PLAY`, no trampolines. |
+| `$6B40-$72F6` | `STATIC_BASE`: pistol sprite, splat, enemy muzzle (1546 B spare below `QS_OVL`). Item/door meshes moved to segment A (`item_mesh.asm`, 1503 B, paged by `tools/genitems.py`). |
 | `$7900-$7FB8` | `QS_OVL`: QSAVE overlay (code 1079 B + 640 B payload buffer), called in place |
 
 **Code-zone rules:** nothing in the zone may be called from the NMI/DLI/VBI path,
@@ -137,7 +137,7 @@ only changes `LoadPrg` inside `loader.asm` (26 B).
 | `$3377`–`$377A` | 1028 | `pcsounds.asm` | resident PC-speaker envelopes/tables |
 | `$377B`–`$387A` | 256 | `pcsfreq.asm` | Fn hi LUT (256) |
 | `$387B`–`$404A` | 2000 | `weapon.asm` | |
-| `$404B`–`$45FA` | 1456 | `weapon_spr.asm` | packed view-model sprites |
+| `$404B`–`$45FA` | 1456 | `weapon_spr.asm` | packed pistol, flash and crosshair rects |
 | `$45FB`–`$462E` | 52 | `splat_spr.asm` | |
 | `$462F`–`$4676` | 72 | `enemy_muzzle.asm` | |
 | `$4677`–`$47BC` | 326 | `process.asm` | door/elev process SoA |
@@ -190,13 +190,13 @@ Caps: `MAP_MAX_BYTES` 4096, pose payload 4096, fused bank 8192.
 | `$C400`–`$C7E7` | 1000 | Screen matrix B |
 | `$C7E8`–`$C7F7` | 16 | Unused |
 | `$C7F8`–`$C7FF` | 8 | VIC sprite pointers for matrix B |
-| `$C800`–`$C8FF` | 256 | Weapon body sprites 0–3 (`WPN_RAM`, 4×64) |
-| `$C900`–`$C93F` | 64 | Sprite 4 muzzle / spark / chaingun L (`WPN_FLASH`) |
-| `$C940`–`$C97F` | 64 | Sprite 5 chaingun R (`WPN_FLASH2`) |
+| `$C800`–`$C8FF` | 256 | Pistol body sprites 0–3 (`WPN_RAM`, 4×64) |
+| `$C900`–`$C93F` | 64 | Sprite 4 muzzle flash (`WPN_FLASH`) |
+| `$C940`–`$C97F` | 64 | Unused |
 | `$C980`–`$C9BF` | 64 | Sprite 6 enemy muzzle (`WPN_EMUZ`) |
 | `$C9C0`–`$C9FF` | 64 | Sprite 7 impact splat (`WPN_SPLAT`) |
 | `$CA00`–`$CE81` | 642 | Project / clip / game scratch (table below) |
-| `$CE82`–`$CFFF` | 382 | Play BSS: enemy state, rocket SoA, hitscan/FX, barrel chain, movement scratch, and AI-bank relocation scratch through `$CFCB`; `saw_flip`/`saw_amp` at `$CFD7`; remainder free before charset A |
+| `$CE82`–`$CFFF` | 382 | Play BSS: enemy state, rocket SoA, hitscan/FX, barrel chain, movement scratch, and AI-bank relocation scratch through `$CFCB`; remainder free before charset A |
 | `$D000`–`$D5FF` | 1536 | Charset A top cols 0–23 (viewport) |
 | `$D600`–`$D607` | 8 | Char 192 `$FF` margin glyph |
 | `$D608`–`$D747` | 320 | `SINTAB` (COSTAB = SINTAB+64 at `$D648`) |
@@ -302,25 +302,15 @@ Vertex tables are 16 slots. Edge clip tables are 32 slots. Unique-X/Z product ta
 | `$CC1E` | 6 | `ZS_L` | UZ × sin (lo) |
 | `$CC24` | 6 | `ZS_H` | UZ × sin (hi) |
 | `$CC2A` | 1 | `in_fire` | Weapon BSS |
-| `$CC2B` | 4 | `in_wpn_1`…`in_wpn_rkt` | |
 | `$CC2F` | 1 | `key_fire` | |
-| `$CC30` | 4 | `key_wpn_1`…`key_wpn_rkt` | |
-| `$CC34` | 1 | `cur_weapon` | |
 | `$CC35` | 1 | `wpn_pose` | |
 | `$CC36` | 2 | `fire_rpt_l/h` | |
 | `$CC38` | 2 | `flash_ms_l/h` | |
-| `$CC3A` | 1 | `flash_phase` | Sprite 4 |
-| `$CC3B` | 1 | `mg_frame` | |
-| `$CC3C` | 1 | `wpn_x` | |
+| `$CC3A` | 1 | `flash_phase` | Pistol muzzle |
 | `$CC3D` | 1 | `wpn_y` | |
-| `$CC3E` | 1 | `spr_en` | |
 | `$CC3F` | 1 | `anim_step` | |
 | `$CC40` | 2 | `anim_ms_l/h` | |
-| `$CC42` | 1 | `wpn_flash_en` | |
-| `$CC43` | 1 | `wpn_flash_dy` | |
 | `$CC44` | 1 | `wpn_tmp0` | |
-| `$CC45` | 2 | `flash5_ms_l/h` | |
-| `$CC47` | 1 | `flash5_phase` | Sprite 5 |
 | `$CC48` | 2 | `emuz_ms_l/h` | |
 | `$CC4A` | 1 | `emuz_on` | |
 | `$CC4B` | 1 | `emuz_xmsb` | |
@@ -339,10 +329,7 @@ Vertex tables are 16 slots. Edge clip tables are 32 slots. Unique-X/Z product ta
 | `$CCD0` | 16 | `COL_INVK` | |
 | `$CCE0` | 16 | `COL_PXL` | |
 | `$CCF0` | 16 | `COL_PXH` | |
-| `$CD00` | 1 | `ammo_shells` | |
-| `$CD01` | 1 | unused | |
-| `$CD02` | 1 | `ammo_rockets` | |
-| `$CD03` | 1 | `have_wpn` | `HAVE_*` bitfield |
+| `$CD01` | 1 | `combat_armor` | |
 | `$CD04` | 32 | `th_taken` | `TH_MAX` |
 | `$CD24` | 1 | `player_hp` | 0..`PLAYER_HP_MAX` |
 | `$CD25` | 1 | `player_armour` | starts 0; no pickups yet |
@@ -389,7 +376,6 @@ Vertex tables are 16 slots. Edge clip tables are 32 slots. Unique-X/Z product ta
 | `$CEAD` | 24 | `en_pain_i` | `ENEMY_MAX` |
 | `$CEC5` | 1 | `have_keys` | |
 | `$CF7B` | 7 | `splat_wx/wy/wz`, `splat_jx/jy`, `splat_anch`, `splat_trk` | World-anchored splat: hit point, screen jitter, flags (`splat_track`) |
-| `$CFE1` | 1 | `saw_rng` | Chainsaw bite LFSR |
 | `$CFE2` | 8 | `elev_y` | `MAP_NELEVS` ≤ 8 |
 | `$CFEA` | 1 | `elev_match` | Tag group while an elevator trigger fans out |
 | `$CFEB` | 1 | `elev_hits` | Cars that started moving on this fan-out |

@@ -30,12 +30,6 @@ BP_MESH_KEY = [
     "green armor",
     "blue armor",
     "ammo box",
-    "shells",
-    "box of rockets",
-    "shotgun",
-    "chaingun",
-    "chainsaw",
-    "rocket launcher",
     "backpack",
     "red keycard",
     "yellow keycard",
@@ -158,10 +152,6 @@ DEFAULT_MESHES = {
             [6, 7],
             [6, 8],
         ],
-    },
-    "chainsaw": {
-        "verts": [v(0, 0, 0), v(0, 3, 0), v(-1, 3, 0), v(1, 3, 0)],
-        "lines": [[0, 1], [1, 2], [1, 3]],
     },
     "lightpost": {
         "verts": [v(0, 0, 0), v(0, 4, 0), v(-1, 4, 0), v(1, 4, 0), v(0, 4, -1), v(0, 4, 1)],
@@ -356,7 +346,7 @@ def btable(name: str, vals: list[int]) -> str:
 
 
 def custom_items(doc: dict) -> list[str]:
-    """User-defined item names, in TH order (TH 19..). Mirrors parseCustomItems."""
+    """User-defined item names, in TH order (TH 13..). Mirrors parseCustomItems."""
     out: list[str] = []
     taken = {k.lower() for k in BP_MESH_KEY} | {k.lower() for k in DOOR_MESH_KEY}
     for src in doc.get("customItems") or []:

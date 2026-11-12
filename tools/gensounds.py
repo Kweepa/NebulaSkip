@@ -22,10 +22,7 @@ MAX_TICKS = 255
 # id, DP lump, voice (0 player / 1 enemy / 2 world), priority.
 # Same lump can ship twice when two callers need different channels.
 EFFECTS = [
-    ("SHOTGN", "DPSHOTGN", 0, 50),
     ("PISTOL", "DPPISTOL", 0, 50),
-    ("RLAUNC", "DPRLAUNC", 0, 50),
-    ("PUNCH", "DPPUNCH", 0, 50),
     ("OOF", "DPOOF", 0, 50),
     ("PLPAIN", "DPPLPAIN", 0, 90),
     ("PLDETH", "DPPLDETH", 0, 99),
@@ -47,8 +44,7 @@ EFFECTS = [
     ("SGTDTH", "DPSGTDTH", 1, 99),
     ("BRSSIT", "DPBRSSIT", 1, 50),
     ("BRSDTH", "DPBRSDTH", 1, 99),
-    ("RLAUNC_E", "DPRLAUNC", 1, 50),
-    ("SGCOCK", "DPSGCOCK", 0, 50),
+    ("FIREBALL", "DPRLAUNC", 1, 50),
     ("DORCLS", "DPDORCLS", 2, 20),
 ]
 

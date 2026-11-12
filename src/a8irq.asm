@@ -81,6 +81,7 @@ init_irq
 	sta pub_ff
 	lda #0
 	sta $d208				; AUDCTL: 64 kHz, no filters
+	sta $d207				; channel 4 silent (the menu music may have left it on)
 	lda #$03
 	sta $d20f				; SKCTL: keys + pot scan
 	sta $d20b				; POTGO
@@ -213,7 +214,7 @@ a8_nmi_out
 .nm_samp
 	lda term_on
 	bne .nm_term
-	; Mouse sample only (top blank, shells row, bitmap). Top and shells exist with the mouse on.
+	; Mouse sample only (top blank, labels row, bitmap). Top and labels exist with the mouse on.
 	inc dli_phase
 	sta $d40f				; ack
 	txa
@@ -452,8 +453,7 @@ suit_col
 	jsr check_cheats
 	jsr flush_sfx
 	jsr update_sfx
-	jsr a8_noise
-	jmp a8_saw
+	jmp a8_noise
 
 a8_stick
 	lda pot_prev
@@ -529,39 +529,6 @@ a8_keys
 	bne .nku
 	lda $d209
 	and #$3f
-	cmp #$1f				; 1 fist / chainsaw
-	bne .k2
-	lda wpn1_held
-	bne .nk
-	lda #1
-	sta wpn1_held
-	sta in_wpn_1
-	rts
-.k2
-	cmp #$1e				; 2 pistol
-	bne .k3
-	lda #1
-	sta in_wpn_pist
-	rts
-.k3
-	cmp #$1a				; 3 shotgun
-	bne .k4
-	lda #1
-	sta in_wpn_shot
-	rts
-.k4
-	cmp #$18				; 4 chaingun
-	bne .k5
-	lda #1
-	sta in_wpn_chain
-	rts
-.k5
-	cmp #$1d				; 5 rocket
-	bne .ksp
-	lda #1
-	sta in_wpn_rkt
-	rts
-.ksp
 	cmp #$21				; space: swap joystick-button ability
 	bne .ks
 	lda space_held
@@ -590,7 +557,6 @@ a8_keys
 .nku
 	lda #0
 	sta qk_held
-	sta wpn1_held
 	sta space_held
 .nk
 	rts
@@ -612,93 +578,6 @@ a8_noise
 	lda #0
 	sta $d205
 .rts
-	rts
-
-; Chainsaw motor on POKEY channel 4 ($D206 / $D207). Channel 4 is the Atari
-; spare, so world one-shots and the elevator keep channel 3. C64 has three
-; SID voices (playsound.asm: V1 player, V2 enemy, V3 world). Fold this into
-; the V3 idle filler with a8_noise, first match:
-;   sfx_index+2 active → one-shot owns V3 (door / switch / pickup)
-;   saw equipped       → this rumble; elevator waits
-;   elev_noise_n       → elevator
-;   else               → gate off
-; Player and enemy voices stay one-shots. The punch stays on the player voice.
-; Idle gates the 17-bit noise 00110011 (vbi_count bit 1) at effects_vol>>3.
-; Fire held gates it 01010101 (bit 0) at effects_vol>>2. Bite is every frame
-; at full volume, frequency re-rolled from saw_rng. SID uses the same gates.
-; Loudness is V3 sustain ($D414 bits 4-7); $D418 stays effects_vol. Idle and
-; fire are noise alone ($D412 gate + $80); a silent frame clears the gate.
-; Idle Fn is about 1/4 of fire. Bite keeps that waveform and rewrites Fn
-; every frame, in a band at and above the fire pitch. These AUDF bytes are
-; POKEY clocks. 6581 noise plus any other waveform is undefined, so the
-; bite's extra grit is the frequency hop.
-SAW_IDLE_F	= $c0			; slow 17-bit noise
-SAW_FIRE_F	= $28			; higher, faster
-SAW_DIST	= $80			; 17-bit poly
-SAW_BITE_MASK	= $1f			; plus SAW_BITE_LO → $08..$27
-SAW_BITE_LO	= $08
-SAW_RNG_TAP	= $1d			; same x^8+x^4+x^3+x^2+1 as rnd8
-
-a8_saw
-	lda cur_weapon
-	cmp #WPN_SAW
-	bne .saw_off
-	lda effects_vol
-	and #$0f
-	beq .saw_off
-	lda key_fire
-	beq .saw_idle
-	lda saw_bite
-	bne .saw_bite
-	lda vbi_count_l			; already incremented this VBI
-	sec
-	sbc #1
-	and #1				; 01010101
-	beq .saw_off
-	lda #SAW_FIRE_F
-	sta $d206
-	lda effects_vol
-	and #$0f
-	lsr
-	lsr				; vol >> 2
-	ora #SAW_DIST
-	sta $d207
-	rts
-.saw_idle
-	lda vbi_count_l
-	sec
-	sbc #1
-	and #2				; 00110011
-	beq .saw_off
-	lda #SAW_IDLE_F
-	sta $d206
-	lda effects_vol
-	and #$0f
-	lsr
-	lsr
-	lsr				; vol >> 3
-	ora #SAW_DIST
-	sta $d207
-	rts
-.saw_bite
-	lda saw_rng
-	bne +
-	lda #$7b
-+	asl
-	bcc +
-	eor #SAW_RNG_TAP
-+	sta saw_rng
-	and #SAW_BITE_MASK
-	clc
-	adc #SAW_BITE_LO
-	sta $d206
-	lda effects_vol
-	and #$0f
-	sta $d207			; full poly, full volume
-	rts
-.saw_off
-	lda #0
-	sta $d207
 	rts
 
 ; Y = 0,2,4,… offset from in_fwd; add sample_ms, saturate at 65535.
@@ -864,18 +743,6 @@ snapshot_input
 	inx
 	cpx #12
 	bcc .si_ms
-	ldx #3
--
-	lda in_wpn_1,x
-	sta key_wpn_1,x
-	lda #0
-	sta in_wpn_1,x
-	dex
-	bpl -
-	lda in_wpn_pist
-	sta key_wpn_pist
-	lda #0
-	sta in_wpn_pist
 	lda in_fire
 	sta key_fire
 	lda #0

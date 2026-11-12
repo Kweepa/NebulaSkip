@@ -92,12 +92,12 @@ UI_FONT_PAGES	= 8			; 256 glyphs, ASCII-indexed from doomfont.png
 HUD_ROW		= 0			; frame ms FFF
 HUD_ROW_TITLE	= 0			; "Doom64" (same row as FFF)
 HUD_ROW_MAP	= 1			; map display name
-HUD_ROW_SHELL	= 2			; yellow / blue keys
-HUD_ROW_SHELLS	= 3			; labels: bits, health, shield, gear
-HUD_ROW_RKT	= 4			; values: bits, health, shield
+HUD_ROW_KEYS	= 2			; yellow / blue keys
+HUD_ROW_LABEL	= 3			; labels: bits, health, shield, gear
+HUD_ROW_VALUE	= 4			; values: bits, health, shield
 HUD_ROW4	= 5			; trigger message
 HUD_ROW_SEAM	= 6
-HUD_ROW2	= HUD_ROW_SHELL		; HUD_POS writes this row
+HUD_ROW2	= HUD_ROW_KEYS		; HUD_POS writes this row
 ; Mode 2 takes hue from PF2 and luminance from PF1. Lum $E is the top.
 HUD_PF2_TOP	= $62			; purple, background lum 2: title and map
 HUD_PF1_TOP	= $0e
@@ -110,9 +110,9 @@ HUD_OFF		= HUD_ROW * 40 + HUD_COL
 HUD_OFF_TITLE	= HUD_ROW_TITLE * 40 + HUD_COL
 HUD_OFF_MAP	= HUD_ROW_MAP * 40 + HUD_COL
 HUD_OFF2	= HUD_ROW2 * 40 + HUD_COL
-HUD_OFF_SHELL	= HUD_ROW_SHELL * 40 + HUD_COL
-HUD_OFF_SHELLS	= HUD_ROW_SHELLS * 40 + HUD_COL
-HUD_OFF_RKT	= HUD_ROW_RKT * 40 + HUD_COL
+HUD_OFF_KEYS	= HUD_ROW_KEYS * 40 + HUD_COL
+HUD_OFF_LABEL	= HUD_ROW_LABEL * 40 + HUD_COL
+HUD_OFF_VALUE	= HUD_ROW_VALUE * 40 + HUD_COL
 HUD_OFF3	= HUD_OFF_MAP		; PROFILE vertex counts, on the map line
 HUD_OFF4	= HUD_ROW4 * 40 + HUD_COL
 HUD_TITLE_COL	= 14			; (40 - len "Nebula Skip") / 2
@@ -139,8 +139,6 @@ HUD_CH_X	= $58
 HUD_CH_Y	= $59
 HUD_CH_Z	= $5a
 HUD_CH_BULLET	= $7b			; glyph after 'z'
-HUD_CH_SHELL	= $7c
-HUD_CH_ROCKET	= $7d
 HUD_CH_KEY_RED	= $5b			; '[' .. ']' after 'Z': red, yellow, blue
 HUD_CH_KEY_YEL	= $5c
 HUD_CH_KEY_BLU	= $5d
@@ -517,16 +515,8 @@ DOOM_ATK_MS	= 256		; reattack after a claw or fireball
 GRUNT_ATK_MS	= DOOM_ATK_MS	; possessed post-shot pause. Sight delay is the 0–1023 roll in ai_poss
 IMP_ATK_MS	= 2500		; imp post-attack pause; sight and pain leave the timer at 0. ~4 s between throws with the clip tail
 DEMON_MELEE_R	= 4		; claw Chebyshev
-PUNCH_HIT_R		= 3			; XZ chebyshev radius for fist / chainsaw
-SHOT_FAN_X	= 12			; |sx − SCREEN_CX| ≤ this for a shotgun switch hit (not the pellet fan)
-SHOT_PELLETS	= 7			; pellets per shot
-SHOT_SPREAD_MASK = 63			; rnd8 & this − SHOT_SPREAD_HALF = pellet column
-SHOT_SPREAD_HALF = 32			; spread −32..+31 px
-SHOT_DMG_ROLL	= 5			; roll_upto ceiling per pellet
-SHOT_DMG_BASE	= 1			; + roll 1..8 → 3..10
 SHOT_Z_MAX	= 32			; view-Z high max range
 SHOT_MID_H	= 3			; mid-body Y above feet (≈ ENEMY_CULL_H/2)
-CHAIN_HIT_X	= 6			; |sx − SCREEN_CX| ≤ this (pixels)
 PISTOL_DMG_MAX	= 16			; (rnd >> 4) + 1
 PISTOL_HIT_X	= 12			; SquareDoom aim cols 18..22 on a 40-col view
 PISTOL_FIRE_MS	= 600			; 30 ticks × 20 ms
@@ -556,8 +546,6 @@ hurt_ms_l	= $CBAA + A8_OFF			; hurt-trigger cooldown remaining
 hurt_ms_h	= $CBAB + A8_OFF
 vic_border	= $CBAC + A8_OFF			; staged $d020 (IRQ)
 palette_dirty	= $CBAD + A8_OFF			; 1 = IRQ refill viewport colour RAM
-flash4_col	= $CBAE + A8_OFF			; staged sprite 4 colour
-flash5_col	= $CBAF + A8_OFF			; staged sprite 5 colour
 HURT_MS		= 1000			; hurt trigger period (both sizes)
 HURT_SM_HP	= 2			; small hurt, once per second
 HURT_LG_HP	= 10			; large hurt, once per second
@@ -634,7 +622,6 @@ ZS_H		= $CC24 + A8_OFF			; last byte $CC29
 
 WPN_RAM		= $BE00
 WPN_FLASH	= $BF00
-WPN_FLASH2	= $BF40
 WPN_EMUZ	= $BF80
 WPN_SPLAT	= $BFC0
 HUD_SCR		= $0200
@@ -648,31 +635,17 @@ GAME_DL_JVB	= 144			; address word; byte 143 is the $41
 BMP_B		= $5000
 WPN_PTR0	= 0
 WPN_PTR_FLASH	= 0
-WPN_PTR_FLASH2	= 0
 WPN_PTR_EMUZ	= 0
 WPN_PTR_SPLAT	= 0
 
-FLASH_EN_L	= $10			; $d015 sprite 4
-FLASH_EN_R	= $20			; $d015 sprite 5
-COL_WPN		= 0 			; weapon sprite colour (C64 only)
 COL_FX		= 1 			; enemy muzzle sprite colour (C64 only)
-COL_FLASH_Y	= 1			    ; yellow
-COL_FLASH_R	= 2			    ; red
 COL_SPLAT_HIT	= 2			; red (blood) (DO NOT CHANGE BACK TO PINK!)
 COL_SPLAT_MISS	= 0			; wall hit / spark; must differ from COL_SPLAT_HIT
 SPLAT_MSB	= $80			; $d010 / $d015 bit for sprite 7
-WPN_X0		= 160			; 2×2 top-left, visual centre 184
-WPN_X_SAW	= WPN_X0 - 8		; 64px saw centred on the viewport
-WPN_Y_FLUSH	= 208			; 42px tall, viewport bottom ~250
-WPN_Y_ROCKIDLE	= 218		; 32px launcher; ink ends on viewport row 249
-WPN_Y_SHOTIDLE	= 228		; 32px art; −10 kick still meets the viewport bottom
-WPN_Y_FISTIDLE	= 229		; 21px right hand; ink ends on viewport row 249
-WPN_Y_CHAINIDLE	= 218		; 32px chaingun; ink ends on viewport row 249
-WPN_Y_SAWIDLE	= 210		; 40px saw; ink ends on viewport row 249
+WPN_X0		= 160			; pistol left edge (screen X)
 WPN_Y_PISTIDLE	= 224		; 32px art; −6 kick still meets the viewport bottom
 ; Rect size is per sprite (byte-aligned x, ink-tight y), not a fixed 24×21.
 FLASH_X_C	= 172			; 24px flash centred on visual 184
-FLASH_DY_GUN	= 20			; pistol, chaingun, shotgun, rocket muzzle
 FLASH_YEL_MS	= 60
 FLASH_RED_MS	= 60
 SPLAT_MS		= FLASH_YEL_MS + FLASH_RED_MS	; same total as muzzle flash
@@ -711,16 +684,7 @@ EMUZ_Z1		= 16
 
 ; Weapon BSS (after unique-XZ products)
 in_fire		= $CC2A + A8_OFF
-in_wpn_1	= $CC2B + A8_OFF			; 4 bytes: key 1, shotgun, chaingun, rocket
-in_wpn_shot	= $CC2C + A8_OFF
-in_wpn_chain	= $CC2D + A8_OFF
-in_wpn_rkt	= $CC2E + A8_OFF
 key_fire	= $CC2F + A8_OFF
-key_wpn_1	= $CC30 + A8_OFF			; 4 bytes
-key_wpn_shot	= $CC31 + A8_OFF
-key_wpn_chain	= $CC32 + A8_OFF
-key_wpn_rkt	= $CC33 + A8_OFF
-cur_weapon	= $CC34 + A8_OFF
 wpn_pose	= $CC35 + A8_OFF			; POSE_*
 fire_rpt_l	= $CC36 + A8_OFF
 fire_rpt_h	= $CC37 + A8_OFF
@@ -728,18 +692,13 @@ fire_rpt_h	= $CC37 + A8_OFF
 ln_r0		= $CC38 + A8_OFF
 ln_r1		= $CC39 + A8_OFF
 ln_r2		= $CC3A + A8_OFF
-mg_frame	= $CC3B + A8_OFF
-wpn_x		= $CC3C + A8_OFF
 wpn_y		= $CC3D + A8_OFF
-spr_en		= $CC3E + A8_OFF
 anim_step	= $CC3F + A8_OFF
 anim_ms_l	= $CC40 + A8_OFF
 anim_ms_h	= $CC41 + A8_OFF
-wpn_flash_en	= $CC42 + A8_OFF
-wpn_flash_dy	= $CC43 + A8_OFF
 wpn_tmp0	= $CC44 + A8_OFF
 ws_slot		= $CC45 + A8_OFF			; WS_EMUZ / WS_SPLAT during start_world_spr
-; Pose stream scratch (was flash5 timer + emuz on/ms)
+; Pose stream scratch
 need0		= $CC46 + A8_OFF			; type id or $FF
 need1		= $CC47 + A8_OFF			; type id or $FF
 pose_dump	= $CC48 + A8_OFF			; type being dumped
@@ -771,13 +730,8 @@ nc_v		= $CC73 + A8_OFF			; near clip: CAM index across lerp16
 nc_s		= $CC74 + A8_OFF			; near clip: behind endpoint's ox/oy slot (0/4)
 emuz_src	= $CC75 + A8_OFF			; clipped muzzle rect
 ammo_bullets	= $CC77 + A8_OFF			; pistol reserve (not in the $CD00 block)
-in_wpn_pist	= $CC78 + A8_OFF
-key_wpn_pist	= $CC79 + A8_OFF
 have_pack	= $CC7A + A8_OFF			; 1 = backpack raised ammo caps
 gb_cap		= $CC7B + A8_OFF			; grant_th_type effective max
-cock_ms_l	= $CC7C + A8_OFF			; shotgun blast wait before cock
-cock_ms_h	= $CC7D + A8_OFF
-cock_pend	= $CC7E + A8_OFF			; blast done; wait out recoil and flash
 wpn_bob_ph	= $CC7F + A8_OFF			; walk bob index 0..127; 0 = rest
 VSX		= $CC80 + A8_OFF			; screen X/Y (front verts with outcode 0)
 VSY		= $CC90 + A8_OFF
@@ -791,13 +745,6 @@ COL_PXL		= $CCE0 + A8_OFF
 COL_PXH		= $CCF0 + A8_OFF
 
 ; Player inventory + thing taken flags (after project cache)
-AMMO_SHELLS_MAX		= 100
-AMMO_GRENADES_MAX	= 100
-AMMO_SHELLS_BOX		= 20
-AMMO_GRENADES_BOX	= 5
-AMMO_CHAINGUN		= 30			; bullets granted with the chaingun
-AMMO_GRENADES_GUN	= 5
-AMMO_SHELLS_START	= 25
 AMMO_BULLETS_MAX	= 200
 AMMO_BULLETS_BOX	= 50
 AMMO_BULLETS_START	= 50			; SquareDoom pistol reserve
@@ -823,24 +770,7 @@ TH_FOOT_SY		= 2			; ≈ 1.5 tall (C64 int)
 TH_GRAB_R		= 3			; Chebyshev pad outside that footprint
 TH_MAX			= 32		; MAP_NTHINGS ≤ this
 
-HAVE_SHOT	= 2
-HAVE_CHAIN	= 4
-HAVE_ROCKET	= 8
-HAVE_PIST	= 16
-HAVE_SAW	= 32			; chainsaw; key 1 toggles with the fist
-HAVE_START	= HAVE_PIST			; fist is always owned
-
-WPN_FIST	= 0
-WPN_SHOT	= 1
-WPN_CHAIN	= 2
-WPN_ROCKET	= 3
-WPN_PIST	= 4
-WPN_SAW		= 5
-
-ammo_shells	= $CD00 + A8_OFF
 combat_armor	= $CD01 + A8_OFF			; 1 = blue (saves 1/2); 0 = green
-ammo_rockets	= $CD02 + A8_OFF
-have_wpn	= $CD03 + A8_OFF			; bitfield HAVE_*
 th_taken	= $CD04 + A8_OFF			; MAP_NTHINGS (≤ TH_MAX)
 player_hp	= $CD24 + A8_OFF			; 0..PLAYER_HP_MAX
 player_armour	= $CD25 + A8_OFF			; 0..PLAYER_ARMOUR_MAX
@@ -927,41 +857,21 @@ th_draw_fl	= $CF11 + A8_OFF
 gr_fuse_h	= $CF15 + A8_OFF
 gr_life_l	= $CF19 + A8_OFF
 gr_life_h	= $CF1D + A8_OFF
-; $CF21 signed pellet aim (sx − SCREEN_CX − scan_aim). 0 for pistol / chaingun.
-scan_aim	= $CF21 + A8_OFF
 hit_dmg		= $CF22 + A8_OFF			; applied damage for the current damage_enemy call
 dodge_dx	= $CF23 + A8_OFF			; select_dodge_dir: signed dx toward player
 dodge_dz	= $CF24 + A8_OFF			; signed dz toward player
 dodge_i		= $CF25 + A8_OFF			; 0..4 probe index, live across enemy_probe_dir
-; Hitscan params (live during gun_hitscan / splat_aim_jitter)
-scan_hit_x	= $CF26 + A8_OFF			; |sx−CX| max (inclusive)
-scan_hit_y	= $CF27 + A8_OFF			; |sy−64| max, $ff = no Y gate (both guns)
-scan_dmg_max	= $CF28 + A8_OFF			; flat roll ceiling (1..this)
-scan_dmg_all	= $CF29 + A8_OFF			; SCAN_CLOSEST / SCAN_CONE / SCAN_FLAT / SCAN_PELLET
-SCAN_CLOSEST	= 0			; closest, ceiling − (z>>2)
-SCAN_CONE	= 1			; every cone hit, ceiling − (z>>1)
-SCAN_FLAT	= 2			; closest, flat 1..scan_dmg_max
-SCAN_PELLET	= 3			; shotgun pellet: flat damage, no switch, no splat
-scan_jx_mask	= $CF2A + A8_OFF			; splat rnd X mask
-scan_jx_bias	= $CF2B + A8_OFF
-scan_jy_mask	= $CF2C + A8_OFF
-scan_jy_bias	= $CF2D + A8_OFF
 ; Timed FX headers: +0 on/phase, +1 skip, +2 ms_l, +3 ms_h
 FXH_ON		= 0
 FXH_SKIP	= 1
 FXH_MS_L	= 2
 FXH_MS_H	= 3
-FXH_COUNT	= 5
-fxh_flash4	= $CF2E + A8_OFF
-flash_phase	= fxh_flash4 + FXH_ON	; sprite 4: 0 off, 1 yellow, 2 red
-flash_skip	= fxh_flash4 + FXH_SKIP
-flash_ms_l	= fxh_flash4 + FXH_MS_L
-flash_ms_h	= fxh_flash4 + FXH_MS_H
-fxh_flash5	= $CF32 + A8_OFF
-flash5_phase	= fxh_flash5 + FXH_ON	; sprite 5 (chaingun right)
-flash5_skip	= fxh_flash5 + FXH_SKIP
-flash5_ms_l	= fxh_flash5 + FXH_MS_L
-flash5_ms_h	= fxh_flash5 + FXH_MS_H
+FXH_COUNT	= 4
+fxh_flash	= $CF2E + A8_OFF
+flash_phase	= fxh_flash + FXH_ON	; pistol muzzle: 0 off, 1 yellow, 2 red
+flash_skip	= fxh_flash + FXH_SKIP
+flash_ms_l	= fxh_flash + FXH_MS_L
+flash_ms_h	= fxh_flash + FXH_MS_H
 fxh_emuz	= $CF36 + A8_OFF
 emuz_on		= fxh_emuz + FXH_ON	; 1 = sprite 6 enabled
 emuz_skip	= fxh_emuz + FXH_SKIP
@@ -982,12 +892,11 @@ stream_room	= $CF42 + A8_OFF
 ; Explosion particle vel — FX_N × vx/vy s8 (integrated at draw)
 fx_vx		= $CF43 + A8_OFF			; 24
 fx_vy		= $CF5B + A8_OFF			; 24
-; Barrel chain ($CF73–$CF7A), splat anchor ($CF7B–$CF81). Do not slide splat_src.
+; Barrel chain ($CF73–$CF79), splat anchor ($CF7B–$CF81). Do not slide splat_src.
 barrel_pend	= $CF73 + A8_OFF		; 4 bytes, bit = thing index
 barrel_ch_l	= $CF77 + A8_OFF
 barrel_ch_h	= $CF78 + A8_OFF
 shot_th		= $CF79 + A8_OFF		; hitscan barrel winner, $ff = none
-shot_abs	= $CF7A + A8_OFF		; shotgun pellet detonated a barrel
 ; World-anchored splat ($CF7B–$CF81): re-projected each frame by splat_track.
 splat_wx	= $CF7B + A8_OFF			; world int of the hit point
 splat_wy	= $CF7C + A8_OFF
@@ -1000,7 +909,7 @@ splat_src	= $CF83 + A8_OFF			; clipped splat rect
 !if barrel_pend != fx_vy + FX_N {
 	!error "barrel_pend must follow fx_vy"
 }
-!if shot_abs >= splat_src {
+!if shot_th >= splat_src {
 	!error "barrel chain state overlaps splat_src"
 }
 ; Evicted from KERNAL ZP ($90–$bf / SETNAM $b7–$bc). Abs OK — not (ptr),y.
@@ -1090,17 +999,11 @@ crack_y		= $CFD3 + A8_OFF		; feet / crate bottom
 crack_face	= $CFD4 + A8_OFF		; FACE_*
 crack_room	= $CFD5 + A8_OFF
 crack_flags	= $CFD6 + A8_OFF
-saw_flip	= $CFD7 + A8_OFF		; bit 0 drop, bit 1 idle half-rate
-saw_amp		= $CFD8 + A8_OFF		; 1 idle, 2 firing, 2..5 biting
-saw_bite	= $CFD9 + A8_OFF		; 1 = last chainsaw tick hit
-wpn1_held	= $CFDA + A8_OFF		; 1 = key 1 still down; one toggle per press
 scan_best_i	= $CFDB + A8_OFF		; scan_shoot_*: best thing / switch index ($ff none)
 scan_best_z	= $CFDC + A8_OFF		; its CAM_ZH
-scan_off	= $CFDD + A8_OFF		; screen X aim offset (scan_aim for barrels, 0 for switches)
 elev_ride_i	= $CFDE + A8_OFF		; elev SoA index while carrying riders
 elev_ride_dy	= $CFDF + A8_OFF		; signed Y step ($01 / $ff, or reseat delta)
 elev_ride_top	= $CFE0 + A8_OFF		; surface those riders must match
-saw_rng		= $CFE1 + A8_OFF		; chainsaw bite LFSR; IRQ only, not saved
 elev_y		= $CFE2 + A8_OFF		; MAP_NELEVS (≤8); page $CF so ,x stays in-page
 elev_match	= $CFEA + A8_OFF		; tag group while fanning elev_activate
 elev_hits	= $CFEB + A8_OFF		; cars that started moving this fan-out

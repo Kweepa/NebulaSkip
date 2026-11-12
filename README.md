@@ -12,7 +12,7 @@ The map is **rooms as axis-aligned hulls**, not a global mesh. Floor plans can b
 
 Ramps use the AABB for **rise/run** (`height = slope_y + (local * sy) / run` in 8.8) so the eye rides the slope. Elevators, switches, and crates share the same box tests. Step off a ledge and you fall; a hard landing costs health.
 
-Walk-over **things** grant ammo, weapons, health, armour, keys, and abilities. Message, DNA terminal, hurt, and elevator **triggers** are undrawn AABBs; a switch can arm a trigger that would otherwise stay inert. A switch or trigger can move to another map or return to the menu endings.
+Walk-over **things** grant ammo, health, armour, keys, and abilities. Message, DNA terminal, hurt, and elevator **triggers** are undrawn AABBs; a switch can arm a trigger that would otherwise stay inert. A switch or trigger can move to another map or return to the menu endings.
 
 Off-screen **items** (AABB meshes) and **enemies** skip rotate/project/draw. Horizontal and vertical tests use a fat 45° cone (`|axis| ≤ z` plus a size pad) so the miss is drawing something a bit off-screen, not dropping something that is still in the 192×128 view. The active room’s bounding lines are not frustum-culled.
 
@@ -30,17 +30,17 @@ They run a room-scoped state machine (idle / patrol / alert / approach / attack 
 
 Yaw is rolled(!) into the world rotation to avoid a double rotate. Perspective and rotation use 8-bit **log / antilog LUTs** (`alog(log|x| + log|cos θ|)`).
 
-Weapons are to be determined. Will start with a fist and a pistol of some sort. Possibly we'll downplay the weapons in favour of more interesting abilities.
+The pistol is the only weapon. The interesting options are abilities.
 
 An explosion is a half-dome of pixels pre-simulated.
 
-The player weapon is stamped into the mode-E bitmap (body, muzzle, enemy muzzle, impact splat). Bob and recoil move that stamp.
+The pistol is stamped into the mode-E bitmap (body, muzzle, enemy muzzle, impact splat). Bob and recoil move that stamp.
 
 SFX are PC-speaker envelopes on POKEY channels (player / enemy / world).
 
 ## Build
 
-6502 (ACME) plus Python table generators. Copy `setup-env.example.bat` to `setup-env.bat` and point `ACME` at your install. Python 3 needs Pillow (`python -m pip install pillow`). The generators pack the UI font, muzzle, splat, and weapon PNGs. The editor does not use Pillow.
+6502 (ACME) plus Python table generators. Copy `setup-env.example.bat` to `setup-env.bat` and point `ACME` at your install. Python 3 needs Pillow (`python -m pip install pillow`). The generators pack the UI font, pistol, muzzle, and splat PNGs. The editor does not use Pillow.
 
 ```bat
 build-a8.bat       :: generate listings, assemble PRGs, write dooma8.atr

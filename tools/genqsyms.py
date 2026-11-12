@@ -23,7 +23,7 @@ REQUIRED = [
     "sync_eye",
     "hud_ammo",
     "hud_keys",
-    "switch_weapon",
+    "ready_weapon",
     "elev_reseat_pickups",
 ]
 

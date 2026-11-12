@@ -1012,7 +1012,6 @@ take_damage
 	jsr play_sound
 	jmp death_restart
 td_saved	!byte 0
-sg_hit		!byte 0
 
 ; Tick red border; IRQ publishes vic_border.
 update_hurt_flash
@@ -1560,64 +1559,6 @@ damage_enemy
 .de_rts
 	rts
 
-; Fist / chainsaw: first hittable enemy in room within PUNCH_HIT_R. C=1 hit.
-punch_try_kill
-	ldx #0
-.atk_lp
-	cpx	map_nenemies
-	bcs .atk_no
-	lda en_state,x
-	cmp #EN_DYING
-	bcs .atk_n
-	+lda_mx en_room
-	cmp room_idx
-	bne .atk_n
-	+lda_mx en_x
-	sec
-	sbc cam_xh
-	bcs +
-	eor #$ff
-	clc
-	adc #1
-+
-	cmp #PUNCH_HIT_R + 1
-	bcs .atk_n
-	+lda_mx en_z
-	sec
-	sbc cam_zh
-	bcs +
-	eor #$ff
-	clc
-	adc #1
-+
-	cmp #PUNCH_HIT_R + 1
-	bcs .atk_n
-	+lda_mx en_y
-	sta box_y
-	lda #ENEMY_CULL_H
-	sta box_sy
-	stx obj_i
-	jsr player_overlaps_y
-	ldx obj_i
-	bcc .atk_n
-	jsr rnd8
-	lsr
-	lsr
-	lsr
-	lsr
-	clc
-	adc #1
-	jsr damage_enemy
-	sec
-	rts
-.atk_n
-	inx
-	beq .atk_no
-	jmp .atk_lp
-.atk_no
-	clc
-	rts
-
 ; A = ceiling (>= 1). Returns A uniform in 1..ceiling. Uses rot1.
 ; Ceiling 1 stays 1. Remainder matches pick_var_n (0..n−1), then +1.
 roll_upto
@@ -1640,99 +1581,11 @@ rnd_mod_rot1
 +	rts
 
 ; ------------------------------------------------------------------
-; Hitscan: mid-body project → |sx−(CX+aim)|≤limit (no screen-Y gate;
-; height auto-aims). Pellets replace that limit with the body half-width
-; (enemy_block_r) projected at that depth. Flat guns roll
-; 1..scan_dmg_max on the closest body.
-; Shotgun is SHOT_PELLETS pellets, each a uniform random column in
-; −SHOT_SPREAD_HALF..+SHOT_SPREAD_HALF−1. Pistol and chaingun are one.
-; z in 0..SHOT_Z_MAX-1. Blood splat on a hit; wall splat on a miss.
-shotgun_hitscan
-	lda #$ff
-	sta sg_hit
-	lda #0
-	sta shot_abs
-	ldy #SHOT_PELLETS
-.sg_pel
-	tya
-	pha
-	jsr rnd8
-	and #SHOT_SPREAD_MASK
-	sec
-	sbc #SHOT_SPREAD_HALF		; uniform −32..+31
-	sta scan_aim
-	lda #$ff
-	sta scan_hit_y
-	lda #SHOT_DMG_ROLL
-	sta scan_dmg_max
-	lda #SCAN_PELLET
-	sta scan_dmg_all
-	jsr gun_hitscan
-	lda shot_hit_i
-	cmp #$ff
-	beq .sg_pn
-	sta sg_hit
-.sg_pn
-	pla
-	tay
-	dey
-	bne .sg_pel
-	lda #0
-	sta scan_aim
-	lda #15
-	sta scan_jx_mask
-	lda #8
-	sta scan_jx_bias
-	lda #7
-	sta scan_jy_mask
-	lda #4
-	sta scan_jy_bias
-	lda sg_hit
-	cmp #$ff
-	beq .sg_miss
-	sta shot_hit_i
-	jsr shotgun_hit_splat
-	jmp .sg_sw
-.sg_miss
-	lda shot_abs
-	bne .sg_sw
-	jsr shotgun_miss_splat
-.sg_sw
-	lda #SHOT_FAN_X
-	sta scan_hit_x
-	jsr scan_shoot_switches
-	cmp #$ff
-	beq .sg_rts
-	tax
-	jsr fire_switch
-.sg_rts
-	rts
-
-; Chaingun and pistol differ only in the X band. $2c skips the other lda.
-chaingun_hitscan
-	lda #CHAIN_HIT_X
-	!byte $2c
-; One bullet, nearest body in the center band, flat 1..16.
+; Pistol hitscan: mid-body project → |sx−SCREEN_CX| ≤ PISTOL_HIT_X (no
+; screen-Y gate; height auto-aims). One bullet at the closest body — enemy,
+; barrel or shootable switch — in z 0..SHOT_Z_MAX-1, flat 1..PISTOL_DMG_MAX.
+; Blood splat on a hit; wall splat on a miss.
 pistol_hitscan
-	lda #PISTOL_HIT_X
-	sta scan_hit_x
-	lda #0
-	sta scan_aim
-	lda #$ff
-	sta scan_hit_y
-	lda #PISTOL_DMG_MAX
-	sta scan_dmg_max
-	lda #SCAN_FLAT
-	sta scan_dmg_all
-	lda #3
-	sta scan_jx_mask
-	lda #2
-	sta scan_jx_bias
-	lda #3
-	sta scan_jy_mask
-	lda #2
-	sta scan_jy_bias
-gun_hitscan
 	lda #$ff
 	sta shot_hit_i
 	sta shot_hit_z
@@ -1790,7 +1643,7 @@ gun_hitscan
 	bcc .sh_zok
 	jmp .sh_n
 .sh_zok
-	sta gidx				; CAM_ZH for dmg + closest
+	sta gidx				; CAM_ZH for closest
 	bne .sh_proj
 	lda CAM_Z
 	bne .sh_proj
@@ -1800,59 +1653,16 @@ gun_hitscan
 	bcs .sh_on
 	jmp .sh_n
 .sh_on
-	sty rot1				; sy
-	; |sx − (SCREEN_CX + scan_aim)| ≤ pellet_hit_lim
+	; |sx − SCREEN_CX| ≤ PISTOL_HIT_X
 	sec
 	sbc #SCREEN_CX
-	sec
-	sbc scan_aim
 	bpl .sh_xabs
 	eor #$ff
 	clc
 	adc #1
 .sh_xabs
-	sta rot0
-	jsr pellet_hit_lim
-	sta rot2
-	lda rot0
-	cmp rot2
-	beq .sh_xok
+	cmp #PISTOL_HIT_X + 1
 	bcs .sh_n
-.sh_xok
-	lda scan_hit_y
-	cmp #$ff
-	beq .sh_cone
-	lda rot1
-	sec
-	sbc #64
-	bpl .sh_yabs
-	eor #$ff
-	clc
-	adc #1
-.sh_yabs
-	cmp scan_hit_y
-	beq .sh_cone
-	bcs .sh_n
-.sh_cone
-	; Cone only. Closest-only guns record the nearest and damage later.
-	lda scan_dmg_all
-	cmp #SCAN_CONE
-	bne .sh_track
-	lda gidx
-	lsr
-	eor #$ff
-	sec
-	adc scan_dmg_max
-	beq .sh_one
-	bcs .sh_roll
-.sh_one
-	lda #1
-.sh_roll
-	jsr roll_upto
-	ldx enemy_idx
-	jsr damage_enemy
-	ldx enemy_idx
-.sh_track
 	lda shot_hit_i
 	cmp #$ff
 	beq .sh_set
@@ -1869,41 +1679,6 @@ gun_hitscan
 	inx
 	jmp .sh_lp
 .sh_done
-	lda scan_dmg_all
-	cmp #SCAN_PELLET
-	bne .sh_notpel
-	jsr scan_shoot_barrels
-	cmp #$ff
-	beq .sh_pel_en
-	ldx shot_hit_i
-	cpx #$ff
-	beq .sh_pel_bp
-	cpy shot_hit_z
-	bcs .sh_pel_en			; enemy closer or tie
-.sh_pel_bp
-	tax
-	lda #$ff
-	sta shot_hit_i
-	lda #1
-	sta shot_abs
-	jsr barrel_explode
-	rts
-.sh_pel_en
-	lda shot_hit_i
-	cmp #$ff
-	beq .sh_pel_rts
-	lda scan_dmg_max
-	jsr roll_upto
-	clc
-	adc #SHOT_DMG_BASE		; 3..10 per pellet
-	ldx shot_hit_i
-	stx enemy_idx
-	jmp damage_enemy
-.sh_pel_rts
-	rts
-.sh_notpel
-	cmp #SCAN_FLAT
-	bne .sh_sw
 	jsr scan_shoot_barrels
 	cmp #$ff
 	beq .sh_sw
@@ -1922,9 +1697,6 @@ gun_hitscan
 	pha
 	cmp #$ff
 	beq .sh_splats
-	ldx scan_dmg_all
-	cpx #SCAN_CONE
-	beq .sh_splats			; shotgun: switch and enemies both count
 	ldx shot_hit_i
 	cpx #$ff
 	bne .sh_sw_en
@@ -1955,32 +1727,13 @@ gun_hitscan
 	lda shot_hit_i
 	cmp #$ff
 	beq .sh_miss
-	lda scan_dmg_all
-	cmp #SCAN_CONE
-	beq .sh_splat			; shotgun already damaged each cone hit
-	cmp #SCAN_FLAT
-	beq .sh_flat
-	lda shot_hit_z
-	lsr
-	lsr
-	eor #$ff
-	sec
-	adc scan_dmg_max
-	beq .sh_none
-	bcs .sh_nroll
-.sh_none
-	lda #1
-.sh_nroll
+	lda #PISTOL_DMG_MAX
 	jsr roll_upto
 	ldx shot_hit_i
 	stx enemy_idx
 	jsr damage_enemy
-.sh_splat
-	jsr shotgun_hit_splat
+	jsr hit_splat
 	jmp .sh_fired
-.sh_flat
-	lda scan_dmg_max
-	jmp .sh_nroll
 .sh_miss
 	ldx shot_th
 	cpx #$ff
@@ -1988,7 +1741,7 @@ gun_hitscan
 	jsr barrel_explode
 	jmp .sh_fired
 .sh_miss_wall
-	jsr shotgun_miss_splat
+	jsr miss_splat
 .sh_fired
 	pla
 	cmp #$ff
@@ -1998,43 +1751,8 @@ gun_hitscan
 .sh_rts
 	rts
 
-; A = |sx−CX| limit. Pellets use the body half-width in px alone (no slop):
-; enemy_block_r × shot_hw_tab[CAM_ZH], saturating at $ff.
-; Pistol and chaingun keep scan_hit_x.
-; X, Y free (sy already in rot1). rot0 and gidx stay.
-pellet_hit_lim
-	lda scan_hit_x
-	ldy scan_dmg_all
-	cpy #SCAN_PELLET
-	bne .shl_rts
-	ldx enemy_idx
-	jsr ldy_slot			; Y = slot
-	lda enemy_block_r,y
-	tax				; count = blockR
-	ldy CAM_ZH
-	lda #0
-	cpx #0
-	beq .shl_rts			; blockR 0: dex/bne would wrap
-.shl_add
-	clc
-	adc shot_hw_tab,y
-	bcs .shl_sat
-	dex
-	bne .shl_add
-.shl_rts
-	rts
-.shl_sat
-	lda #$ff
-	rts
-
-; Half-width px of a 1-unit radius at CAM_ZH = z: round(100 / (z + 0.5)).
-; z = 0 saturates.
-shot_hw_tab
-	!byte 255, 67, 40, 29, 22, 18, 15, 13, 12, 11, 10, 9, 8, 7, 7, 6
-	!byte 6, 6, 5, 5, 5, 5, 4, 4, 4, 4, 4, 4, 4, 3, 3, 3
-
 ; Mid-body blood splat on shot_hit_i (view trig loaded).
-shotgun_hit_splat
+hit_splat
 	ldx shot_hit_i
 	+lda_mx en_x
 	sta ent_wx
@@ -2061,7 +1779,7 @@ ln_a_from_cam
 
 ; Miss splat at the nearest room solid (cutout, crate, platform, elevator,
 ; ramp, or the outer wall). View trig loaded.
-shotgun_miss_splat
+miss_splat
 	jsr ln_a_from_cam
 	ldy pitch
 	lda COSTAB,y
@@ -2101,17 +1819,9 @@ shotgun_miss_splat
 	jmp splat_spawn
 
 ; Closest barrel in the cone. A = index ($ff none), Y = its CAM_ZH.
-; View trig already loaded. Screen X matches a body: scan_aim, scan_hit_x.
+; View trig already loaded. Screen X matches a body: PISTOL_HIT_X.
 ; Best index/depth sit in scan_best_i/z across the line and project calls.
 scan_shoot_barrels
-	lda scan_aim
-	sta scan_off
-	lda #0				; pellets test the barrel's body width
-	ldx scan_dmg_all
-	cpx #SCAN_PELLET
-	bne +
-	lda #1
-+	sta sc_body
 	lda #$ff
 	sta scan_best_i
 	sta scan_best_z
@@ -2151,9 +1861,6 @@ scan_best_ret
 ; Closest shootable switch in the cone. A = index ($ff none), Y = its CAM_ZH.
 ; Body must overlap the switch AABB (no pitching up or down onto it).
 scan_shoot_switches
-	lda #0
-	sta scan_off
-	sta sc_body
 	lda #$ff
 	sta scan_best_i
 	sta scan_best_z
@@ -2200,8 +1907,6 @@ scan_shoot_switches
 	inx
 	jmp .ss_lp
 
-sc_body	!byte 0			; 1 = scan_cand uses shot_hw_tab instead of scan_hit_x
-
 ; Candidate at ent_w* / ln_b*. Keeps the nearest in scan_best_i/z. Clobbers X.
 scan_cand
 	jsr ln_a_from_cam
@@ -2222,24 +1927,13 @@ scan_cand
 	bcc .sc_rts
 	sec
 	sbc #SCREEN_CX
-	sec
-	sbc scan_off
 	bpl .sc_xabs
 	eor #$ff
 	clc
 	adc #1
 .sc_xabs
-	ldy sc_body
-	beq .sc_fix
-	ldy gidx
-	cmp shot_hw_tab,y		; pellet vs barrel: 1-unit radius at this depth
-	jmp .sc_cmp
-.sc_fix
-	cmp scan_hit_x
-.sc_cmp
-	beq .sc_xok
+	cmp #PISTOL_HIT_X + 1
 	bcs .sc_rts
-.sc_xok
 	lda scan_best_z
 	cmp gidx
 	bcc .sc_rts

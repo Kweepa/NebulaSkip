@@ -400,7 +400,7 @@ elev_update_floor
 
 ; ------------------------------------------------------------------
 ; elev_noise_on / elev_noise_off — refcount only. IRQ programs SID V3
-; when the world channel is idle and the chainsaw is not out (a8_saw).
+; when the world channel is idle.
 elev_noise_on
 	inc elev_noise_n
 	rts

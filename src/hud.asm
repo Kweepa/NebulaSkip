@@ -71,9 +71,9 @@ init_hud
 
 	ldx #0					; bits label over its value, like health / shield
 
-	lda #<HUD_SCR + HUD_OFF_SHELLS + HUD_BITS_COL
+	lda #<HUD_SCR + HUD_OFF_LABEL + HUD_BITS_COL
 	sta init_ptr
-	lda #>HUD_SCR + HUD_OFF_SHELLS + HUD_BITS_COL
+	lda #>HUD_SCR + HUD_OFF_LABEL + HUD_BITS_COL
 	sta init_ptr+1
 
 -	lda hud_str_bits,x
@@ -87,9 +87,9 @@ init_hud
 +
 	ldx #0
 
-	lda #<HUD_SCR + HUD_OFF_SHELLS + HUD_HP_LABEL
+	lda #<HUD_SCR + HUD_OFF_LABEL + HUD_HP_LABEL
 	sta init_ptr
-	lda #>HUD_SCR + HUD_OFF_SHELLS + HUD_HP_LABEL
+	lda #>HUD_SCR + HUD_OFF_LABEL + HUD_HP_LABEL
 	sta init_ptr+1
 
 -	lda hud_str_health,x
@@ -103,9 +103,9 @@ init_hud
 +
 	ldx #0
 
-	lda #<HUD_SCR + HUD_OFF_SHELLS + HUD_AR_LABEL
+	lda #<HUD_SCR + HUD_OFF_LABEL + HUD_AR_LABEL
 	sta init_ptr
-	lda #>HUD_SCR + HUD_OFF_SHELLS + HUD_AR_LABEL
+	lda #>HUD_SCR + HUD_OFF_LABEL + HUD_AR_LABEL
 	sta init_ptr+1
 
 -	lda hud_str_armour,x
@@ -119,9 +119,9 @@ init_hud
 +
 	ldx #0					; "gear" over the fire / jump ability
 
-	lda #<HUD_SCR + HUD_OFF_SHELLS + HUD_ABIL_COL
+	lda #<HUD_SCR + HUD_OFF_LABEL + HUD_ABIL_COL
 	sta init_ptr
-	lda #>HUD_SCR + HUD_OFF_SHELLS + HUD_ABIL_COL
+	lda #>HUD_SCR + HUD_OFF_LABEL + HUD_ABIL_COL
 	sta init_ptr+1
 
 -	lda hud_str_gear,x
@@ -361,13 +361,13 @@ hud_ability
 	asl
 	tax
 	lda hud_str_abil,x
-	sta HUD_SCR + HUD_OFF_RKT + HUD_ABIL_COL
+	sta HUD_SCR + HUD_OFF_VALUE + HUD_ABIL_COL
 	lda hud_str_abil + 1,x
-	sta HUD_SCR + HUD_OFF_RKT + HUD_ABIL_COL + 1
+	sta HUD_SCR + HUD_OFF_VALUE + HUD_ABIL_COL + 1
 	lda hud_str_abil + 2,x
-	sta HUD_SCR + HUD_OFF_RKT + HUD_ABIL_COL + 2
+	sta HUD_SCR + HUD_OFF_VALUE + HUD_ABIL_COL + 2
 	lda hud_str_abil + 3,x
-	sta HUD_SCR + HUD_OFF_RKT + HUD_ABIL_COL + 3
+	sta HUD_SCR + HUD_OFF_VALUE + HUD_ABIL_COL + 3
 	rts
 
 ; Bits + health + shield (+ ability label); ammo is not drawn.
@@ -375,15 +375,15 @@ hud_ability
 hud_ammo
 	jsr hud_ability
 	jsr hud_bits				; ammo is not shown; its variables and plumbing stay
-	lda #<HUD_SCR + HUD_OFF_RKT + HUD_HP_NUM
+	lda #<HUD_SCR + HUD_OFF_VALUE + HUD_HP_NUM
 	sta dst_ptr
-	lda #>HUD_SCR + HUD_OFF_RKT + HUD_HP_NUM
+	lda #>HUD_SCR + HUD_OFF_VALUE + HUD_HP_NUM
 	sta dst_ptr+1
 	lda player_hp
 	jsr .u8_3at
-	lda #<HUD_SCR + HUD_OFF_RKT + HUD_AR_NUM
+	lda #<HUD_SCR + HUD_OFF_VALUE + HUD_AR_NUM
 	sta dst_ptr
-	lda #>HUD_SCR + HUD_OFF_RKT + HUD_AR_NUM
+	lda #>HUD_SCR + HUD_OFF_VALUE + HUD_AR_NUM
 	sta dst_ptr+1
 	lda player_armour
 	; fall through
@@ -732,30 +732,30 @@ hud_msg_center
 .hm_done
 	rts
 
-; One keycard glyph per ammo row: blue on bullets, yellow on shells, red on rockets.
+; One keycard glyph per colour: blue and yellow on the keys row, red on the values row.
 ; Only A is touched (callers keep X/Y).
 hud_keys
 	lda #HUD_CH_SP
-	sta HUD_SCR + HUD_OFF_SHELL + HUD_KEY_COL_BLU
-	sta HUD_SCR + HUD_OFF_SHELL + HUD_KEY_COL_YEL
-	sta HUD_SCR + HUD_OFF_RKT + HUD_KEY_COL_RED
+	sta HUD_SCR + HUD_OFF_KEYS + HUD_KEY_COL_BLU
+	sta HUD_SCR + HUD_OFF_KEYS + HUD_KEY_COL_YEL
+	sta HUD_SCR + HUD_OFF_VALUE + HUD_KEY_COL_RED
 	lda have_keys
 	and #HAVE_BLUE
 	beq +
 	lda #HUD_CH_KEY_BLU
-	sta HUD_SCR + HUD_OFF_SHELL + HUD_KEY_COL_BLU
+	sta HUD_SCR + HUD_OFF_KEYS + HUD_KEY_COL_BLU
 +
 	lda have_keys
 	and #HAVE_YELLOW
 	beq +
 	lda #HUD_CH_KEY_YEL
-	sta HUD_SCR + HUD_OFF_SHELL + HUD_KEY_COL_YEL
+	sta HUD_SCR + HUD_OFF_KEYS + HUD_KEY_COL_YEL
 +
 	lda have_keys
 	and #HAVE_RED
 	beq +
 	lda #HUD_CH_KEY_RED
-	sta HUD_SCR + HUD_OFF_RKT + HUD_KEY_COL_RED
+	sta HUD_SCR + HUD_OFF_VALUE + HUD_KEY_COL_RED
 +
 	rts
 

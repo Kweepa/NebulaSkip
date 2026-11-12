@@ -116,13 +116,6 @@ export const ANIM_ORBIT_DIST_MAX = 400;
 export const ITEM_ORBIT_DIST_MIN = 8;
 export const ITEM_ORBIT_DIST_MAX = 80;
 export const DOC_VERSION = 11;
-export const DEFAULT_WEAPON_SCALE = 0.4;
-export const WEAPON_KEYS = ["shot2", "chain", "rock"];
-export const WEAPON_LABELS = {
-  shot2: "Super shotgun",
-  chain: "Chaingun",
-  rock: "Rocket launcher",
-};
 
 /** Fixed enemy cue set. sight/wince/death play generically; melee/shoot bind to clips. */
 export const ENEMY_CUES = ["sight", "wince", "melee", "shoot", "death"];
@@ -616,12 +609,6 @@ export const PICKUP_TYPES = [
   "green armor",
   "blue armor",
   "ammo box",
-  "shells",
-  "box of rockets",
-  "shotgun",
-  "chaingun",
-  "chainsaw",
-  "rocket launcher",
   "backpack",
   "red keycard",
   "yellow keycard",
@@ -638,12 +625,6 @@ const BUILTIN_ITEM_ICONS = {
   "green armor": ["55500555", "55555555", "055bb550", "0bb55bb0", "05b55b50", "0b5555b0", "05b55b50", "00555500"],
   "blue armor": ["eee00eee", "eeeeeeee", "0ee99ee0", "099ee990", "0e9ee9e0", "09eeee90", "0e9ee9e0", "00eeee00"],
   "ammo box": ["00000000", "00000000", "00000000", "00dddd00", "05555550", "09155190", "05999950", "05555550"],
-  "shells": ["00000000", "00000000", "00000000", "00000000", "00000000", "00111700", "0f5f5880", "0ffff880"],
-  "box of rockets": ["00000000", "00000000", "08888880", "9f9999f9", "98855889", "98989989", "98888889", "99999999"],
-  "shotgun": ["........", "........", "........", "........", ".0......", "..000000", "22c..22.", "22......"],
-  "chaingun": ["00000000", "00000000", "01f01010", "ccccfcfc", "ccfcfcf0", "022cfcf0", "2220f0f0", "22000000"],
-  "chainsaw": ["........", "........", ".0......", "0.0.....", "0001c1c.", "727bbbb1", "777bbbbc", "771c1c1."],
-  "rocket launcher": ["00000000", "00000000", "00000000", "00000010", "f222ffcf", "c2cfcccc", "00cc00c0", "00c00000"],
   "backpack": ["..88....", ".8888...", ".88899..", ".8898.9.", "89988..9", "88888..9", "88888.9.", ".88899.."],
   "red keycard": ["000aaaaa", "00aa2a2a", "0aa7222a", "0a7a222a", "0a772a2a", "0aa72a2a", "0a7a2a2a", "0aaaaaaa"],
   "yellow keycard": ["00077777", "00775757", "07725557", "07275557", "07225757", "07725757", "07275757", "07777777"],
@@ -666,8 +647,8 @@ export const DOOR_MESH_KEYS = DOOR_TYPES;
 export const ALL_MESH_KEYS = [...ITEM_MESH_KEYS, ...DOOR_MESH_KEYS];
 
 /**
- * User-defined items. TH 0..18 are the built-ins above (fixed by the asm);
- * customItems get TH 19.. in order. Module registry so doc-less clamps
+ * User-defined items. TH 0..12 are the built-ins above (fixed by the asm);
+ * customItems get TH 13.. in order. Module registry so doc-less clamps
  * (clampPickupType) accept custom names; the doc owns the list and calls
  * setCustomItemNames on load / edit / undo.
  */
@@ -988,7 +969,7 @@ const PICKUP_ALIAS_NAMES = Object.keys(PICKUP_ALIAS);
 export function clampPickupType(s) {
   const n = PICKUP_ALIAS[s] || s;
   if (PICKUP_TYPES.includes(n) || customItemList.includes(n)) return n;
-  return "shells";
+  return "ammo box";
 }
 
 /** @deprecated Use clampPickupType */
@@ -1281,96 +1262,6 @@ export function defaultItemMeshes() {
         [4, 5],
       ]
     ),
-    shells: meshOf(
-      [
-        [-1, 0, 0],
-        [1, 0, 0],
-        [1, 1, 0],
-        [-1, 1, 0],
-      ],
-      [
-        [0, 1],
-        [1, 2],
-        [2, 3],
-        [3, 0],
-      ]
-    ),
-    "box of rockets": meshOf(
-      [
-        [-1, 0, 0],
-        [1, 0, 0],
-        [0, 2, 0],
-        [0, 1, 1],
-      ],
-      [
-        [0, 1],
-        [1, 2],
-        [2, 0],
-        [0, 3],
-        [1, 3],
-        [2, 3],
-      ]
-    ),
-    shotgun: meshOf(
-      [
-        [-2, 1, 0],
-        [2, 1, 0],
-        [1, 0, 0],
-        [0, 2, 0],
-      ],
-      [
-        [0, 1],
-        [1, 2],
-        [2, 0],
-        [0, 3],
-        [1, 3],
-      ]
-    ),
-    chaingun: meshOf(
-      [
-        [-2, 1, 0],
-        [2, 1, 0],
-        [1, 0, 0],
-        [0, 2, 0],
-      ],
-      [
-        [0, 1],
-        [1, 2],
-        [2, 0],
-        [0, 3],
-        [1, 3],
-      ]
-    ),
-    chainsaw: meshOf(
-      [
-        [0, 0, 0],
-        [0, 3, 0],
-        [-1, 3, 0],
-        [1, 3, 0],
-      ],
-      [
-        [0, 1],
-        [1, 2],
-        [1, 3],
-      ]
-    ),
-    "rocket launcher": meshOf(
-      [
-        [-1, 0, 0],
-        [1, 0, 0],
-        [1, 2, 0],
-        [-1, 2, 0],
-        [0, 3, 0],
-      ],
-      [
-        [0, 1],
-        [1, 2],
-        [2, 3],
-        [3, 0],
-        [2, 4],
-        [3, 4],
-      ]
-    ),
     lightpost: meshOf(
       [
         [0, 0, 0],
@@ -1523,7 +1414,6 @@ export function parseItemMeshes(raw) {
   for (const [oldKey, newKey] of Object.entries(meshAlias)) {
     if (src[oldKey] != null && src[newKey] == null) src[newKey] = src[oldKey];
   }
-  if (src.chaingun != null && src.shotgun == null) src.shotgun = src.chaingun;
   if (src["green armor"] != null && src["blue armor"] == null) src["blue armor"] = src["green armor"];
   if (src.tech != null && src.Tech == null) src.Tech = src.tech;
   if (src.arch != null && src.Arch == null) src.Arch = src.arch;
@@ -4292,8 +4182,6 @@ export function defaultEditorState() {
     layoutCamera: { x: 28, y: 10, z: -6, yaw: 0.35, pitch: -0.2, speed: 28 },
     animOrbit: { yaw: 0.5, pitch: 0.15, dist: 48 },
     mdlScale: DEFAULT_MDL_SCALE,
-    weapon: "shot2",
-    weaponFrame: 0,
     overlayOn: true,
     orthoMode: "top",
     collapsedRooms: [],
@@ -4304,54 +4192,6 @@ export function defaultEditorState() {
     fontSlots: [null, null, null, null],
     fontActive: 0,
   };
-}
-
-export function clampWeaponScale(n) {
-  const v = Number(n);
-  if (!Number.isFinite(v)) return DEFAULT_WEAPON_SCALE;
-  return Math.max(0.05, Math.min(8, v));
-}
-
-function parseWeaponPan(raw) {
-  return {
-    x: Number.isFinite(Number(raw?.x)) ? Number(raw.x) : 0,
-    y: Number.isFinite(Number(raw?.y)) ? Number(raw.y) : 0,
-  };
-}
-
-function parseWeaponItem(raw) {
-  const pan = parseWeaponPan(raw?.pan);
-  let frames = null;
-  if (Array.isArray(raw?.frames)) {
-    const seen = new Set();
-    frames = [];
-    for (const f of raw.frames) {
-      const n = f | 0;
-      if (n < 0 || n > 4095 || seen.has(n)) continue;
-      seen.add(n);
-      frames.push(n);
-    }
-  }
-  return { pan, frames };
-}
-
-export function defaultWeapons() {
-  const items = {};
-  for (const key of WEAPON_KEYS) {
-    items[key] = { pan: { x: 0, y: 0 }, frames: null };
-  }
-  return { scale: DEFAULT_WEAPON_SCALE, items };
-}
-
-export function parseWeapons(raw) {
-  const d = defaultWeapons();
-  if (!raw || typeof raw !== "object") return d;
-  d.scale = clampWeaponScale(raw.scale);
-  const src = raw.items && typeof raw.items === "object" ? raw.items : raw;
-  for (const key of WEAPON_KEYS) {
-    d.items[key] = parseWeaponItem(src[key]);
-  }
-  return d;
 }
 
 function num(v, fallback) {
@@ -4376,7 +4216,6 @@ export function parseEditorState(raw) {
   if (
     raw.mode === "anim" ||
     raw.mode === "layout" ||
-    raw.mode === "weapons" ||
     raw.mode === "items" ||
     raw.mode === "font" ||
     raw.mode === "build"
@@ -4431,8 +4270,6 @@ export function parseEditorState(raw) {
   } else {
     d.mdlScale = clampMdlScale(scaleNum);
   }
-  if (typeof raw.weapon === "string" && WEAPON_KEYS.includes(raw.weapon)) d.weapon = raw.weapon;
-  d.weaponFrame = Math.max(0, num(raw.weaponFrame, 0) | 0);
   if (raw.overlayOn != null) d.overlayOn = !!raw.overlayOn;
   if (raw.orthoMode === "top" || raw.orthoMode === "left" || raw.orthoMode === "forward") {
     d.orthoMode = raw.orthoMode;
@@ -4463,7 +4300,6 @@ export function parseEditorState(raw) {
 export function gameDocument(doc) {
   return {
     version: doc.version,
-    weapons: doc.weapons,
     items: doc.items,
     customItems: doc.customItems || [],
     itemMeta: doc.itemMeta || {},
@@ -4480,7 +4316,6 @@ export function createDefaultDocument() {
     activeLevel: "MAPA",
     maps,
     enemies: createAllCreatures(),
-    weapons: defaultWeapons(),
     items: defaultItemMeshes(),
     customItems: [],
     itemMeta: {},
@@ -4614,7 +4449,6 @@ export function normalizeDocument(raw) {
   nudgeDoorsOutside(doc);
   relinkAllDoors(doc);
   doc.version = DOC_VERSION;
-  doc.weapons = parseWeapons(raw.weapons);
   doc.customItems = customItems;
   doc.itemMeta = itemMetaParsed;
   doc.items = parseItemMeshes(migrateItemMeshes(raw.items, fromVersion));

@@ -619,7 +619,7 @@ draw_pickup_mesh
 	jmp stroke_mesh
 
 fill_item_verts
-	cmp #ITEM_DOOR_BASE		; every item slot, incl. editor-defined props (TH 19..)
+	cmp #ITEM_DOOR_BASE		; every item slot, incl. editor-defined props (TH 13..)
 	bcc +
 	lda #0
 +

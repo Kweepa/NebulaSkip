@@ -504,29 +504,23 @@ def cook_one(level: dict, map_key: str) -> bytes:
         "green armor": 2,
         "blue armor": 3,
         "ammo box": 4,
-        "shells": 5,
-        "box of rockets": 6,
-        "shotgun": 7,
-        "chaingun": 8,
-        "chainsaw": 9,
-        "rocket launcher": 10,
-        "backpack": 11,
-        "red keycard": 12,
-        "yellow keycard": 13,
-        "blue keycard": 14,
-        "soulsphere": 15,
-        "radsuit": 16,
-        "lightpost": 17,
-        "barrel": 18,
+        "backpack": 5,
+        "red keycard": 6,
+        "yellow keycard": 7,
+        "blue keycard": 8,
+        "soulsphere": 9,
+        "radsuit": 10,
+        "lightpost": 11,
+        "barrel": 12,
         "health 25%": 0,
         "health 50%": 1,
         "armour": 2,
-        "quad damage": 16,
-        "pentagram of protection": 15,
-        "ring of shadows": 16,
-        "silver key": 13,
-        "gold key": 14,
-        "rune of earth magic": 12,
+        "quad damage": 10,
+        "pentagram of protection": 9,
+        "ring of shadows": 10,
+        "silver key": 7,
+        "gold key": 8,
+        "rune of earth magic": 6,
     }
     for ci, cname in enumerate(custom_item_names()):
         TH_TYPE[cname] = len(BUILTIN_ITEMS) + ci
@@ -1154,13 +1148,13 @@ def cook_one(level: dict, map_key: str) -> bytes:
         if kind == "key":
             tag = f"{b.get('tag') or ''} {b.get('keyTag') or ''} {b.get('pickup') or ''}".lower()
             if "red" in tag:
-                bt = 12
+                bt = 6
             elif "blue" in tag or "gold" in tag:
-                bt = 14
+                bt = 8
             else:
-                bt = 13
+                bt = 7
         else:
-            name = (b.get("pickup") or b.get("backpack") or "shells").strip()
+            name = (b.get("pickup") or b.get("backpack") or "ammo box").strip()
             if name not in TH_TYPE:
                 fail(f"{map_key}: unknown item {name!r} (not a built-in or customItems entry)")
             bt = TH_TYPE[name]
@@ -1430,21 +1424,15 @@ TH_HEALTH_LG	= 1
 TH_ARMOR_G	= 2
 TH_ARMOR_B	= 3
 TH_BULLETS	= 4
-TH_SHELLS	= 5
-TH_ROCKETS	= 6
-TH_SHOTGUN	= 7
-TH_CHAINGUN	= 8
-TH_CHAINSAW	= 9
-TH_ROCKETLAUNCHER	= 10
-TH_BACKPACK	= 11
-TH_KEY_RED	= 12
-TH_KEY_YELLOW	= 13
-TH_KEY_BLUE	= 14
-TH_SOUL	= 15
-TH_RADSUIT	= 16
-TH_LIGHTPOST	= 17
-TH_BARREL	= 18
-TH_NTYPES	= 19
+TH_BACKPACK	= 5
+TH_KEY_RED	= 6
+TH_KEY_YELLOW	= 7
+TH_KEY_BLUE	= 8
+TH_SOUL	= 9
+TH_RADSUIT	= 10
+TH_LIGHTPOST	= 11
+TH_BARREL	= 12
+TH_NTYPES	= 13
 DOOR_KEY_NONE	= 0
 DOOR_KEY_YELLOW	= 1
 DOOR_KEY_BLUE	= 2
@@ -1465,18 +1453,17 @@ ENEMY_CLASS_HUM	= 0
 """
 
 
-# Built-in TH_* names (TH 0..18, fixed by the asm); keep in sync with genitems.py BP_MESH_KEY.
+# Built-in TH_* names (TH 0..12, fixed by the asm); keep in sync with genitems.py BP_MESH_KEY.
 BUILTIN_ITEMS = [
-    "small health", "large health", "green armor", "blue armor", "ammo box", "shells",
-    "box of rockets", "shotgun", "chaingun", "chainsaw", "rocket launcher", "backpack",
-    "red keycard", "yellow keycard", "blue keycard", "soulsphere", "radsuit",
-    "lightpost", "barrel",
+    "small health", "large health", "green armor", "blue armor", "ammo box",
+    "backpack", "red keycard", "yellow keycard", "blue keycard", "soulsphere",
+    "radsuit", "lightpost", "barrel",
 ]
 DOOR_ITEM_NAMES = ["tech", "arch", "tri", "crack"]
 
 
 def custom_item_names() -> list[str]:
-    """User-defined items from editor/nebula.json, TH 19.. in order (mirrors genitems.custom_items)."""
+    """User-defined items from editor/nebula.json, TH 13.. in order (mirrors genitems.custom_items)."""
     if not ITEM_DOC.is_file():
         return []
     doc = json.loads(ITEM_DOC.read_text(encoding="utf-8"))

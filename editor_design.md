@@ -4,7 +4,7 @@
 
 * The editor is a **single bundled HTML file** (`editor/index.html`). `run-editor.bat` runs `bundle_editor.py` and opens that file in the browser (`file://`). **Do not add a local HTTP server** — not in the batch file, not in docs, not as a workaround.
 * All JS/CSS is inlined at bundle time. Source modules live under `editor/js/`; edit those and rebundle.
-* Project data is `editor/nebula.json` (weapons, items, and version). Levels live in `editor/maps/map<a-z>.json`. The browser stores file/folder handles in IndexedDB after you pick them once; refresh may need **Allow** on the map file gate to reload bindings and autosave.
+* Project data is `editor/nebula.json` (items and version). Levels live in `editor/maps/map<a-z>.json`. The browser stores file/folder handles in IndexedDB after you pick them once; refresh may need **Allow** on the map file gate to reload bindings and autosave.
 
 ## Names
 * Maps are **MAPA, MAPB, …** (up to MAPZ) and that key is the real identity (tabs, save file, game export, disk file name). The Levels grid has a **+** after the last map that adds the next letter; the game plays them in letter order and stops at the first map with no spawn.
