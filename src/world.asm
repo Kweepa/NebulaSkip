@@ -43,6 +43,7 @@ world_init
 	sta crack_ms_l
 	sta crack_ms_h
 	sta crack_flags
+	jsr pin_room_gear		; spawn room may be no-combat (ability_cur was just cleared)
 	; spawn eye at spawn_x+1 (center-ish), spawn_y+EYE, spawn_z+1
 	clc
 	lda spawn_x
@@ -2773,8 +2774,11 @@ update_triggers
 .ut_yok
 	+lda_mx tr_purpose
 	cmp #TRIG_TERM
+	beq .ut_term
+	cmp #TRIG_SHIP
 	bne .ut_chkmsg
-	sta term_in			; nonzero: nebula.asm term_poll takes fire
+.ut_term
+	sta term_in			; TRIG_TERM / TRIG_SHIP: term_poll takes fire
 	beq .ut_ismsg			; Z still set from the cmp: always
 .ut_chkmsg
 	cmp #TRIG_MSG
@@ -2810,6 +2814,8 @@ update_triggers
 	cmp #TRIG_MSG
 	beq .ut_msghold
 	cmp #TRIG_TERM
+	beq .ut_msghold
+	cmp #TRIG_SHIP
 	beq .ut_msghold
 	cmp #TRIG_HURT
 	beq .ut_hurt
@@ -2910,6 +2916,8 @@ trig_enter
 	cmp #TRIG_MSG
 	beq .te_msg
 	cmp #TRIG_TERM
+	beq .te_msg
+	cmp #TRIG_SHIP
 	beq .te_msg
 	lda msg_on
 	beq .te_act

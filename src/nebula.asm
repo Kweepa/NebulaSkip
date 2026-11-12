@@ -156,6 +156,11 @@ mod_item_mesh
 mod_item_xf
 !source "item_xf.asm"
 
+; Ship chart (terminal screen 3) and bin16_dec5: main RAM, calls the terminal
+; helpers in B and reads the bank-0 static tables at PORTB_PLAY.
+mod_ship
+!source "ship.asm"
+
 seg_a_end = *
 !if seg_a_end > $4000 {
 	!error "GAME segment A runs into the bitmaps; end=$", seg_a_end

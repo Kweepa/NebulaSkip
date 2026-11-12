@@ -1901,7 +1901,7 @@ body.font-dragging * {
           <canvas id="preview-canvas"></canvas>
         </div>
         <p class="muted" id="preview-hint">Drag L/R to rotate · U/D to walk</p>
-      <img id="preview-pistol-png" width="24" height="32" hidden alt="" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAgCAMAAAA/gEgKAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAGUExURQAAAP///6XZn90AAAAJcEhZcwAADsEAAA7BAbiRa+0AAAAZdEVYdFNvZnR3YXJlAFBhaW50Lk5FVCA1LjEuMTITAUd0AAAAuGVYSWZJSSoACAAAAAUAGgEFAAEAAABKAAAAGwEFAAEAAABSAAAAKAEDAAEAAAACAAAAMQECABEAAABaAAAAaYcEAAEAAABsAAAAAAAAANl2AQDoAwAA2XYBAOgDAABQYWludC5ORVQgNS4xLjEyAAADAACQBwAEAAAAMDIzMAGgAwABAAAAAQAAAAWgBAABAAAAlgAAAAAAAAACAAEAAgAEAAAAUjk4AAIABwAEAAAAMDEwMAAAAACGuzBWtNQBsAAAAFdJREFUOE/Nj1sKACAIBPX+lw40X5nVR0ELZu6YEoAToq9USBpd6pY4Bz7/AOxrixcBcckxHZbsEpTLCyCLpUVhBHrnFEfRObEi4PmuyYDpGujOe5DtDWgY+QCxyAn/zQAAAABJRU5ErkJggg==" />
+      <img id="preview-pistol-png" width="24" height="32" hidden alt="" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAgCAMAAAA/gEgKAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAGUExURQAAAP///6XZn90AAAAJcEhZcwAADsAAAA7AAWrWiQkAAAAZdEVYdFNvZnR3YXJlAFBhaW50Lk5FVCA1LjEuMTITAUd0AAAAuGVYSWZJSSoACAAAAAUAGgEFAAEAAABKAAAAGwEFAAEAAABSAAAAKAEDAAEAAAACAAAAMQECABEAAABaAAAAaYcEAAEAAABsAAAAAAAAAL92AQDoAwAAv3YBAOgDAABQYWludC5ORVQgNS4xLjEyAAADAACQBwAEAAAAMDIzMAGgAwABAAAAAQAAAAWgBAABAAAAlgAAAAAAAAACAAEAAgAEAAAAUjk4AAIABwAEAAAAMDEwMAAAAAAJh7SBOIx0IwAAAFxJREFUOE+1kdsOwCAIQ+X/f9oEZLR4GclmEyX0FHmwNZAIdo9ElV1N+6kDrAuQUGHiI4iVhwlC1vohOaqC7fLNDjToVzANISu8Q++FxcDeh1CA0G9gOPfBbL+ADh/9ALWQkUrzAAAAAElFTkSuQmCC" />
       </div>
       <div id="overhead-panel" class="preview-panel panel">
         <div class="toolbar-actions ortho-tabs" role="group" aria-label="Ortho view">
@@ -4507,10 +4507,11 @@ function usesLinkTag(kind) {
 }
 
 /** Trigger purposes. Tag is used for elevator / summon / unlock / unhide. */
-const TRIGGER_PURPOSES = ["message", "end_level", "hurt", "hurt_small", "elevator", "summon", "unlock", "unhide", "spawn", "terminal"];
+const TRIGGER_PURPOSES = ["message", "end_level", "hurt", "hurt_small", "elevator", "summon", "unlock", "unhide", "spawn", "terminal", "ship"];
 const TRIGGER_PURPOSE_LABELS = {
   message: "Display message",
   terminal: "DNA terminal",
+  ship: "Board ship",
   end_level: "End of level",
   hurt: "Large hurt",
   hurt_small: "Small hurt",
@@ -7412,7 +7413,9 @@ function mapStats(doc) {
     }
     if (
       kind === "trigger" &&
-      (clampTriggerPurpose(obj.purpose) === "message" || clampTriggerPurpose(obj.purpose) === "terminal")
+      (clampTriggerPurpose(obj.purpose) === "message" ||
+        clampTriggerPurpose(obj.purpose) === "terminal" ||
+        clampTriggerPurpose(obj.purpose) === "ship")
     ) {
       const text = String(obj.text || "")
         .replace(/\r\n/g, "\n")
@@ -20566,7 +20569,7 @@ function renderLayoutObjectFields(root, objs) {
         )
       )
     );
-    if (purpose === "message" || purpose === "terminal") {
+    if (purpose === "message" || purpose === "terminal" || purpose === "ship") {
       const textCur = unanimous(objs, (o) => o.text || "");
       const row = field(
         "Text",

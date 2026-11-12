@@ -14,6 +14,7 @@ set_room_idx
 	sta msg_on
 	jsr hud_msg_blank
 .sri_out
+	jsr pin_room_gear		; swap to jump now, before the next stamp_view
 	lda room_idx
 	rts
 

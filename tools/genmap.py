@@ -571,6 +571,7 @@ def cook_one(level: dict, map_key: str) -> bytes:
     TRIG_UNHIDE = 7
     TRIG_HURT_SM = 9
     TRIG_TERM = 10  # message while inside; fire opens the DNA terminal
+    TRIG_SHIP = 11  # message while inside; fire opens the ship's nebula chart
     TRIG_PURPOSE = {
         "message": TRIG_MSG,
         "end_level": TRIG_END,
@@ -582,6 +583,7 @@ def cook_one(level: dict, map_key: str) -> bytes:
         "unhide": TRIG_UNHIDE,
         "spawn": TRIG_SPAWN,
         "terminal": TRIG_TERM,
+        "ship": TRIG_SHIP,
     }
     SW_DEST_DOOR = 0
     SW_DEST_ELEV = 1
@@ -1024,7 +1026,7 @@ def cook_one(level: dict, map_key: str) -> bytes:
             raise SystemExit(f"unknown trigger purpose {purpose_s!r}")
         purpose = TRIG_PURPOSE[purpose_s]
         arg = 0
-        if purpose in (TRIG_MSG, TRIG_TERM):
+        if purpose in (TRIG_MSG, TRIG_TERM, TRIG_SHIP):
             text = t.get("text") or ""
             arg = len(text_blob)
             if arg > 255:
@@ -1411,6 +1413,7 @@ TRIG_UNLOCK	= 6
 TRIG_UNHIDE	= 7
 TRIG_HURT_SM	= 9
 TRIG_TERM	= 10
+TRIG_SHIP	= 11
 TRIG_PURPOSE_MASK	= $0F
 TRIG_GATED_MASK	= $F0
 SW_DEST_DOOR	= 0

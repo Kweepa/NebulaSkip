@@ -85,7 +85,7 @@ A8_CUR_FONT	= A8_FONT + A8_CUR_CH0 * 8
 !zone
 A8_KB_ESC	= $1c
 
-; Logo fill copper bar: one hue step per two logo lines, hues $1x..$Fx at lum 8,
+; Logo fill copper bar: one hue step per two logo lines, hues $1x..$Fx at lum 10,
 ; scrolling one step every COPPER_DIV frames. Index = line/2 + phase <= 27 + 14.
 COPPER_HUES	= 15
 COPPER_DIV	= 3
@@ -106,7 +106,7 @@ a8_cu_ph	!byte 0			; copper phase 0..14, steps every COPPER_DIV frames
 !zone
 a8_cu_div	!byte 0
 !zone
-a8_cu_tab	!fill COPPER_TAB_N, 0	; hue $18..$f8 (lum 8), PAL-converted, repeats every 15
+a8_cu_tab	!fill COPPER_TAB_N, 0	; hue $1a..$fa (lum 10), PAL-converted, repeats every 15
 !zone
 a8_nmist	!byte 0
 !zone
@@ -890,7 +890,7 @@ a8_title_cols
 	asl
 	asl
 	clc
-	adc #$18				; hue (n+1), lum 8
+	adc #$1a				; hue (n+1), lum 10
 	jsr a8_to_pal
 	sta a8_cu_tab,x
 	inc a8_sx

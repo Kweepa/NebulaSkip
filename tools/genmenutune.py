@@ -16,6 +16,8 @@ Tunes (jukebox order):
     1 Low Orbit   96 BPM swung, D minor. Bass / arp+lead / drums.
     2 Cryosleep   70 BPM, F# minor. Gliding vibrato lead / echo arp / sub bass.
     3 Far Relay   84 BPM swung, E minor. Bass / echo arp+lead / drums+pings.
+    4 Duty Free   92 BPM 12/8 shuffle, G minor. Sliding bass / rolled chords+lead /
+                  drums, toms, pings.
 
 Writes music/menu_tunes.asm: shared envelope rate tables, per-track rate,
 AUDCTL, envelope offset and token pointer, the token streams, and the
@@ -478,7 +480,258 @@ def far_relay() -> Song:
     return s
 
 
-TUNES = (low_orbit, cryosleep, far_relay)
+# --------------------------------------------------------------------------
+# 4  Duty Free
+# --------------------------------------------------------------------------
+
+class Shuffle(Song):
+    """12/8: four beats of three steps (triplet 8ths), 12 steps a bar."""
+
+    def __init__(self, name: str, bpm: int, t8: int, inst, intro_bars: int,
+                 loop_bars: int) -> None:
+        if 2 * t8 % 3:
+            g.die(f"{name}: beat of {2 * t8} ticks does not split in three")
+        super().__init__(name, bpm, t8, 0, inst, intro_bars, loop_bars)
+        self.step = 2 * t8 // 3
+
+    def t(self, bar: int, step: int) -> int:
+        return bar * self.bar + step * self.step
+
+
+def duty_free() -> Song:
+    BASS, LONG, STRUM, E1, E2, LEAD, KICK, RIM, HAT, PING, OHAT = range(11)
+    s = Shuffle("Duty Free", 92, 12, [
+        (0x0A, 0x96),   # 0 bass: hits, settles at 9
+        (0x3A, 0xA8),   # 1 long bass (breakdown): soft edge, slow tail
+        (0x09, 0x65),   # 2 strum: rings down to 6 under the roll
+        (0x65, 0x05),   # 3 echo 1 / arp: soft rise, gate cut mid-attack
+        (0x84, 0x05),   # 4 echo 2 / arp echo: quieter still
+        (0x19, 0xA7),   # 5 lead: plucked, settles at 10
+        (0x07, 0x07),   # 6 kick, toms
+        (0x05, 0x05),   # 7 rim
+        (0x01, 0x01),   # 8 hat
+        (0x0A, 0x0A),   # 9 ping: long fade
+        (0x04, 0x04),   # 10 open hat
+    ], 2, 24)
+    bs, mel, dr = s.v
+    spans = {id(bs): [], id(mel): []}
+
+    def put(v, t0, t1, f, inst):
+        spans[id(v)].append((t0, t1, len(f) if isinstance(f, list) else 1))
+        v.note(t0, t1, f, CLS_TONE, inst)
+
+    # Rootless voicings for ch3, low to high (rolled one tick a tone).
+    CH = {
+        "Gm9":   (53, 58, 62, 69),   # F3 Bb3 D4 A4
+        "C13":   (52, 58, 62, 69),   # E3 Bb3 D4 A4
+        "Eb9":   (55, 61, 65, 70),   # G3 Db4 F4 Bb4
+        "D7#9":  (54, 60, 65, 70),   # F#3 C4 F4 Bb4
+        "Ab13":  (54, 60, 65, 70),   # Gb3 C4 F4 Bb4 (the same four notes)
+        "Cm9":   (51, 58, 62, 67),   # Eb3 Bb3 D4 G4
+        "F13":   (51, 57, 62, 67),   # Eb3 A3 D4 G4
+        "Bbmaj": (50, 57, 60, 65),   # D3 A3 C4 F4
+        "Ebmaj": (50, 55, 58, 65),   # D3 G3 Bb3 F4
+        "Am7b5": (51, 55, 60, 67),   # Eb3 G3 C4 G4
+        "Bb13":  (50, 56, 60, 67),   # D3 Ab3 C4 G4
+    }
+
+    # Bass on the pair. (step, midi | (from, to) slide, steps).
+    def bass(bar, notes, inst=BASS, gap=3):
+        for st, m, ln in notes:
+            t0 = s.t(bar, st)
+            if isinstance(m, tuple):
+                a, b, hold, glide = m if len(m) == 4 else (m[0], m[1], 2, 4)
+                f = [pair_div(a)] * hold + [pair_div(a + (b - a) * k / glide)
+                                            for k in range(1, glide + 1)]
+            else:
+                f = pair_div(m)
+            put(bs, t0, s.t(bar, st + ln) - gap, f, inst)
+
+    def riff_up(root, third, last):          # 1 . . 3 . 4 | b5~5 . . b7 . approach
+        return [(0, root, 2), (3, root + third, 1), (5, root + 5, 1),
+                (6, (root + 6, root + 7), 2), (9, root + 10, 1), (11, last, 1)]
+
+    def riff_down(root, third, last):        # 8 . . b7 . 5 | b5~4 . . 3 . approach
+        return [(0, root + 12, 2), (3, root + 10, 1), (5, root + 7, 1),
+                (6, (root + 6, root + 5), 2), (9, root + third, 1), (11, last, 1)]
+
+    def walk(a, b, c, d, skip=False):        # quarters, optional skip note
+        if skip:
+            return [(0, a, 3), (3, b, 2), (5, b, 1), (6, c, 3), (9, d, 3)]
+        return [(0, a, 3), (3, b, 3), (6, c, 3), (9, d, 3)]
+
+    # ch3: rolled chord, echoes of its top note, lead with scoop and vibrato.
+    def strum(bar, st, chord, gate=12):
+        t0 = s.t(bar, st)
+        put(mel, t0, t0 + gate, [tone_div(m) for m in CH[chord]], STRUM)
+
+    def echo(bar, st, chord, inst):
+        t0 = s.t(bar, st)
+        put(mel, t0, t0 + (2 if inst == E1 else 1), tone_div(CH[chord][-1]), inst)
+
+    def stabs(bar, chord, kind):
+        if kind == 0:                        # roll, echo, roll, echo
+            strum(bar, 2, chord)
+            echo(bar, 5, chord, E1)
+            strum(bar, 8, chord)
+            echo(bar, 11, chord, E1)
+        elif kind == 1:                      # one roll and its tail
+            strum(bar, 5, chord)
+            echo(bar, 8, chord, E1)
+            echo(bar, 11, chord, E2)
+        else:                                # roll on two, lead takes the rest
+            strum(bar, 2, chord)
+
+    def lead(bar, phrase):
+        for st, m, ln, *scoop in phrase:
+            t0 = s.t(bar, st)
+            t1 = s.t(bar, st + ln) - 2
+            d = tone_div(m)
+            f = [d] * (t1 - t0)
+            if scoop:
+                f[0] = f[1] = tone_div(m - 1)
+            if ln >= 3:                      # one divider step, towards true pitch
+                sharp = CLK / (2.0 * (d + 1)) > hz(m)
+                for k in range(14, len(f)):
+                    if (k - 14) // 3 % 2:
+                        f[k] = d + 1 if sharp else d - 1
+            put(mel, t0, t1, f, LEAD)
+
+    KIT = {
+        "K": (CLS_POLY4, [20, 34, 60, 110, 200, 255], KICK, 3),
+        "R": (CLS_NOISE, 0x06, RIM, 1),
+        "h": (CLS_NOISE, 0x00, HAT, 1),
+        "o": (CLS_NOISE, 0x01, OHAT, 3),
+        "T": (CLS_TONE, [118, 128, 140, 154], KICK, 2),    # tom, 268 -> 206 Hz
+        "t": (CLS_TONE, [160, 176, 194, 214], KICK, 2),    # tom, 198 -> 149 Hz
+        "P": (CLS_TONE, tone_div(79), PING, 1),            # G5
+        "Q": (CLS_TONE, tone_div(78), PING, 1),            # F#5
+        "p": (CLS_TONE, tone_div(74), PING, 1),            # D5
+    }
+    DR_1 = "K.hR.hK.hR.h"
+    DR_2 = "K.hR.K..hR.h"
+    DR_3 = "K.hR.hK.hR.o"
+    DR_4 = "K.hR.KK.hR.h"
+
+    G, C = 31, 36
+    LICK_UP = [(6, 62, 1), (7, 65, 1), (8, 67, 1), (9, 70, 2), (11, 67, 1)]
+    LICK_DN = [(6, 67, 1), (7, 65, 1), (8, 62, 1), (9, 61, 2), (11, 60, 1)]
+
+    # Intro: the bass riff, snaps and pings, then hats and one roll.
+    bass(0, riff_up(G, 3, 42))
+    bass(1, riff_down(G, 3, 32))
+    drum_hits(s, dr, 0, "P..R..p..R..", KIT)
+    drum_hits(s, dr, 1, "..hR.h..hRhh", KIT)
+    stabs(1, "Gm9", 1)
+
+    b0 = s.intro_bars
+    A, B, BRK, REP = b0, b0 + 8, b0 + 16, b0 + 20
+
+    # A: riff and rolls; the hook comes in on the second four.
+    PROG_A = ["Gm9", "Gm9", "C13", "C13", "Gm9", "Gm9", "Eb9", "D7#9"]
+    bass(A + 0, riff_up(G, 3, 42))
+    bass(A + 1, riff_down(G, 3, 35))
+    bass(A + 2, riff_up(C, 4, 47))
+    bass(A + 3, riff_down(C, 4, 32))
+    bass(A + 4, riff_up(G, 3, 42))
+    bass(A + 5, riff_down(G, 3, 38))
+    bass(A + 6, [(0, 39, 2), (3, 46, 1), (5, 49, 1), (6, 51, 2), (9, 49, 1), (11, 39, 1)])
+    bass(A + 7, [(0, 38, 2), (3, 50, 1), (5, 48, 1), (6, 45, 2), (9, 42, 1), (11, 37, 1)])
+    for k in range(4):
+        stabs(A + k, PROG_A[k], k % 2)
+    stabs(A + 4, "Gm9", 2)
+    lead(A + 4, LICK_UP)
+    lead(A + 5, [(0, 69, 4, True)])
+    stabs(A + 5, "Gm9", 1)
+    stabs(A + 6, "Eb9", 2)
+    lead(A + 6, [(6, 61, 1), (7, 65, 1), (8, 67, 1), (9, 70, 2), (11, 67, 1)])
+    lead(A + 7, [(0, 66, 4, True)])
+    strum(A + 7, 5, "D7#9")
+    echo(A + 7, 8, "D7#9", E1)
+    for k in range(8):
+        drum_hits(s, dr, A + k, "K.hR.hK.hRRR" if k == 7 else (DR_2 if k % 2 else DR_1), KIT)
+
+    # B: walking bass, a roll on one, the tune.
+    PROG_B = ["Cm9", "F13", "Bbmaj", "Ebmaj", "Am7b5", "D7#9", "Gm9", "Gm9"]
+    WALK = [(36, 39, 43, 42), (41, 45, 48, 47), (46, 45, 43, 40), (39, 43, 46, 34),
+            (33, 39, 36, 39), (38, 42, 45, 44), (43, 41, 38, 34)]
+    TUNE = [
+        [(3, 63, 2), (5, 65, 1), (6, 67, 3), (9, 70, 3)],
+        [(0, 69, 5, True), (5, 67, 1), (6, 65, 2), (8, 63, 1), (9, 62, 3)],
+        [(3, 62, 2), (5, 63, 1), (6, 65, 3), (9, 69, 3)],
+        [(0, 67, 5, True), (5, 65, 1), (6, 62, 2), (8, 60, 1), (9, 58, 3)],
+        [(3, 60, 2), (5, 63, 1), (6, 67, 3), (9, 72, 3)],
+        [(0, 69, 3), (3, 68, 2), (5, 67, 1), (6, 66, 4), (10, 62, 1), (11, 66, 1)],
+        [(0, 67, 5, True), (6, 65, 1), (7, 62, 1), (8, 58, 1), (9, 55, 3)],
+    ]
+    for k in range(7):
+        bass(B + k, walk(*WALK[k], skip=k % 2 == 0))
+        if k in (0, 2, 4):
+            strum(B + k, 0, PROG_B[k], 14)
+        lead(B + k, TUNE[k])
+        drum_hits(s, dr, B + k, DR_3 if k % 2 else DR_1, KIT)
+    bass(B + 7, [(0, 31, 3), (3, 38, 2), (6, 34, 3), (9, 46, 2), (11, 40, 1)])
+    strum(B + 7, 2, "Gm9")
+    strum(B + 7, 6, "Bb13")
+    echo(B + 7, 9, "Bb13", E1)
+    drum_hits(s, dr, B + 7, "K.hR.hR.RTTt", KIT)
+
+    # Breakdown: long sliding bass, triplet arp with its echo, pings.
+    ARP = {"Ebmaj": (55, 58, 62, 65, 67, 70), "D7#9": (54, 57, 60, 65, 66, 70)}
+    PAT_1 = [0, 2, 4, 1, 3, 5, 2, 4, 3, 1, 2, 0]
+    PAT_2 = [5, 3, 2, 4, 2, 1, 3, 1, 0, 2, 1, None]
+    PAT_3 = [0, 2, 4, 1, 3, 5, None, None, None, None, None, None]
+    arp = []
+    for k, (ch, pat) in enumerate((("Ebmaj", PAT_1), ("Ebmaj", PAT_2),
+                                   ("D7#9", PAT_1), ("D7#9", PAT_3))):
+        arp += [(s.t(BRK + k, st), ARP[ch][i]) for st, i in enumerate(pat) if i is not None]
+    mains = {t0 for t0, _m in arp}
+    for t0, m in arp:
+        put(mel, t0, t0 + 2, tone_div(m), E1)
+    for t0, m in arp:
+        te = t0 + s.step + s.step // 2      # between the next two main notes
+        if te not in mains and te < s.t(BRK + 3, 9):
+            put(mel, te, te + 2, tone_div(m), E2)
+    bass(BRK + 0, [(0, 39, 11)], LONG)
+    bass(BRK + 1, [(0, 39, 5), (6, 34, 3), (9, (39, 38, 6, 12), 3)], LONG)
+    bass(BRK + 2, [(0, 38, 11)], LONG)
+    bass(BRK + 3, [(0, 38, 5)], LONG)
+    bass(BRK + 3, [(6, 50, 2), (9, 34, 1), (10, 33, 1), (11, 32, 1)])
+    drum_hits(s, dr, BRK + 0, "P.h..hp.h..h", KIT)
+    drum_hits(s, dr, BRK + 1, "..h..hP.h..h", KIT)
+    drum_hits(s, dr, BRK + 2, "Q.h..hp.h..h", KIT)
+    drum_hits(s, dr, BRK + 3, "..h..hR.RTTt", KIT)
+
+    # Reprise: riff, hook up then down, bII back to the top.
+    bass(REP + 0, riff_up(G, 3, 47))
+    bass(REP + 1, riff_down(C, 4, 32))
+    bass(REP + 2, riff_up(G, 3, 33))
+    bass(REP + 3, [(0, 32, 2), (3, 44, 1), (5, 42, 1), (6, 39, 2), (9, 36, 1), (11, 32, 1)])
+    stabs(REP + 0, "Gm9", 2)
+    lead(REP + 0, LICK_UP)
+    lead(REP + 1, [(0, 69, 4, True)])
+    stabs(REP + 1, "C13", 1)
+    stabs(REP + 2, "Gm9", 2)
+    lead(REP + 2, LICK_DN)
+    lead(REP + 3, [(0, 58, 3, True)])
+    stabs(REP + 3, "Ab13", 1)
+    drum_hits(s, dr, REP + 0, DR_4, KIT)
+    drum_hits(s, dr, REP + 1, "K.hR.hK.hR.K", KIT)
+    drum_hits(s, dr, REP + 2, DR_4, KIT)
+    drum_hits(s, dr, REP + 3, "K.hR.hTTtR.R", KIT)
+
+    # One voice each: a gate-off or a slide must not land inside the next note.
+    for name, v in (("bass", bs), ("ch3", mel)):
+        sp = sorted(spans[id(v)])
+        for (a0, a1, an), (b0_, _b1, _bn) in zip(sp, sp[1:]):
+            if a1 > b0_ or a0 + an > b0_:
+                g.die(f"Duty Free {name}: note at tick {a0} runs into tick {b0_}")
+        if sp[-1][1] >= s.n:
+            g.die(f"Duty Free {name}: last note is still gated at the loop point")
+    return s
+
+
+TUNES = (low_orbit, cryosleep, far_relay, duty_free)
 
 
 # --------------------------------------------------------------------------

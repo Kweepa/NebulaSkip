@@ -328,21 +328,36 @@ hide_flash
 	rts
 
 ; ------------------------------------------------------------------
-update_weapon
-	ldy room_idx			; no-combat room: pin jump mode, swallow the toggle.
-	+lda_my room_bg			; Nothing is cached; leaving the room leaves jump.
+; pin_room_gear — no-combat room: force ABIL_JUMP. C=1 if the room is no-combat.
+; Called from set_room_idx (and world_init) so the swap lands on the room change
+; itself, not a frame later in update_weapon: stamp_view would draw the gun once
+; in between. Clobbers A, X, Y.
+pin_room_gear
+	ldy room_idx
+	+lda_my room_bg
 	and #ROOM_NOCOMBAT
-	beq .uw_abk
-	lda #0
-	sta key_ability
+	beq .prg_no
 	lda ability_cur
 	cmp #ABIL_JUMP
-	beq .uw_abk
+	beq .prg_yes
 	lda #ABIL_JUMP
 	sta ability_cur
 	lda #1
 	sta jump_held			; a held fire button must not take off on entry
 	jsr hud_ability
+.prg_yes
+	sec
+	rts
+.prg_no
+	clc
+	rts
+
+; ------------------------------------------------------------------
+update_weapon
+	jsr pin_room_gear		; no-combat room: jump is pinned (set_room_idx does the
+	bcc .uw_abk			; swap on entry), so swallow the toggle.
+	lda #0				; Nothing is cached; leaving the room leaves jump.
+	sta key_ability
 .uw_abk
 	lda key_ability
 	beq .uw_ab

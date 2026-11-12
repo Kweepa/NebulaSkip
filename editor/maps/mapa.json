@@ -162,7 +162,7 @@
       "face": "+z",
       "axis": "z",
       "dir": 1,
-      "purpose": "message",
+      "purpose": "ship",
       "text": "Press fire to board ship",
       "tag": "",
       "roomId": "a332164c-ce1a-4e8d-9cbe-e03e03ff0541"
@@ -534,13 +534,13 @@
       "doorType": "Arch",
       "doorScale": 1,
       "tag": "",
-      "otherRoomId": "7407f21f-a939-43e3-ab5f-330e826c6c09",
+      "otherRoomId": "8ee1da8a-b717-4116-84dd-bf37c1b52136",
       "locked": false
     },
     {
       "id": "7407f21f-a939-43e3-ab5f-330e826c6c09",
       "kind": "room",
-      "x": 146,
+      "x": 128,
       "y": 34,
       "z": 100,
       "sx": 26,
@@ -612,7 +612,7 @@
     {
       "id": "3d6037f9-5b7c-4cd1-91fc-b3b2a942c5bc",
       "kind": "enemy",
-      "x": 152,
+      "x": 134,
       "y": 34,
       "z": 102,
       "sx": 2,
@@ -628,7 +628,7 @@
     {
       "id": "71fb5e0b-66c4-4c5b-bf51-67b32dde72b2",
       "kind": "enemy",
-      "x": 158,
+      "x": 140,
       "y": 34,
       "z": 112,
       "sx": 2,
@@ -674,7 +674,7 @@
     {
       "id": "de974d44-261f-4632-8841-1317e1a5655f",
       "kind": "doorway",
-      "x": 145,
+      "x": 127,
       "y": 34,
       "z": 101,
       "sx": 1,
@@ -694,7 +694,7 @@
     {
       "id": "34dafbd6-abc2-4138-97a7-7c177dc63767",
       "kind": "crate",
-      "x": 150,
+      "x": 132,
       "y": 34,
       "z": 111,
       "sx": 5,
@@ -708,7 +708,7 @@
     {
       "id": "e7f47fa1-3907-41a9-ba2b-0429b9e6df21",
       "kind": "pickup",
-      "x": 151,
+      "x": 133,
       "y": 39,
       "z": 114,
       "sx": 0.9270509831248422,
@@ -719,6 +719,46 @@
       "dir": 1,
       "roomId": "7407f21f-a939-43e3-ab5f-330e826c6c09",
       "pickup": "small health"
+    },
+    {
+      "id": "8ee1da8a-b717-4116-84dd-bf37c1b52136",
+      "kind": "room",
+      "x": 155,
+      "y": 34,
+      "z": 105,
+      "sx": 17,
+      "sy": 7,
+      "sz": 6,
+      "face": "+z",
+      "axis": "z",
+      "dir": 1,
+      "name": "Acid Pit",
+      "a8Bg": 36,
+      "shape": "box",
+      "rx": 0,
+      "ry": 0,
+      "rz": 0,
+      "cuts": []
+    },
+    {
+      "id": "ef197274-5f8f-4f07-b46e-8082d1ad9bfb",
+      "kind": "doorway",
+      "x": 154,
+      "y": 34,
+      "z": 106,
+      "sx": 1,
+      "sy": 5,
+      "sz": 4,
+      "face": "+x",
+      "axis": "z",
+      "dir": 1,
+      "roomId": "8ee1da8a-b717-4116-84dd-bf37c1b52136",
+      "lockKey": "unlocked",
+      "doorType": "Tech",
+      "doorScale": 1,
+      "tag": "",
+      "locked": false,
+      "otherRoomId": "7407f21f-a939-43e3-ab5f-330e826c6c09"
     }
   ]
 }

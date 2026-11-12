@@ -114,10 +114,10 @@ spr_rkt_b
 
 spr_pist_b
 	!byte $01,$00,$04,$20,$ff,$fc,$ff,$ff,$ff,$f0,$3f,$ff,$ff,$cc,$cf,$ff
-	!byte $ff,$cc,$cf,$ff,$ff,$cf,$cf,$ff,$ff,$cf,$cf,$ff,$ff,$cf,$cf,$ff
+	!byte $ff,$cc,$cf,$ff,$ff,$cf,$cf,$ff,$ff,$cf,$c3,$ff,$ff,$cf,$cf,$ff
 	!byte $ff,$cf,$cf,$ff,$ff,$cf,$cf,$ff,$ff,$cf,$cf,$ff,$ff,$0f,$cf,$ff
-	!byte $ff,$cf,$c3,$ff,$ff,$0c,$c3,$ff,$ff,$c3,$0f,$ff,$ff,$c3,$0f,$ff
-	!byte $ff,$0f,$cf,$ff,$ff,$0f,$cf,$ff,$fc,$cf,$c0,$ff,$fc,$cf,$cc,$ff
+	!byte $ff,$cf,$c3,$ff,$ff,$0c,$cf,$ff,$ff,$c3,$0f,$ff,$ff,$c3,$0f,$ff
+	!byte $ff,$0f,$cf,$ff,$ff,$0c,$cf,$ff,$fc,$cf,$c0,$ff,$fc,$cc,$cc,$ff
 	!byte $f3,$cf,$cf,$3f,$f3,$f3,$cf,$3f,$f3,$fc,$3f,$3f,$f3,$ff,$ff,$3f
 	!byte $f3,$ff,$ff,$3f,$f3,$ff,$ff,$3f,$f3,$ff,$fc,$ff,$f3,$ff,$fc,$ff
 	!byte $f3,$ff,$fc,$ff,$f3,$ff,$fc,$ff,$f3,$ff,$fc,$ff,$cf,$ff,$fc,$ff

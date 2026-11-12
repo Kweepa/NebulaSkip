@@ -27,6 +27,8 @@ term_init
 	sta bounty_map
 	sta shop_owned
 	sta shop_owned_h
+	sta ship_seen
+	sta ship_seen_h
 	sta bits_h
 	lda #42
 	sta bits_l
@@ -72,7 +74,14 @@ terminal_run
 	sta status_ms_l				; update_triggers redraws it after we leave
 	sta status_ms_h
 	jsr hud_msg_blank
-	lda #$84				; blue paper (NTSC byte), PAL-corrected
+	ldx #0					; term_in = the trigger purpose: DNA terminal or ship
+	lda term_in
+	cmp #TRIG_SHIP
+	bne .tr_k
+	inx
+.tr_k
+	stx term_kind
+	lda t_paper,x				; blue (DNA) / red (ship), NTSC byte, PAL-corrected
 	jsr a8_to_pal
 	sta term_pf2
 	lda dli_blood+1
@@ -85,6 +94,10 @@ terminal_run
 	sta term_sel
 	lda #3
 	sta term_n
+	lda term_kind
+	beq .tr_s0
+	jsr s_open				; ship: chart screen, cursor on this map
+.tr_s0
 	jsr t_read				; swallow the held fire: no edge until re-pressed
 	jsr t_draw
 	lda #1
@@ -95,6 +108,7 @@ terminal_run
 	sta dl_top+3
 	lda #2
 	sta den_arm
+t_loop						; ship.asm returns here too
 .tr_loop
 	jsr t_frame
 	jsr t_read
@@ -139,6 +153,10 @@ terminal_run
 .tr_fire
 	lda term_scr
 	beq .tr_fmain
+	cmp #3
+	bne .tr_f12
+	jmp s_fire				; ship chart (ship.asm), returns via t_loop / t_leave
+.tr_f12
 	ldx term_sel
 	inx
 	cpx term_n
@@ -477,11 +495,16 @@ t_redraw
 	bne .td_list
 	jmp t_draw_main
 .td_list
+	cmp #3
+	bne .td_l12
+	jmp s_draw				; ship chart (ship.asm)
+.td_l12
 	jmp t_draw_list
 
 ; Cursor row highlight: a DLI on the row above and on the cursor row itself
 ; (a8irq .nm_term raises, then restores, PF1 luminance). Main menu items are at
-; rows 8.., list items at 3.. (the cursor row is always >= 3).
+; rows 8.., list items at 3.., ship nodes at 2.. (the cursor row is always >= 2, so
+; the row above is a real row, never the row-0 LMS).
 t_hilite
 	lda #$42
 	sta term_dl + 13			; row 0: LMS, no DLI
@@ -498,6 +521,11 @@ t_hilite
 	adc #8
 	bne .hl_s				; always: >= 8
 .hl_l
+	cpx #3
+	bne .hl_l12
+	jsr s_row				; ship chart: A = row of the node
+	jmp .hl_s
+.hl_l12
 	clc
 	adc #3
 .hl_s
@@ -810,37 +838,4 @@ bits_add
 .ba_ok
 	rts
 
-; A = lo, X = hi -> dec5[0..4] ASCII, zero padded. Clobbers A, X.
-bin16_dec5
-	sta d5_lo
-	stx d5_hi
-	ldx #0
-.b5_p
-	lda #'0' - 1
-	sta dec5,x
-.b5_s
-	inc dec5,x
-	sec
-	lda d5_lo
-	sbc b5_pw_lo,x
-	sta d5_t
-	lda d5_hi
-	sbc b5_pw_hi,x
-	bcc .b5_d
-	sta d5_hi
-	lda d5_t
-	sta d5_lo
-	bcs .b5_s				; C set from the sbc
-.b5_d
-	inx
-	cpx #4
-	bcc .b5_p
-	lda d5_lo
-	ora #'0'
-	sta dec5 + 4
-	rts
-; Powers of ten; in code, not bank 0: hud_bits can run outside a PORTB_PLAY window.
-b5_pw_lo
-	!byte <10000, <1000, <100, <10
-b5_pw_hi
-	!byte >10000, >1000, >100, >10
+; bin16_dec5 lives in ship.asm (segment A): this segment is nearly full.

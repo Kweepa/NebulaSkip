@@ -191,6 +191,8 @@ STAMP_ROW_MAX	= 40
 BITS_MAX	= 9999			; 4 HUD digits; tools/genterminal.py caps prices the same
 TERM_LUM_N	= $0c			; terminal ink luminance (PF1)
 TERM_LUM_HI	= $0f			; the highlighted row
+TERM_PAPER_DNA	= $84			; DNA terminal paper: blue (NTSC byte, PAL-corrected at entry)
+TERM_PAPER_SHIP	= $44			; ship chart paper: dark red, ink is the same hue at lum $0c = pink
 TERM_COLS	= 32			; narrow playfield = the 3D viewport width
 T_DESC_RULE	= 10			; list screens: rule row, description rows 11..15
 TERM_ROWS	= 16			; 128 lines
@@ -202,7 +204,7 @@ term_arm	= term_in + 1			; 1 = fire was seen released while inside
 term_on		= term_arm + 1			; 1 = terminal DL is up (VBI uses term_pf2)
 term_pf2	= term_on + 1			; paper colour, PAL-corrected at entry
 term_blood_sv	= term_pf2 + 1			; saved dli_blood operand
-term_scr	= term_blood_sv + 1		; 0 main, 1 shop, 2 bounties
+term_scr	= term_blood_sv + 1		; 0 main, 1 shop, 2 bounties, 3 ship chart
 term_sel	= term_scr + 1			; highlighted row on this screen
 term_n		= term_sel + 1			; rows on this screen incl. the return/quit row
 term_old	= term_n + 1			; last input bits (edge detect)
@@ -218,7 +220,11 @@ bounty_sel	= bits_h + 1			; 0 none, else accepted bounty index + 1
 bounty_map	= bounty_sel + 1		; its map number (1..MAP_NLEVELS)
 shop_owned	= bounty_map + 1		; 16-bit mask, bit N = shop item N bought
 shop_owned_h	= shop_owned + 1
-TERM_BSS_END	= shop_owned_h + 1
+ship_seen	= shop_owned_h + 1		; 16-bit mask, bit N-1 = map N visited (ship chart access)
+ship_seen_h	= ship_seen + 1
+term_kind	= ship_seen_h + 1		; 0 DNA terminal, 1 ship chart (set by term_poll)
+sh_tmp		= term_kind + 1			; ship.asm scratch (node index / cursor probe)
+TERM_BSS_END	= sh_tmp + 1
 play_bss_free	= TERM_BSS_END			; up to a8_pal_hue
 TERM_SCR	= BMP_B				; 16 x 32 = 512 B of ANTIC text, main RAM under the window
 !if  >term_dl != >(term_dl + TERM_DL_LEN - 1) {
