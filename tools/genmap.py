@@ -510,8 +510,10 @@ def cook_one(level: dict, map_key: str) -> bytes:
         "blue keycard": 8,
         "soulsphere": 9,
         "radsuit": 10,
-        "lightpost": 11,
-        "barrel": 12,
+        "bit wallet": 11,
+        "bit safe": 12,
+        "lightpost": 13,
+        "barrel": 14,
         "health 25%": 0,
         "health 50%": 1,
         "armour": 2,
@@ -1430,9 +1432,11 @@ TH_KEY_YELLOW	= 7
 TH_KEY_BLUE	= 8
 TH_SOUL	= 9
 TH_RADSUIT	= 10
-TH_LIGHTPOST	= 11
-TH_BARREL	= 12
-TH_NTYPES	= 13
+TH_BIT_WALLET	= 11
+TH_BIT_SAFE	= 12
+TH_NPICKUP	= 13
+TH_LIGHTPOST	= 13
+TH_BARREL	= 14
 DOOR_KEY_NONE	= 0
 DOOR_KEY_YELLOW	= 1
 DOOR_KEY_BLUE	= 2
@@ -1453,17 +1457,18 @@ ENEMY_CLASS_HUM	= 0
 """
 
 
-# Built-in TH_* names (TH 0..12, fixed by the asm); keep in sync with genitems.py BP_MESH_KEY.
+# TH_* names (TH 0..14, fixed by the asm): the pickup block (0..12), then the props. Editor items
+# follow at TH 15... Keep in sync with genitems.py BP_MESH_KEY and the TH_* block in ENUMS.
 BUILTIN_ITEMS = [
     "small health", "large health", "green armor", "blue armor", "ammo box",
     "backpack", "red keycard", "yellow keycard", "blue keycard", "soulsphere",
-    "radsuit", "lightpost", "barrel",
+    "radsuit", "bit wallet", "bit safe", "lightpost", "barrel",
 ]
 DOOR_ITEM_NAMES = ["tech", "arch", "tri", "crack"]
 
 
 def custom_item_names() -> list[str]:
-    """User-defined items from editor/nebula.json, TH 13.. in order (mirrors genitems.custom_items)."""
+    """Editor items not in BUILTIN_ITEMS, from editor/nebula.json, TH 15.. in order (mirrors genitems.custom_items)."""
     if not ITEM_DOC.is_file():
         return []
     doc = json.loads(ITEM_DOC.read_text(encoding="utf-8"))

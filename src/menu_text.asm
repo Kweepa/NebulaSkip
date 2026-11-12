@@ -30,7 +30,7 @@ credits1_text
 	!scr " ",0
 	!scr "Thanks y'all!",0
 	!scr " ",0
-	!scr "Nebula Skip v1.0, built 11 Nov 2026",0
+	!scr "Nebula Skip v1.0, built 12 Nov 2026",0
 	!byte 0
 
 credits_lo

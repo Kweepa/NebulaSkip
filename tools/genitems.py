@@ -23,8 +23,11 @@ ITEM_MAX_UNIQUE = 6
 ITEM_OFFSET_MAX = 255  # per-slot vo/eo/uo/zo are one byte
 ITEM_PAGES_MAX = 2  # keep in sync with editor/js/model.js
 
-# Index = BP_*
-BP_MESH_KEY = [
+# Index = TH_*. The cooker puts every grantable pickup in one block (TH 0..BP_NPICKUP-1) so the
+# asm handles them with tables (world.asm gb_* rows, hud.asm th_name_*). Props and editor items
+# follow. Keep in sync with genmap.py BUILTIN_ITEMS. "bit wallet" / "bit safe" are listed in the
+# editor's customItems; they are pulled into this block by name.
+BP_PICKUP_KEY = [
     "small health",
     "large health",
     "green armor",
@@ -36,9 +39,11 @@ BP_MESH_KEY = [
     "blue keycard",
     "soulsphere",
     "radsuit",
-    "lightpost",
-    "barrel",
+    "bit wallet",
+    "bit safe",
 ]
+BP_NPICKUP = len(BP_PICKUP_KEY)
+BP_MESH_KEY = BP_PICKUP_KEY + ["lightpost", "barrel"]
 DOOR_MESH_KEY = ["Tech", "Arch", "Tri", "Crack"]
 DOOR_ALIAS = {"tech": "Tech", "arch": "Arch", "tri": "Tri", "crack": "Crack"}
 
@@ -346,7 +351,7 @@ def btable(name: str, vals: list[int]) -> str:
 
 
 def custom_items(doc: dict) -> list[str]:
-    """User-defined item names, in TH order (TH 13..). Mirrors parseCustomItems."""
+    """Editor-defined item names that are not in the built-in block, in TH order (TH 15..)."""
     out: list[str] = []
     taken = {k.lower() for k in BP_MESH_KEY} | {k.lower() for k in DOOR_MESH_KEY}
     for src in doc.get("customItems") or []:
@@ -411,7 +416,7 @@ def pack_pages(cooked: list[dict | None], names: list[str]) -> tuple[list[dict],
     return pages, page_of, offs
 
 
-# In-game "You got the <name>" text. Index = TH_* (0..TH_NTYPES-1). Only these slots can be
+# In-game "You got the <name>" text. Index = TH_* (0..BP_NPICKUP-1). Only the pickup block can be
 # granted, so only these get a name. Defaults reproduce the old hand-written hud.asm strings.
 GAME_NAME_DEFAULT = {"small health": "stimpack", "large health": "medikit"}
 GAME_NAME_GLYPH = {
@@ -434,7 +439,7 @@ def clamp_item_name(s) -> str:
 def th_names(meta: dict) -> str:
     """Name strings + th_name_lo/hi for the grantable TH types."""
     lines = ["; TH_* names for hud_got (editor item names; keycards keep their glyph until renamed)"]
-    for i, key in enumerate(BP_MESH_KEY):
+    for i, key in enumerate(BP_PICKUP_KEY):
         m = meta.get(key)
         label = clamp_item_name(m.get("label")) if isinstance(m, dict) else ""
         if label:
@@ -449,8 +454,8 @@ def th_names(meta: dict) -> str:
         if glyph:
             lines.append(f"\t!byte {glyph}")
         lines.append(f'\t!text "{text}",0')
-    lo = ", ".join(f"<thn_{i}" for i in range(len(BP_MESH_KEY)))
-    hi = ", ".join(f">thn_{i}" for i in range(len(BP_MESH_KEY)))
+    lo = ", ".join(f"<thn_{i}" for i in range(BP_NPICKUP))
+    hi = ", ".join(f">thn_{i}" for i in range(BP_NPICKUP))
     lines.append(f"th_name_lo\n\t!byte {lo}")
     lines.append(f"th_name_hi\n\t!byte {hi}")
     return "\n".join(lines)
@@ -479,7 +484,7 @@ def main() -> None:
         m = meta.get(name)
         if isinstance(m, dict) and m.get("pickup"):
             raise SystemExit(
-                f"genitems: item {name!r} is flagged pickup but has no grant behaviour in the asm"
+                f"genitems: item {name!r} is flagged pickup but is not in BP_PICKUP_KEY (no grant row in world.asm)"
             )
 
     item_keys = BP_MESH_KEY + custom

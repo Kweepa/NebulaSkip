@@ -2180,10 +2180,8 @@ try_thing_pickup
 	bcc .tth_n
 	ldx obj_i
 	+lda_mx th_type
-	cmp #TH_LIGHTPOST
-	beq .tth_n
-	cmp #TH_BARREL
-	beq .tth_n
+	cmp #TH_NPICKUP			; props / editor items are not grabbable
+	bcs .tth_n
 	jsr grant_thing
 	bcc .tth_n
 	jsr hud_ammo
@@ -2257,9 +2255,7 @@ grant_thing
 	+lda_mx th_type
 ; A = TH_* type; C=1 granted
 grant_th_type
-	cmp #TH_NTYPES
-	bcs .gb_bad
-	cmp #TH_LIGHTPOST
+	cmp #TH_NPICKUP			; pickups are TH 0..TH_NPICKUP-1; props and editor items follow
 	bcs .gb_bad
 	tay
 	lda gb_mode,y
@@ -2279,6 +2275,7 @@ GB_ARM = 1
 GB_PU  = 2
 GB_KEY = 3
 GB_PACK = 4
+GB_BITS = 5
 
 PS_HP = 0
 PS_AMMO = 1
@@ -2286,14 +2283,15 @@ PS_BONUS = 2
 PS_KEY = 3
 
 gb_mh
-	!word gb_do_add, gb_do_arm, gb_do_pu, gb_do_key, gb_do_pack
+	!word gb_do_add, gb_do_arm, gb_do_pu, gb_do_key, gb_do_pack, gb_do_bits
 
-; Row = TH_*. gb_max is the add cap, or the armor value set for GB_ARM.
+; Row = TH_* (pickups only). gb_max is the add cap, or the armor value set for GB_ARM,
+; or for GB_BITS the random span mask (gb_add = base, so bits += gb_add + (rnd8 & gb_max)).
 ; gb_dbl = 1: have_pack doubles that cap (byte saturates at 255).
 gb_mode
 	!byte GB_ADD, GB_ADD, GB_ARM, GB_ARM, GB_ADD
 	!byte GB_PACK, GB_KEY, GB_KEY, GB_KEY, GB_ADD
-	!byte GB_PU, GB_ADD, GB_ADD
+	!byte GB_PU, GB_BITS, GB_BITS
 
 gb_ptr_lo
 	!byte <player_hp, <player_hp, 0, 0, <ammo_bullets
@@ -2307,12 +2305,12 @@ gb_ptr_hi
 gb_add
 	!byte HP_STIM, HP_MEDIKIT, 0, 0, AMMO_BULLETS_BOX
 	!byte 0, 0, 0, 0, HP_SOUL
-	!byte 0, 0, 0
+	!byte 0, BITS_WALLET_MIN, BITS_SAFE_MIN
 
 gb_max
 	!byte PLAYER_HP_MAX, PLAYER_HP_MAX, ARMOR_GREEN, ARMOR_BLUE, AMMO_BULLETS_MAX
 	!byte 0, 0, 0, 0, HP_SOUL_MAX
-	!byte 0, 0, 0
+	!byte 0, BITS_SPAN, BITS_SPAN
 
 gb_dbl
 	!byte 0, 0, 0, 0, 1
@@ -2328,7 +2326,7 @@ gb_bits
 gb_snd
 	!byte PS_HP, PS_HP, PS_AMMO, PS_AMMO, PS_AMMO
 	!byte PS_BONUS, PS_KEY, PS_KEY, PS_KEY, PS_HP
-	!byte PS_BONUS, PS_AMMO, PS_AMMO
+	!byte PS_BONUS, PS_BONUS, PS_BONUS
 
 ; Y = TH_*. rot2=0 fail if at cap, 1 always add+clamp. C=1 stored. Restores Y.
 gb_add_amt
@@ -2431,13 +2429,24 @@ gb_do_pack
 	sec
 	rts
 
+; Bit wallet / safe: bits += gb_add[y] + (rnd8 & gb_max[y]). Always granted.
+gb_do_bits
+	jsr rnd8				; A only: Y (TH row) survives
+	and gb_max,y
+	clc
+	adc gb_add,y
+	ldx #0
+	jsr bits_add
+	sec
+	rts
+
 gb_no
 	clc
 	rts
 
 ; A = TH_* — health / ammo / bonus / key
 pickup_sound
-	cmp #TH_NTYPES
+	cmp #TH_NPICKUP
 	bcc .ps_ok
 	rts
 .ps_ok

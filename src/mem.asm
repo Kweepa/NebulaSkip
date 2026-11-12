@@ -187,6 +187,9 @@ stamp_rowbuf	= portb_cur + 1			; STAMP_ROW_MAX: one blitted row, copied out of t
 STAMP_ROW_MAX	= 40
 ; DNA terminal (terminal.asm) state. All of it is initialised in term_init (start).
 BITS_MAX	= 9999			; 4 HUD digits; tools/genterminal.py caps prices the same
+BITS_WALLET_MIN	= 5			; bit wallet: 5..20 (min + rnd8 & BITS_SPAN)
+BITS_SAFE_MIN	= 27			; bit safe: 27..42
+BITS_SPAN	= 15			; mask: both ranges are 16 wide
 TERM_LUM_N	= $0c			; terminal ink luminance (PF1)
 TERM_LUM_HI	= $0f			; the highlighted row
 TERM_PAPER_DNA	= $84			; DNA terminal paper: blue (NTSC byte, PAL-corrected at entry)

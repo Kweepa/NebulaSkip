@@ -812,8 +812,8 @@ hud_bits
 	bpl .hb_l
 	rts
 
-; A = lo, X = hi added to bits, clamped to BITS_MAX. Nothing calls this yet:
-; pickups and bounty rewards will.
+; A = lo, X = hi added to bits, clamped to BITS_MAX. Called by gb_do_bits
+; (wallet / safe); bounty rewards will too.
 bits_add
 	clc
 	adc bits_l

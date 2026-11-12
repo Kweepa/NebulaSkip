@@ -8,4 +8,4 @@ Altirra emulator by Avery Lee.
 
 Thanks y'all!
 
-Nebula Skip v1.0, built 11 Nov 2026
+Nebula Skip v1.0, built 12 Nov 2026

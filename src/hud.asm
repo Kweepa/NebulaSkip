@@ -761,7 +761,7 @@ hud_keys
 
 ; A = TH_* type. "You got the <name>" for 5s on HUD_ROW4.
 hud_got
-	cmp #TH_NTYPES
+	cmp #TH_NPICKUP
 	bcc .hg_ok
 	rts
 .hg_ok
