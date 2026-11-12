@@ -66,23 +66,31 @@ shop_price_hi
 	!byte 0,0,3,5
 BTY_N	= 2
 btn0
-	!text "the batty boys"
+	!text "The Batty Boys"
 	!byte 0
 btd0
-	!text "these low rogues are loitering"
+	!text "These low rogues are loitering"
 	!byte 0
 	!text "on station in the lower decks"
 	!byte 0
-	!text "and stripping alpha shielding"
+	!text "and stripping the alpha"
+	!byte 0
+	!text "shielding."
 	!byte 0
 	!byte 0
 btn1
-	!text "bob kyllin band"
+	!text "Bob Kyllin's Band"
 	!byte 0
 btd1
-	!text "troubadour with a heart of"
+	!text "Bob is a troubadour with a"
 	!byte 0
-	!text "black"
+	!text "heart of black. Don't stare"
+	!byte 0
+	!text "into the vacuum of his eyes."
+	!byte 0
+	!text "His band are counting bits on"
+	!byte 0
+	!text "Verdan."
 	!byte 0
 	!byte 0
 bty_name_lo
