@@ -29,6 +29,9 @@ term_init
 	sta shop_owned_h
 	sta ship_seen
 	sta ship_seen_h
+	sta rig_arm
+	sta rig_shown
+	sta rig_stage
 	sta bits_h
 	lda #42
 	sta bits_l
@@ -74,14 +77,19 @@ terminal_run
 	sta status_ms_l				; update_triggers redraws it after we leave
 	sta status_ms_h
 	jsr hud_msg_blank
-	ldx #0					; term_in = the trigger purpose: DNA terminal or ship
-	lda term_in
+	ldx #0					; term_in = the trigger purpose: DNA terminal, ship, or
+	lda term_in				; TRIG_RIG (rig_poll: bounty scan)
 	cmp #TRIG_SHIP
-	bne .tr_k
+	bne .tr_k1
 	inx
+	bne .tr_k
+.tr_k1
+	cmp #TRIG_RIG
+	bne .tr_k
+	ldx #2
 .tr_k
 	stx term_kind
-	lda t_paper,x				; blue (DNA) / red (ship), NTSC byte, PAL-corrected
+	lda t_paper,x				; blue (DNA) / red (ship) / green (rig), NTSC byte, PAL-corrected
 	jsr a8_to_pal
 	sta term_pf2
 	lda dli_blood+1
@@ -96,7 +104,12 @@ terminal_run
 	sta term_n
 	lda term_kind
 	beq .tr_s0
+	cmp #2
+	beq .tr_ro
 	jsr s_open				; ship: chart screen, cursor on this map
+	jmp .tr_s0
+.tr_ro
+	jsr r_open				; rig: pick the crimes, arm the timeline
 .tr_s0
 	jsr t_read				; swallow the held fire: no edge until re-pressed
 	jsr t_draw
@@ -111,6 +124,15 @@ terminal_run
 t_loop						; ship.asm returns here too
 .tr_loop
 	jsr t_frame
+	lda term_kind
+	cmp #2
+	bne .tr_in
+	jsr r_tick				; rig: timed reveal; only fire is read
+	jsr t_read
+	and #4
+	beq .tr_loop
+	jmp .tr_fire
+.tr_in
 	jsr t_read
 	beq .tr_loop
 	lsr					; bit0 up
@@ -152,10 +174,16 @@ t_loop						; ship.asm returns here too
 	jmp .tr_loop
 .tr_fire
 	lda term_scr
-	beq .tr_fmain
+	bne .tr_fs
+	jmp .tr_fmain				; (branch range)
+.tr_fs
 	cmp #3
-	bne .tr_f12
+	bne .tr_f4
 	jmp s_fire				; ship chart (ship.asm), returns via t_loop / t_leave
+.tr_f4
+	cmp #4
+	bne .tr_f12
+	jmp r_fire				; rig scan (rig.asm), returns via t_loop / t_leave
 .tr_f12
 	ldx term_sel
 	inx
@@ -485,6 +513,11 @@ t_clear
 t_draw
 	jsr t_clear
 t_redraw
+	lda term_scr
+	cmp #4
+	bne .td_h
+	jmp r_draw				; rig scan: no cursor, so no highlight DLIs
+.td_h
 	jsr t_hilite
 	lda term_scr
 	bne .td_list

@@ -383,6 +383,7 @@ def steps(exe: str) -> list[Step]:
                 ROOT / "terminal.txt",
                 ROOT / "shop.csv",
                 ROOT / "bounties.csv",
+                ROOT / "crimes.txt",
                 ROOT / "ship_map.csv",
                 SRC / "map_counts.asm",
                 *sorted((ROOT / "editor" / "maps").glob("map[a-z].json")),

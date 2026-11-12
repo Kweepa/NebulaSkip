@@ -27,7 +27,26 @@ t_s_h_bits
 t_s_h_diff
 	!text "danger",0
 t_paper
-	!byte TERM_PAPER_DNA, TERM_PAPER_SHIP	; indexed by term_kind
+	!byte TERM_PAPER_DNA, TERM_PAPER_SHIP, TERM_PAPER_RIG	; indexed by term_kind
+; DNA rig scan (rig.asm)
+t_s_rig
+	!text "dna rig // 6502 1.79mhz",0
+t_s_rname
+	!text "target:",0
+t_s_rcrimes
+	!text "crimes:",0
+t_s_rbounty
+	!text "bounty:",0
+t_s_rbits
+	!text "bits",0
+t_s_rstat
+	!text "status: deceased",0
+t_s_rupl
+	!text "uploading",0
+t_s_rpaid
+	!text "bounty paid // press fire",0
+t_s_rprompt
+	!text "press fire to scan",0
 ; Ship chart (ship.asm)
 t_s_ship
 	!text "nebula chart",0

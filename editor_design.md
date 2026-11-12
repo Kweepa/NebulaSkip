@@ -39,6 +39,10 @@
   * **Spawn tagged enemies (once)** — **tag** matches enemies with the same **Tag** (enemy inspector). Tagged enemies start hidden/inactive; entry wakes them and the trigger latches spent (same latch as stair elevators; an **Armed by** switch re-arms it).
 * Optional **Armed by** tag: if set, the volume does nothing until a switch with that tag is used. One switch can arm every trigger that shares the tag. Destination **tag** (elevator / unlock) is independent.
 
+## Bounties
+* Enemies have an optional **Bounty name** (printable ASCII, 20 chars) and **Bounty (bits)**. 0 = not a bounty. The editor snaps the value to 4n-1 (3, 7, 11 ... 1019); the cooker stores the one byte n (`en_bty`) and the name as an offset into the map text blob (`en_bnm`, same 255-byte offset limit as trigger texts; names are appended after the trigger texts; an empty name cooks as "unknown").
+* With the DNA rig (shop item, adds the **scan** gear), standing within a few cells of a dead bounty enemy shows "press fire to scan". Fire opens the green DNA rig screen: name, 1-3 random crimes from `crimes.txt` (on the "crimes:" line, wrapping to a second), the bounty, "status: deceased", an upload bar, then the bounty is paid in bits. Each corpse pays once (saved in the quicksave).
+
 ## Patrol
 * Enemies have a **Patrol** checkbox. When set, an idle enemy picks a random cardinal, walks at least 6 units if that ray is clear of walls, then idles 1–2 seconds and repeats. Failed rays stay idle and retry next frame.
 * There are no placeable patrol-point markers.

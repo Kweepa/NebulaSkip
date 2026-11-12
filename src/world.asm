@@ -116,6 +116,7 @@ init_enemies
 	sta en_state,x
 	lda #0
 	sta en_frame,x
+	sta en_scan,x			; bounty not yet scanned
 	sta en_timer,x
 	sta en_timer_h,x
 	sta en_step,x

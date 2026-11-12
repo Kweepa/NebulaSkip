@@ -446,6 +446,10 @@ export const MAX_TRIGGER_TEXT = 80;
 export const MAX_NAME_LEN = 40;
 export const MAX_VERB_LEN = 16;
 export const MAX_TAG_LEN = 16;
+/** Bounty enemy name shown on the DNA rig scan screen ("name: " + this must fit 30 columns). */
+export const MAX_BOUNTY_NAME_LEN = 20;
+/** Bounty is stored as one byte n (1..255); bits paid = 4n-1, so 3, 7, 11 ... 1019. 0 = not a bounty. */
+export const BOUNTY_MAX_N = 255;
 
 /** Elevator height mode: Auto invents home/dest at cook; off uses elevLow/elevHigh vs room.y. */
 export function elevHeightsAuto(obj) {
@@ -2263,6 +2267,12 @@ export function clampObject(obj) {
     const et = clampTag(obj.tag);
     if (et) obj.tag = et;
     else delete obj.tag;
+    const bty = clampBounty(obj.bounty);
+    if (bty) obj.bounty = bty;
+    else delete obj.bounty;
+    const bnm = clampBountyName(obj.bountyName);
+    if (bnm) obj.bountyName = bnm;
+    else delete obj.bountyName;
   }
   if (obj.kind === "trigger") {
     obj.purpose = clampTriggerPurpose(obj.purpose);
@@ -2373,6 +2383,10 @@ export function createObject(kind, x, y, z, extra = {}) {
     obj.enemy = ENEMY_TYPES.some((t) => t.name === name) ? name : "Possessed";
     const et = clampTag(extra.tag);
     if (et) obj.tag = et;
+    const bty = clampBounty(extra.bounty);
+    if (bty) obj.bounty = bty;
+    const bnm = clampBountyName(extra.bountyName);
+    if (bnm) obj.bountyName = bnm;
   }
   if (kind === "trigger") {
     obj.purpose = clampTriggerPurpose(extra.purpose);
@@ -2449,6 +2463,23 @@ export function clampTag(s) {
   return String(s ?? "")
     .replace(/\s+/g, "")
     .slice(0, MAX_TAG_LEN);
+}
+
+/** Bounty name: printable ASCII, single spaces, trimmed. */
+export function clampBountyName(s) {
+  return String(s ?? "")
+    .replace(/[^\x20-\x7e]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, MAX_BOUNTY_NAME_LEN);
+}
+
+/** Bits paid for a bounty: 0 (none) or the nearest 4n-1 in 3..1019. */
+export function clampBounty(bits) {
+  const b = Math.round(Number(bits));
+  if (!Number.isFinite(b) || b <= 0) return 0;
+  const n = Math.max(1, Math.min(BOUNTY_MAX_N, Math.round((b + 1) / 4)));
+  return n * 4 - 1;
 }
 
 export function isFigureObject(obj) {
@@ -4040,6 +4071,8 @@ function parseObjects(list) {
       purpose: o.purpose,
       name: o.name,
       tag: o.tag,
+      bounty: o.bounty,
+      bountyName: o.bountyName,
       enableTag: o.enableTag,
       lockKey: o.lockKey,
       doorType: o.doorType,
@@ -4089,6 +4122,10 @@ function parseObjects(list) {
         obj.enemy = name;
         const et = clampTag(o.tag);
         if (et) obj.tag = et;
+        const bty = clampBounty(o.bounty);
+        if (bty) obj.bounty = bty;
+        const bnm = clampBountyName(o.bountyName);
+        if (bnm) obj.bountyName = bnm;
       }
       if (o.rot != null) obj.rot = o.rot;
     }

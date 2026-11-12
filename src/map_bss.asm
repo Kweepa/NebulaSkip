@@ -161,11 +161,13 @@ room_th_o	= $0506
 map_name	= $0508
 map_text	= $050A
 th_ori	= $050C		; things: bits 0-2 Y facing (x45 deg, static items), bits 6-7 = scale shift (1x/2x/4x/8x)
-!if (th_ori - room_x) & 1 {
+en_bty	= $050E		; enemy bounty n (bits = 4n-1); 0 = not a bounty (DNA rig scan)
+en_bnm	= $0510		; enemy bounty name: byte offset into map_text (NUL-terminated)
+!if (en_bnm - room_x) & 1 {
 	!error "map pointer table is not aligned words"
 }
-!if (th_ori - room_x) / 2 > 127 {
+!if (en_bnm - room_x) / 2 > 127 {
 	!error "map pointer table exceeds 128 bind fields"
 }
-; MAP_BSS_END = $050E  size=270
-; $050E..$0523 is a gap; play BSS still starts at $0524.
+; MAP_BSS_END = $0512  size=274
+; $0512..$0523 is a gap; play BSS still starts at $0524.

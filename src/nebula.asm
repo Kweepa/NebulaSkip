@@ -97,6 +97,7 @@ main
 	jsr set_draw_ptrs
 	jsr read_input
 	jsr term_poll				; inside a terminal volume fire opens it, never shoots
+	jsr rig_poll				; scan gear near a bounty corpse: prompt / scan screen
 	jsr apply_cheats
 	jsr update_weapon
 	jsr apply_move_world
@@ -219,6 +220,10 @@ mod_elevator
 !source "elevator.asm"
 mod_cheats_apply
 !source "cheats_apply.asm"
+; DNA rig scan (terminal screen 4). rig_poll runs from the main loop and the screen from the
+; terminal loop, both at PORTB_PLAY; t_blit's PORTB_MAIN switch only covers its own copy.
+mod_rig
+!source "rig.asm"
 code0_end = *
 !if code0_end > CODE0_END {
 	!error "bank-0 code zone runs into the static data; end=$", code0_end

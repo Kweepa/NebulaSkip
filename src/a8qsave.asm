@@ -37,7 +37,7 @@ QSO_SAVE	= 0
 QSO_VERIFY	= 1
 QSO_RESTORE	= 2
 QSO_MAGIC	= $a5
-QSO_VER		= 5			; 5: weapon inventory dropped from INV (4: ship_seen, 3: bits, bounty, shop)
+QSO_VER		= 6			; 6: en_scan (bounty collected) in WLD (5: weapon inventory dropped from INV, 4: ship_seen, 3: bits, bounty, shop)
 QSO_HDR		= 9
 QSO_BYTES	= QSAVE_N * 128
 OP_READ		= $52			; same values as the SIO commands qs_sector takes
@@ -594,6 +594,7 @@ qso_wld
 	+qf drop_z, 1
 	+qf drop_room, 1
 	+qf drop_type, 1
+	+qf en_scan, 1
 	+qf en_x, $81
 	+qf en_y, $81
 	+qf en_z, $81

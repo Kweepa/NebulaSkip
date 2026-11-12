@@ -40,6 +40,9 @@ import {
   MAX_NAME_LEN,
   MAX_VERB_LEN,
   MAX_TAG_LEN,
+  MAX_BOUNTY_NAME_LEN,
+  clampBounty,
+  clampBountyName,
   doorTypes,
   placeableItemKeys,
   isDoorItem,
@@ -3138,10 +3141,28 @@ function renderLayoutObjectFields(root, objs) {
         })
       )
     );
+    const btyName = unanimous(objs, (o) => o.bountyName || "");
+    root.appendChild(
+      field(
+        "Bounty name",
+        textInputMixed(btyName, {
+          maxLength: MAX_BOUNTY_NAME_LEN,
+          placeholder: "shown on the DNA rig scan",
+          onChange: (v) => apply((obj) => (obj.bountyName = clampBountyName(v))),
+        })
+      )
+    );
+    const btyBits = unanimous(objs, (o) => o.bounty | 0);
+    const btyRow = field(
+      "Bounty (bits)",
+      numberInputMixed(btyBits, (n) => apply((obj) => (obj.bounty = clampBounty(n))))
+    );
+    btyRow.title = "0 = not a bounty. Snaps to 3, 7, 11 ... 1019 (one byte). Scannable with the DNA rig once dead.";
+    root.appendChild(btyRow);
   }
 
   if (kind === "trigger") {
-    const purpose = unanimous(objs, (o) => clampTriggerPurpose(o.purpose));
+    const purpose =unanimous(objs, (o) => clampTriggerPurpose(o.purpose));
     root.appendChild(
       field(
         "Purpose",

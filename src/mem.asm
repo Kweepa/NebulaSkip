@@ -161,7 +161,7 @@ MAP_SMC_BASE	= $0200
 }
 
 ; Play BSS: default VIC matrix / leftover boot. VIC matrix in play is $C000.
-; map_bss.asm occupies $0400–$050D (play BSS starts $0524). $08F6 video_ms, $08F9–$08FF reboot stub + selectors.
+; map_bss.asm occupies $0400–$0511 (play BSS starts $0524). $08F6 video_ms, $08F9–$08FF reboot stub + selectors.
 ENEMY_PTR_N	= 4			; must == ENEMY_NTYPES (nebula.asm asserts)
 enemy_gx_lo	= $0524
 enemy_gx_hi	= enemy_gx_lo + ENEMY_PTR_N
@@ -194,6 +194,7 @@ TERM_LUM_N	= $0c			; terminal ink luminance (PF1)
 TERM_LUM_HI	= $0f			; the highlighted row
 TERM_PAPER_DNA	= $84			; DNA terminal paper: blue (NTSC byte, PAL-corrected at entry)
 TERM_PAPER_SHIP	= $44			; ship chart paper: dark red, ink is the same hue at lum $0c = pink
+TERM_PAPER_RIG	= $c4			; DNA rig scan paper: dark green (term_kind 2), ink same hue at lum $0c
 TERM_COLS	= 32			; narrow playfield = the 3D viewport width
 T_DESC_RULE	= 10			; list screens: rule row, description rows 11..15
 TERM_ROWS	= 16			; 128 lines
@@ -225,7 +226,27 @@ ship_seen	= shop_owned_h + 1		; 16-bit mask, bit N-1 = map N visited (ship chart
 ship_seen_h	= ship_seen + 1
 term_kind	= ship_seen_h + 1		; 0 DNA terminal, 1 ship chart (set by term_poll)
 sh_tmp		= term_kind + 1			; ship.asm scratch (node index / cursor probe)
-TERM_BSS_END	= sh_tmp + 1
+; DNA rig scan (rig.asm, term_kind 2 / term_scr 4). Initialised in term_init (rig_*) and
+; init_enemies (en_scan).
+ENEMY_MAX	= 24			; MAP_NENEMIES ≤ this
+TRIG_RIG	= 15			; term_in pseudo-purpose set by rig_poll (never a cooked trigger)
+RIG_R		= 3			; scan range: Chebyshev cells from the corpse
+RIG_BAR_N	= 28			; '#' cells on the upload bar
+RIG_DONE	= 8			; rig_stage once the bounty is paid: fire closes the screen
+rig_idx		= sh_tmp + 1			; enemy being scanned (poll hit, then the open screen)
+rig_arm		= rig_idx + 1			; 1 = fire was seen released while a corpse was in range
+rig_shown	= rig_arm + 1			; 1 = the prompt is on the message row
+rig_stage	= rig_shown + 1			; 0 name .. 6 bar, 7 pay, RIG_DONE
+rig_wait_l	= rig_stage + 1			; ms until the next stage (16-bit, counts down)
+rig_wait_h	= rig_wait_l + 1
+rig_cnt		= rig_wait_h + 1		; crimes to print, 1..3
+rig_k		= rig_cnt + 1			; crimes printed so far
+rig_col		= rig_k + 1			; next free column on the crimes row
+rig_row		= rig_col + 1			; crimes row being filled
+rig_bar		= rig_row + 1			; '#' printed
+rig_c		= rig_bar + 1			; 5 crime indices
+en_scan		= rig_c + 5			; ENEMY_MAX: 1 = bounty collected (quicksaved)
+TERM_BSS_END	= en_scan + ENEMY_MAX
 play_bss_free	= TERM_BSS_END			; up to a8_pal_hue
 TERM_SCR	= BMP_B				; 16 x 32 = 512 B of ANTIC text, main RAM under the window
 !if  >term_dl != >(term_dl + TERM_DL_LEN - 1) {
@@ -496,11 +517,12 @@ FALL_SAFE	= 8			; no damage if eye-drop <= this
 FALL_DAMAGE	= 15			; HP on hard landing
 ABIL_FIRE	= 0			; joystick button ability (space toggles)
 ABIL_JUMP	= 1
+ABIL_SCAN	= 2			; DNA rig (shop item): fire near a bounty corpse opens the scan screen
 ROOM_NOCOMBAT	= 1			; room_bg bit 0 (unused by the paper byte): no fire mode, enemies stand
 HURT_FLASH_MS	= 300			; red border duration
 ENEMY_CULL_R	= 2			; view-space |x| vs z+R (8.8 high)
 ENEMY_CULL_H	= 6			; view-space |y| vs z+H (figure height)
-ENEMY_MAX		= 24		; MAP_NENEMIES ≤ this
+; ENEMY_MAX lives with the terminal BSS above (en_scan is sized by it).
 EN_IDLE		= 0
 EN_ALERT		= 2			; 1 reserved; do not renumber
 EN_APPROACH		= 3

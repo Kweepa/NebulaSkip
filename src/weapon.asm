@@ -171,7 +171,8 @@ start_flash
 	rts
 
 ; ------------------------------------------------------------------
-; pin_room_gear — no-combat room: force ABIL_JUMP. C=1 if the room is no-combat.
+; pin_room_gear — no-combat room: no fire gear; anything but jump / scan becomes ABIL_JUMP.
+; C=1 if the room is no-combat.
 ; Called from set_room_idx (and world_init) so the swap lands on the room change
 ; itself, not a frame later in update_weapon: stamp_view would draw the gun once
 ; in between. Clobbers A, X, Y.
@@ -182,6 +183,8 @@ pin_room_gear
 	beq .prg_no
 	lda ability_cur
 	cmp #ABIL_JUMP
+	beq .prg_yes
+	cmp #ABIL_SCAN			; scan (rig owned) is harmless here, keep it
 	beq .prg_yes
 	lda #ABIL_JUMP
 	sta ability_cur
@@ -197,16 +200,26 @@ pin_room_gear
 
 ; ------------------------------------------------------------------
 update_weapon
-	jsr pin_room_gear		; no-combat room: jump is pinned (set_room_idx does the
-	bcc .uw_abk			; swap on entry), so swallow the toggle.
-	lda #0				; Nothing is cached; leaving the room leaves jump.
-	sta key_ability
+	jsr pin_room_gear		; no-combat room: fire is off (set_room_idx swaps to jump
+	ldy #ABIL_FIRE			; on entry); the toggle then wraps to jump, not fire.
+	bcc .uw_abk
+	ldy #ABIL_JUMP
 .uw_abk
 	lda key_ability
 	beq .uw_ab
-	lda ability_cur
-	eor #1
-	sta ability_cur
+	ldx ability_cur				; fire -> jump -> scan (only with the DNA rig) -> wrap
+	inx
+	cpx #ABIL_SCAN
+	bcc .uw_abs
+	bne .uw_abw				; 3: wrap
+	lda shop_owned
+	and #SHOP_RIG_MASK
+	bne .uw_abs
+.uw_abw
+	tya
+	tax
+.uw_abs
+	stx ability_cur
 	lda #0
 	sta jump_held
 	jsr hud_ability
@@ -230,8 +243,9 @@ update_weapon
 	sta fire_rpt_h
 .uw_chk
 	lda ability_cur
+	beq .uw_fire
 	cmp #ABIL_JUMP
-	bne .uw_fire
+	bne .uw_up			; scan: weapon idle, rig_poll takes fire
 	lda key_fire			; jump mode: press edge, weapon stays idle
 	beq .uw_jrel
 	lda jump_held

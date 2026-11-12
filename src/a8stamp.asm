@@ -17,12 +17,11 @@ stamp_bh	!byte 0
 stamp_tmp	!byte 0
 stamp_y0	!byte 0			; viewport Y restored by stamp_at_x
 
-; Fire mode: the pistol and its muzzle flash. Jump mode: the black crosshair at
-; the viewport centre instead. World effects (enemy muzzle, splat) draw in both.
+; Fire mode: the pistol and its muzzle flash. Jump / scan mode: the black crosshair at
+; the viewport centre instead. World effects (enemy muzzle, splat) draw in all.
 stamp_view
 	lda ability_cur
-	cmp #ABIL_JUMP
-	bne .sv_wpn
+	beq .sv_wpn
 	lda #<spr_xhair_b
 	sta init_ptr
 	lda #>spr_xhair_b

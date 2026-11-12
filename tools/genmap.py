@@ -989,6 +989,8 @@ def cook_one(level: dict, map_key: str) -> bytes:
     en_type, en_rot, en_room = [], [], []
     en_id = []
     en_tag = []
+    en_bty = []  # bounty n (bits paid = 4n-1); 0 = not a bounty
+    en_bnm = []  # bounty name: offset into text_blob (filled after the trigger texts)
     en_tag_ids: dict[str, int] = {}  # enemy tag -> 1..N (0 = untagged)
     for e in enemies:
         etag = (e.get("tag") or "").strip()
@@ -1007,6 +1009,15 @@ def cook_one(level: dict, map_key: str) -> bytes:
         en_rot.append(int(e.get("rot") or 0) & 7)
         en_room.append(ri)
         en_tag.append(en_tag_ids.get((e.get("tag") or "").strip(), 0))
+        bits = int(e.get("bounty") or 0)
+        if bits:
+            if bits < 3 or bits > 1019 or (bits + 1) % 4:
+                raise SystemExit(
+                    f"{map_key} enemy bounty {bits} must be 4n-1 (3, 7, 11 ... 1019)"
+                )
+            en_bty.append((bits + 1) // 4)
+        else:
+            en_bty.append(0)
         en_id.append(map_id[id(e)])
 
     # Triggers
@@ -1130,6 +1141,21 @@ def cook_one(level: dict, map_key: str) -> bytes:
         tr_purpose.append(purpose | gated)
         tr_arg.append(arg)
         tr_id.append(map_id[id(t)])
+
+    # Bounty names go after every trigger text so trigger offsets don't move.
+    for e, bty in zip(enemies, en_bty):
+        if not bty:
+            en_bnm.append(0)
+            continue
+        off = len(text_blob)
+        if off > 255:
+            raise SystemExit(
+                f"{map_key} bounty name offset {off} exceeds 255 (en_bnm is one byte): "
+                "shorten trigger texts or bounty names"
+            )
+        en_bnm.append(off)
+        text_blob.extend(ascii_screen((e.get("bountyName") or "").strip() or "unknown", 20))
+        text_blob.append(0)
 
     by_room_tr: dict[int, int] = {}
     for ri in tr_room:
@@ -1358,6 +1384,8 @@ def cook_one(level: dict, map_key: str) -> bytes:
     add(en_rot)
     add(en_room)
     add(en_tag)
+    add(en_bty)
+    add(en_bnm)
     add(tr_x)
     add(tr_y)
     add(tr_z)
