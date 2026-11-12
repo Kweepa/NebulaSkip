@@ -69,6 +69,8 @@ term_poll
 ; terminal_run — modal. Ends with jmp a8_nmi_on (returns to the main loop).
 ; ------------------------------------------------------------------
 terminal_run
+	lda #SOUND_DOROPN
+	jsr play_sound
 	lda #1
 	sta den_arm				; DMA off while the list pointer changes
 	jsr t_frame
@@ -163,8 +165,7 @@ t_loop						; ship.asm returns here too
 	jsr play_sound
 	jsr t_redraw			; same layout: no clear, so no blank flash
 	jmp .tr_loop
-.tr_moved
-	lda #SOUND_SWTCHN
+.tr_moved					; A = sound: door open into a screen, door close back out
 	jsr play_sound
 	jsr t_draw
 	jmp .tr_loop
@@ -234,6 +235,7 @@ t_loop						; ship.asm returns here too
 	sta term_scr
 	lda #3
 	sta term_n
+	lda #SOUND_DORCLS
 	jmp .tr_moved
 .tr_fmain
 	lda term_sel
@@ -253,6 +255,7 @@ t_loop						; ship.asm returns here too
 	stx term_n
 	lda #0
 	sta term_sel
+	lda #SOUND_DOROPN
 	jmp .tr_moved
 
 ; ------------------------------------------------------------------
@@ -260,6 +263,8 @@ t_loop						; ship.asm returns here too
 ; (den_arm 1 -> 2), as enter_card does, so no stale text flashes.
 ; ------------------------------------------------------------------
 t_leave
+	lda #SOUND_DORCLS
+	jsr play_sound
 	lda #1
 	sta den_arm
 	jsr t_frame
