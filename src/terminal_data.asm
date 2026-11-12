@@ -106,7 +106,7 @@ smn0
 	!text "Port Perihelion"
 	!byte 0
 smn1
-	!text "Terra Nova"
+	!text "Verdan"
 	!byte 0
 sm_col
 	!byte 4,15

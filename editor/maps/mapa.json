@@ -283,7 +283,7 @@
       "kind": "enemy",
       "x": 151,
       "y": 64,
-      "z": 74,
+      "z": 73,
       "sx": 2,
       "sy": 4,
       "sz": 2,
@@ -299,7 +299,7 @@
       "kind": "trigger",
       "x": 150,
       "y": 64,
-      "z": 70,
+      "z": 69,
       "sx": 4,
       "sy": 4,
       "sz": 6,
@@ -450,7 +450,7 @@
     {
       "id": "1c05b808-a37e-4139-928c-2374fd61bfa8",
       "kind": "pickup",
-      "x": 137,
+      "x": 136,
       "y": 77,
       "z": 97,
       "sx": 0.9270509831248422,
@@ -727,7 +727,7 @@
       "y": 34,
       "z": 105,
       "sx": 17,
-      "sy": 7,
+      "sy": 10,
       "sz": 6,
       "face": "+z",
       "axis": "z",
@@ -757,8 +757,39 @@
       "doorType": "Tech",
       "doorScale": 1,
       "tag": "",
-      "locked": false,
-      "otherRoomId": "7407f21f-a939-43e3-ab5f-330e826c6c09"
+      "otherRoomId": "7407f21f-a939-43e3-ab5f-330e826c6c09",
+      "locked": false
+    },
+    {
+      "id": "927eb0d3-aaf6-41fa-90ff-08ed360e8c3e",
+      "kind": "pickup",
+      "x": 163,
+      "y": 35,
+      "z": 104,
+      "sx": 0.9270509831248422,
+      "sy": 1.5,
+      "sz": 0.8028497019894523,
+      "face": "+z",
+      "axis": "z",
+      "dir": 1,
+      "roomId": "8ee1da8a-b717-4116-84dd-bf37c1b52136",
+      "pickup": "greeble"
+    },
+    {
+      "id": "a1e9cf78-f255-43de-9d4b-e4d291601d48",
+      "kind": "pickup",
+      "x": 163,
+      "y": 35,
+      "z": 110,
+      "sx": 0.9270509831248422,
+      "sy": 1.5,
+      "sz": 0.8028497019894523,
+      "face": "+z",
+      "axis": "z",
+      "dir": 1,
+      "roomId": "8ee1da8a-b717-4116-84dd-bf37c1b52136",
+      "pickup": "greeble",
+      "rot": 4
     }
   ]
 }

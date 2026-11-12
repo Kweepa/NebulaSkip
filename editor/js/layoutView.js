@@ -2,6 +2,7 @@ import {
   KINDS,
   ROOM_BG_DEFAULT,
   aabbCenter,
+  gizmoAnchor,
   a8Hex,
   a8InkHex,
   clampObject,
@@ -27,6 +28,7 @@ import {
   roomFloorY,
   roomById,
   outsideRoomBoxMap,
+  objectModelVerts,
   itemMeshFor,
   itemMeshWorldSegs,
   itemYawFor,
@@ -526,7 +528,7 @@ export class LayoutView {
     }
     const primaryObj = objs.find((o) => o.id === ids[ids.length - 1]) || origs[0];
     const gizmo = primaryObj
-      ? gizmoMetrics(aabbCenter(primaryObj), this.camera, this.cssW, this.cssH)
+      ? gizmoMetrics(gizmoAnchor(primaryObj), this.camera, this.cssW, this.cssH)
       : { axisLen: GIZMO_FALLBACK_LEN, planeLen: GIZMO_FALLBACK_LEN / 3 };
     return {
       kind: handle.kind,
@@ -903,7 +905,7 @@ export class LayoutView {
     }
     for (const id of sel.rigid) {
       const obj = objs.find((o) => o.id === id);
-      if (obj) pts.push(aabbCenter(obj));
+      if (obj) pts.push(gizmoAnchor(obj));
     }
     if (!pts.length) return null;
     let x = 0;
@@ -1358,8 +1360,8 @@ export class LayoutView {
         }
       }
     }
-    const c = aabbCenter(obj);
-    const gizmoHit = hitTranslateGizmo(c, cam, w, h, mx, my, HANDLE + 1);
+    const c = gizmoAnchor(obj);
+    const gizmoHit =hitTranslateGizmo(c, cam, w, h, mx, my, HANDLE + 1);
     if (gizmoHit) return gizmoHit;
     return null;
   }
@@ -1947,9 +1949,10 @@ export class LayoutView {
   }
 
   /**
-   * Objects outside their assigned room's bbox: dashed violet box (skipped when
-   * selected/hovered so the yellow highlight wins), a small diamond above, and a
-   * thin tether to the nearest point of the room's bbox.
+   * Objects with vertices outside their assigned room's bbox: dashed violet
+   * outline of the model (or box, for non-models; skipped when selected/hovered
+   * so the yellow highlight wins), a small diamond above, and a thin tether from
+   * the farthest-out vertex to the nearest point of the room's bbox.
    */
   #drawOutsideRoomMarks(ctx, doc, objs, selected, cam, w, h) {
     const outside = outsideRoomBoxMap(doc);
@@ -1960,28 +1963,57 @@ export class LayoutView {
       const room = outside.get(obj.id);
       if (!room) continue;
       const hi = selected.has(obj.id) || obj.id === this.hoverId;
-      const c = aabbCenter(obj);
+      // Models are judged (and outlined) by their vertices, not the AABB.
+      const verts = objectModelVerts(doc, obj);
+      const c = verts ? gizmoAnchor(obj) : aabbCenter(obj);
+      const modelTop = verts ? Math.max(...verts.map((v) => v.y)) : obj.y + obj.sy;
 
       ctx.lineWidth = 1;
       ctx.setLineDash([3, 3]);
       if (!hi) {
-        for (const [i, j] of BOX_EDGES) {
-          this.#line3(ctx, cornerWorld(obj, i), cornerWorld(obj, j), cam, w, h);
+        if (verts) {
+          const tmpl = obj.kind === "pickup" ? null : findEnemyTemplate(doc, figureTemplateName(obj));
+          if (obj.kind === "pickup") {
+            const mesh = itemMeshFor(doc, obj.pickup);
+            for (const seg of itemMeshWorldSegs(obj, mesh, itemYawFor(doc, obj.pickup, obj.rot))) {
+              this.#line3(ctx, seg.a, seg.b, cam, w, h);
+            }
+          } else if (tmpl) {
+            for (const [i, j] of tmpl.lines) {
+              if (verts[i] && verts[j]) this.#line3(ctx, verts[i], verts[j], cam, w, h);
+            }
+          }
+        } else {
+          for (const [i, j] of BOX_EDGES) {
+            this.#line3(ctx, cornerWorld(obj, i), cornerWorld(obj, j), cam, w, h);
+          }
         }
       }
-      const near = {
-        x: Math.max(room.x, Math.min(room.x + room.sx, c.x)),
-        y: Math.max(room.y, Math.min(room.y + room.sy, c.y)),
-        z: Math.max(room.z, Math.min(room.z + room.sz, c.z)),
-      };
-      if (near.x !== c.x || near.y !== c.y || near.z !== c.z) {
+      // Tether from the vertex farthest outside the room (box center for non-models).
+      let from = c;
+      let near = null;
+      let worst = -1;
+      for (const p of verts || [c]) {
+        const q = {
+          x: Math.max(room.x, Math.min(room.x + room.sx, p.x)),
+          y: Math.max(room.y, Math.min(room.y + room.sy, p.y)),
+          z: Math.max(room.z, Math.min(room.z + room.sz, p.z)),
+        };
+        const d = (q.x - p.x) ** 2 + (q.y - p.y) ** 2 + (q.z - p.z) ** 2;
+        if (d > worst) {
+          worst = d;
+          from = p;
+          near = q;
+        }
+      }
+      if (worst > 0) {
         ctx.globalAlpha = 0.6;
-        this.#line3(ctx, c, near, cam, w, h);
+        this.#line3(ctx, from, near, cam, w, h);
         ctx.globalAlpha = 1;
       }
       ctx.setLineDash([]);
 
-      const top = obj.y + obj.sy + 2;
+      const top = modelTop + 2;
       const r = 1.25;
       const apexU = { x: c.x, y: top + r, z: c.z };
       const apexD = { x: c.x, y: top - r, z: c.z };
@@ -2036,7 +2068,7 @@ export class LayoutView {
   }
 
   #drawGizmo(ctx, obj, cam, w, h) {
-    const c = aabbCenter(obj);
+    const c = gizmoAnchor(obj);
     drawTranslateGizmo(ctx, c, cam, w, h, { hoverGizmo: this.hoverGizmo, drag: this.drag });
     if (KINDS[obj.kind].fixed) return;
     ctx.fillStyle = "#7ec8e8";

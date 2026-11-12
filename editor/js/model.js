@@ -2292,6 +2292,21 @@ export function aabbCenter(box) {
   };
 }
 
+/**
+ * Point the translate manipulator sits on. Pickups draw their mesh about
+ * (x+bias, y, z+bias), not the AABB center, so the gizmo follows the mesh origin.
+ */
+export function gizmoAnchor(obj) {
+  if (obj.kind === "pickup") {
+    return { x: obj.x + ITEM_WORLD_BIAS, y: obj.y, z: obj.z + ITEM_WORLD_BIAS };
+  }
+  if (obj.kind === "enemy" || obj.kind === "spawn") {
+    // enemyPlacementWorldVerts: figure origin is XZ center, feet on obj.y
+    return { x: obj.x + obj.sx / 2, y: obj.y, z: obj.z + obj.sz / 2 };
+  }
+  return aabbCenter(obj);
+}
+
 export function sizeForFace(kind, faceId, scale) {
   const def = KINDS[kind];
   const face = FACES.find((f) => f.id === faceId) || FACES[0];
@@ -3445,7 +3460,36 @@ export function roomUnderObject(doc, obj) {
 }
 
 /**
- * Objects whose AABB is not fully inside the AABB of their assigned room.
+ * World-space vertices of an object's model (pickup mesh, enemy/spawn pose), or
+ * null when the object has no model and its AABB corners are its geometry.
+ * Figures use a fixed frame so the result does not flicker with the animation.
+ */
+export function objectModelVerts(doc, obj) {
+  if (obj.kind === "pickup") {
+    const mesh = itemMeshFor(doc, obj.pickup);
+    const used = new Set();
+    const segs = itemMeshWorldSegs(obj, mesh, itemYawFor(doc, obj.pickup, obj.rot));
+    const verts = [];
+    for (const s of segs) {
+      for (const v of [s.a, s.b]) {
+        if (!used.has(v)) {
+          used.add(v);
+          verts.push(v);
+        }
+      }
+    }
+    return verts;
+  }
+  if (isFigureObject(obj)) {
+    const verts = enemyPlacementWorldVerts(obj, findEnemyTemplate(doc, figureTemplateName(obj)), 0);
+    return verts.length ? verts : null;
+  }
+  return null;
+}
+
+/**
+ * Objects with geometry outside the AABB of their assigned room. Models are
+ * tested by their actual vertices, everything else by its AABB corners.
  * Legal but unusual, so the editor flags them. Doorways are skipped (they
  * straddle a wall by design) as are objects with no valid roomId.
  * Returns Map<objId, room>.
@@ -3459,16 +3503,29 @@ export function outsideRoomBoxMap(doc) {
     if (o.kind === "room" || o.kind === "doorway" || !o.roomId) continue;
     const r = rooms.get(o.roomId);
     if (!r) continue;
-    if (
-      o.x < r.x ||
-      o.y < r.y ||
-      o.z < r.z ||
-      o.x + o.sx > r.x + r.sx ||
-      o.y + o.sy > r.y + r.sy ||
-      o.z + o.sz > r.z + r.sz
-    ) {
-      out.set(o.id, r);
+    const verts = objectModelVerts(doc, o);
+    let outside;
+    if (verts) {
+      const eps = 1e-6;
+      outside = verts.some(
+        (v) =>
+          v.x < r.x - eps ||
+          v.y < r.y - eps ||
+          v.z < r.z - eps ||
+          v.x > r.x + r.sx + eps ||
+          v.y > r.y + r.sy + eps ||
+          v.z > r.z + r.sz + eps
+      );
+    } else {
+      outside =
+        o.x < r.x ||
+        o.y < r.y ||
+        o.z < r.z ||
+        o.x + o.sx > r.x + r.sx ||
+        o.y + o.sy > r.y + r.sy ||
+        o.z + o.sz > r.z + r.sz;
     }
+    if (outside) out.set(o.id, r);
   }
   return out;
 }

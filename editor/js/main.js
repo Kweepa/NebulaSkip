@@ -1993,7 +1993,7 @@ function makeObjectListButton(obj, terms, outside) {
   }
   if (outside?.has(obj.id)) {
     btn.classList.add("outside-room");
-    btn.title = "Outside its room's bounding box";
+    btn.title = "Geometry outside its room's bounding box";
   }
   btn.addEventListener("click", (e) => {
     selectObjectIds([obj.id], e.shiftKey);
