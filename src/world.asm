@@ -1005,7 +1005,7 @@ update_fall
 	sbc fall_vh
 	sta cam_yh
 	lda fall_vh
-	bmi .ufl_tick			; jump still ascending: feet == floor on tick 1
+	bmi .ufl_ceil			; jump still ascending: feet == floor on tick 1
 	sec
 	lda cam_yh
 	sbc #EYE_HEIGHT			; feet
@@ -1048,6 +1048,31 @@ update_fall
 	jsr take_damage
 .ufl_rts
 	rts
+
+; Ascending: head [feet+PLAYER_H) must stay under room_y+room_sy unless the room is open to the sky.
+; Hit it: pin the eye just under the lid, kill vy, gravity takes over next tick.
+.ufl_ceil
+	ldy room_idx
+	+lda_my room_flags
+	and #ROOM_OPEN_SKY
+	bne .ufl_cx
+	+lda_my room_y
+	clc
+	+adc_my room_sy
+	bcs .ufl_cx			; lid past the 8-bit Y range
+	sec
+	sbc #PLAYER_H - EYE_HEIGHT	; highest cam_yh with head <= lid
+	cmp cam_yh
+	bcs .ufl_cx			; still under the lid
+	sta cam_yh
+	lda #EYE_FRAC
+	sta cam_yl
+	lda #0
+	sta fall_vl
+	sta fall_vh
+	sta fall_vf
+.ufl_cx
+	jmp .ufl_tick
 
 ; ------------------------------------------------------------------
 ; crates_block — col_x/col_z inside a same-room crate?
