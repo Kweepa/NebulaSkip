@@ -118,7 +118,7 @@ crime_lo
 	!byte <crm0,<crm1,<crm2,<crm3,<crm4,<crm5,<crm6,<crm7,<crm8,<crm9,<crm10,<crm11,<crm12,<crm13,<crm14,<crm15
 crime_hi
 	!byte >crm0,>crm1,>crm2,>crm3,>crm4,>crm5,>crm6,>crm7,>crm8,>crm9,>crm10,>crm11,>crm12,>crm13,>crm14,>crm15
-BTY_N	= 2
+BTY_N	= 3
 btn0
 	!text "The Batty Boys"
 	!byte 0
@@ -147,34 +147,50 @@ btd1
 	!text "Verdan."
 	!byte 0
 	!byte 0
+btn2
+	!text "The Deepcut Crew"
+	!byte 0
+btd2
+	!text "Miners on Gallows Rock dug too"
+	!byte 0
+	!text "deep and came back wrong. The"
+	!byte 0
+	!text "claim owners want their rock"
+	!byte 0
+	!text "back."
+	!byte 0
+	!byte 0
 bty_name_lo
-	!byte <btn0,<btn1
+	!byte <btn0,<btn1,<btn2
 bty_name_hi
-	!byte >btn0,>btn1
+	!byte >btn0,>btn1,>btn2
 bty_desc_lo
-	!byte <btd0,<btd1
+	!byte <btd0,<btd1,<btd2
 bty_desc_hi
-	!byte >btd0,>btd1
+	!byte >btd0,>btd1,>btd2
 bty_diff	; offset into bty_diff_str
-	!byte 0,0
+	!byte 0,0,0
 bty_map
-	!byte 1,2
+	!byte 1,2,3
 bty_diff_str
 	!text "low   "
 	!text "medium"
 	!text "high  "
-SHIP_N	= 2
+SHIP_N	= 3
 smn0
 	!text "Port Perihelion"
 	!byte 0
 smn1
 	!text "Verdan"
 	!byte 0
+smn2
+	!text "Gallows Rock"
+	!byte 0
 sm_col
-	!byte 4,15
+	!byte 4,15,7
 sm_row
-	!byte 5,9
+	!byte 5,9,12
 sm_name_lo
-	!byte <smn0,<smn1
+	!byte <smn0,<smn1,<smn2
 sm_name_hi
-	!byte >smn0,>smn1
+	!byte >smn0,>smn1,>smn2

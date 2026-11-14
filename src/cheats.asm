@@ -3,24 +3,23 @@
 ; inactive while IRQEN is 0, so it cannot be polled. A changed KBCODE
 ; counts as a new press when the release fell between samples.
 ; apply_cheats on main does HUD, sound, and restart_level.
-; Shared "id" prefix, then dqd / kfa / mapNN.
+; No prefix. Words: god, bit, map + one letter a..z (level 1..).
 !zone cheats
 
-CHEAT_IDLE	= 0
-CHEAT_GOT_I	= 1
-CHEAT_AFTER_ID	= 2
 CHEAT_REQ_GOD	= 1
-CHEAT_REQ_KFA	= 2
+CHEAT_REQ_BIT	= 2
 CHEAT_REQ_MAP	= 3
 
-; god, kfa, map, three keys each. Index is the table offset; base/end
-; bound it. Digits are a separate 1..9 pair.
+; god, bit, map, three keys each. Index is the table offset; base/end
+; bound it. cheat_map reaching end = waiting for the map letter.
 
-; POKEY KBCODE & $3F. Same positions a8_keys uses for 1..4.
-cheat_kc	!byte $3a, $2f, $3a			; D Q D
-		!byte $05, $38, $3f			; K F A
+; POKEY KBCODE & $3F. Same positions a8_keys uses for W A S D I J L.
+cheat_kc	!byte $3d, $08, $3a			; G O D
+		!byte $15, $0d, $2d			; B I T
 		!byte $25, $3f, $0a			; M A P
-cheat_kc_dig	!byte $1f, $1e, $1a, $18, $1d, $1b, $33, $35, $30
+cheat_kc_let	!byte $3f, $15, $12, $3a, $2a, $38, $3d, $39, $0d	; A..I
+		!byte $01, $05, $00, $25, $23, $08, $0a, $2f		; J..Q
+		!byte $28, $3e, $2d, $0b, $10, $2e, $16, $2b, $17	; R..Z
 
 cheat_base	!byte 0, 3, 6
 cheat_end	!byte 3, 6, 9
@@ -31,14 +30,10 @@ cheat_init
 	lda #0
 	sta god_mode
 	sta cheat_req
-	sta cheat_ep_latch
 	sta cheat_map_latch
 	sta cheat_kdown
-	jmp cheat_reset_all
+	jmp cheat_clear_suf
 
-
-CHEAT_KC_I	= $0d
-CHEAT_KC_D	= $3a
 
 ; DLI and VBI. SKSTAT bit 2 clear = a key is down. cheat_kdown is 0
 ; after a sample saw the key up, else the last accepted code + 1.
@@ -64,99 +59,60 @@ check_cheats
 	sec
 	sbc #1
 	sta cheat_a
-	lda cheat_phase
-	beq .idle
-	cmp #CHEAT_GOT_I
-	beq .got_i
-	jmp .after_id
+	lda cheat_map
+	cmp cheat_end + 2
+	bne .words
+	jsr cheat_clear_suf		; "map" typed: this key is the letter, hit or miss
+	ldy #25
+.let_lp
+	lda cheat_kc_let,y
+	cmp cheat_a
+	beq .let_hit
+	dey
+	bpl .let_lp
+	bmi .words			; not a letter: treat it as a fresh key
+.let_hit
+	iny				; a = 1
+	sty cheat_map_latch
+	ldx #CHEAT_REQ_MAP
+	jmp cheat_latch
 
-.idle
-	lda cheat_a
-	cmp #CHEAT_KC_I
-	bne .rts
-	lda #CHEAT_GOT_I
-	sta cheat_phase
-.rts
-	rts
-
-.got_i
-	lda cheat_a
-	cmp #CHEAT_KC_D
-	bne .rts
-	jsr cheat_clear_suf
-	lda #CHEAT_AFTER_ID
-	sta cheat_phase
-	rts
-
-.after_id
-	lda cheat_a
-	cmp #CHEAT_KC_I			; another I restarts the prefix
-	bne .suf
-	jsr cheat_clear_suf
-	lda #CHEAT_GOT_I
-	sta cheat_phase
-	rts
-
-.suf
+.words
 	ldx #0
-.suf_lp
+.w_lp
 	jsr cheat_step
 	inx
 	cpx #3
-	bcc .suf_lp
+	bcc .w_lp
+.rts
 	rts
 
-; X = suffix 0..2. cheat_a = keycode. Map takes two digits once its
-; index reaches cheat_end. A miss does not reset the suffix.
+; X = word 0..2. cheat_a = keycode. A miss restarts the word; the key
+; itself counts as its first letter (no word repeats a letter).
 cheat_step
-	cpx #2
-	bne .st_let
-	lda cheat_map
-	cmp cheat_end + 2
-	bcs .st_dig
-.st_let
 	ldy cheat_god,x
 	lda cheat_kc,y
 	cmp cheat_a
-	bne .st_rts
+	bne .st_miss
 	inc cheat_god,x
 	lda cheat_god,x
 	cmp cheat_end,x
 	bne .st_rts
 	cpx #2
-	beq .st_rts			; letters done; digits are later presses
+	beq .st_rts			; map: the letter is the next press
 	inx				; req = slot + 1
 	pla
 	pla				; drop cheat_step, rts back to the VBI
 	jmp cheat_latch
-.st_dig
-	ldy #0
-.std_lp
-	lda cheat_kc_dig,y
+.st_miss
+	ldy cheat_base,x
+	lda cheat_kc,y
 	cmp cheat_a
-	beq .std_hit
+	bne .st_clr
 	iny
-	cpy #9
-	bcc .std_lp
-	rts
-.std_hit
-	iny				; 1..9
-	lda cheat_map
-	cmp cheat_end + 2
-	bne .st_mapn
-	sty cheat_ep_dig
-	inc cheat_map
-	rts
-.st_mapn
-	sty cheat_map_dig
-	lda cheat_ep_dig
-	sta cheat_ep_latch
-	lda cheat_map_dig
-	sta cheat_map_latch
-	pla
-	pla
-	ldx #CHEAT_REQ_MAP
-	jmp cheat_latch
+.st_clr
+	tya
+	sta cheat_god,x
 .st_rts
 	rts
 
@@ -170,18 +126,10 @@ cheat_clear_suf
 	bpl .cs_b
 	rts
 
-cheat_reset_all
-	jsr cheat_clear_suf
-	lda #0
-	sta cheat_phase
-	rts
-
 ; X = CHEAT_REQ_*. Ignore it when one is already waiting.
 cheat_latch
 	lda cheat_req
-	beq .lt_set
-	jmp cheat_reset_all
-.lt_set
+	bne cheat_clear_suf
 	stx cheat_req
-	jmp cheat_reset_all
+	jmp cheat_clear_suf
 

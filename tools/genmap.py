@@ -44,7 +44,7 @@ ELEV_MAX = 8
 ENEMY_MAX = 24  # keep in sync with src/mem.asm and editor/js/model.js
 TRIG_MAX = 16
 TRIG_ROOM_MAX = 8
-TH_MAX = 32
+TH_MAX = 128  # keep in sync with src/mem.asm (th_taken)
 FACE = {"+z": 0, "-z": 1, "+x": 2, "-x": 3}
 # Width × height × thickness; keep in sync with editor/js/model.js doorSizeForScale.
 DOOR_SIZE_BY_SCALE = {1: (4, 5, 1), 1.5: (6, 8, 1), 2: (8, 10, 1)}
@@ -56,6 +56,9 @@ ROOM_BG_GREY_LIGHT = 0x0A
 # Bit 0 of the room byte is free (norm_bg clears it): editor "noCombat" room flag.
 # Keep in sync with ROOM_NOCOMBAT in src/mem.asm.
 ROOM_NOCOMBAT = 0x01
+# room_flags column (editor "openSky"): no ceiling collision. Keep in sync with
+# ROOM_OPEN_SKY in src/mem.asm.
+ROOM_OPEN_SKY = 0x01
 
 
 def norm_bg(val) -> int:
@@ -670,6 +673,7 @@ def cook_one(level: dict, map_key: str) -> bytes:
         | (ROOM_NOCOMBAT if r.get("noCombat") else 0)
         for r in rooms
     ]
+    room_flags = [ROOM_OPEN_SKY if r.get("openSky") else 0 for r in rooms]
     room_id = [map_id[id(r)] for r in rooms]
 
     col_x: list[int] = []
@@ -1289,6 +1293,7 @@ def cook_one(level: dict, map_key: str) -> bytes:
     add(room_sy)
     add(room_sz)
     add(room_bg)
+    add(room_flags)
     add(col_x)
     add(col_y)
     add(col_z)

@@ -2979,6 +2979,15 @@ function renderLayoutObjectFields(root, objs) {
         })
       )
     );
+    const allOpenSky = objs.every((o) => !!o.openSky);
+    root.appendChild(
+      toggleField("Open to sky (no ceiling)", allOpenSky, () =>
+        apply((obj) => {
+          if (allOpenSky) delete obj.openSky;
+          else obj.openSky = true;
+        })
+      )
+    );
 
     const shapeRow = document.createElement("div");
     shapeRow.className = "btn-row shape-picker";

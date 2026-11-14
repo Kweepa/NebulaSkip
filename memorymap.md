@@ -330,7 +330,7 @@ Vertex tables are 16 slots. Edge clip tables are 32 slots. Unique-X/Z product ta
 | `$CCE0` | 16 | `COL_PXL` | |
 | `$CCF0` | 16 | `COL_PXH` | |
 | `$CD01` | 1 | `combat_armor` | |
-| `$CD04` | 32 | `th_taken` | `TH_MAX` |
+| `$CD04` | 32 | — | Unused (was `th_taken`; now `TH_MAX` = 128 B at `play_bss_free`, `$061A`) |
 | `$CD24` | 1 | `player_hp` | 0..`PLAYER_HP_MAX` |
 | `$CD25` | 1 | `player_armour` | starts 0; no pickups yet |
 | `$CD26` | 24 | `en_state` | `ENEMY_MAX` |

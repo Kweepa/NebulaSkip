@@ -159,6 +159,7 @@ bind_tab
 	+bind_add room_sy, map_nrooms
 	+bind_add room_sz, map_nrooms
 	+bind_add room_bg, map_nrooms
+	+bind_add room_flags, map_nrooms
 	+bind_set_n3
 	+bind_add rc_x, bind_n
 	+bind_add rc_y, bind_n

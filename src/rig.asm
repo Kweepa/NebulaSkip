@@ -23,7 +23,7 @@ RIG_T_BOUNTY	= 700			; after the last crime, before the bounty line
 RIG_T_STAT	= 500			; bounty line -> "status: deceased"
 RIG_T_UPL	= 500			; status line -> "uploading"
 RIG_T_BAR0	= 400			; "uploading" -> first #
-RIG_T_BAR	= 45			; per #
+RIG_T_BAR	= 20			; minimum pause between bar jumps (random 0..120 ms added)
 RIG_T_PAY	= 400			; full bar -> paid
 
 !macro rig_wait .ms {
@@ -346,12 +346,26 @@ r_bar
 	bne .rb_c
 	jsr t_rbegin
 .rb_c
+	jsr rnd8				; erratic: jump 1..4 cells, then a random pause
+	and #3
+	clc
+	adc rig_bar
+	adc #1					; C = 0 (sum <= 31)
+	cmp #RIG_BAR_N
+	bcc .rb_t
+	lda #RIG_BAR_N
+.rb_t
+	sta rig_k				; new fill length (rig_k is free after the crimes)
 	ldx rig_bar
 	lda #'#'
+.rb_f
 	sta term_row + 1,x
+	inx
+	cpx rig_k
+	bcc .rb_f
+	stx rig_bar
 	lda #11
 	jsr t_blit
-	inc rig_bar
 	lda rig_bar
 	cmp #RIG_BAR_N
 	bcc .rb_w
@@ -359,7 +373,21 @@ r_bar
 	+rig_wait RIG_T_PAY
 	rts
 .rb_w
-	+rig_wait RIG_T_BAR
+	jsr rnd8
+	and #15
+	asl
+	asl
+	asl					; 0..120
+	clc
+	adc #RIG_T_BAR				; + 20 ms floor
+	sta rig_wait_l
+	lda #0
+	sta rig_wait_h
+	jsr rnd8				; 1 in 8: a stall of another ~256 ms
+	and #7
+	bne .rb_x
+	inc rig_wait_h
+.rb_x
 	rts
 
 r_pay

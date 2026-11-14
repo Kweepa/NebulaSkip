@@ -2287,6 +2287,8 @@ export function clampObject(obj) {
     obj.a8Bg = roomBgFromJson(obj);
     if (obj.noCombat) obj.noCombat = true;
     else delete obj.noCombat;
+    if (obj.openSky) obj.openSky = true;
+    else delete obj.openSky;
     delete obj.bgColor;
     delete obj.lineColor;
     delete obj.fxColor;
@@ -2398,6 +2400,7 @@ export function createObject(kind, x, y, z, extra = {}) {
     obj.name = clampName(extra.name);
     obj.a8Bg = roomBgFromJson(extra);
     if (extra.noCombat) obj.noCombat = true;
+    if (extra.openSky) obj.openSky = true;
     obj.shape = clampRoomShape(extra.shape);
     obj.rx = extra.rx | 0;
     obj.ry = extra.ry | 0;
@@ -4093,6 +4096,7 @@ function parseObjects(list) {
       enabled: o.enabled,
       a8Bg: o.a8Bg,
       noCombat: o.noCombat,
+      openSky: o.openSky,
       bgColor: o.bgColor,
       skyColor: o.skyColor,
       shape: o.shape,
@@ -4140,6 +4144,8 @@ function parseObjects(list) {
       if (o.a8Bg != null || o.bgColor != null || o.skyColor != null) obj.a8Bg = roomBgFromJson(o);
       if (o.noCombat) obj.noCombat = true;
       else delete obj.noCombat;
+      if (o.openSky) obj.openSky = true;
+      else delete obj.openSky;
       delete obj.bgColor;
       delete obj.lineColor;
       delete obj.fxColor;

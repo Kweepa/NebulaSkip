@@ -247,7 +247,7 @@ rig_bar		= rig_row + 1			; '#' printed
 rig_c		= rig_bar + 1			; 5 crime indices
 en_scan		= rig_c + 5			; ENEMY_MAX: 1 = bounty collected (quicksaved)
 TERM_BSS_END	= en_scan + ENEMY_MAX
-play_bss_free	= TERM_BSS_END			; up to a8_pal_hue
+play_bss_free	= TERM_BSS_END			; th_taken (TH_MAX) sits here; the rest is free up to a8_pal_hue
 TERM_SCR	= BMP_B				; 16 x 32 = 512 B of ANTIC text, main RAM under the window
 !if  >term_dl != >(term_dl + TERM_DL_LEN - 1) {
 	!error "term_dl crosses a page (DL must not cross 1K)"
@@ -337,17 +337,13 @@ QS_OVL_LIMIT	= $8000
 	!error "quicksave latches overlap rb_n"
 }
 ; Cheat FSM + god_mode. Outside the quicksave image ($CB70–$D000) and not
-; cleared by game_zp_init / LoadLevel, so god mode survives idmap and death.
+; cleared by game_zp_init / LoadLevel, so god mode survives map<C> and death.
 ; Cleared once from start. Hole ends at RB_CELL.
-god_mode	= QS_LATCH_END		; 1 = iddqd, take_damage returns
-cheat_phase	= god_mode + 1
-cheat_god	= cheat_phase + 1	; table offset; cheat_kfa, cheat_map follow
-cheat_kfa	= cheat_god + 1
-cheat_map	= cheat_kfa + 1		; letters typed, then digits
-cheat_ep_dig	= cheat_map + 1
-cheat_map_dig	= cheat_ep_dig + 1
-cheat_ep_latch	= cheat_map_dig + 1	; stable copy for main
-cheat_map_latch	= cheat_ep_latch + 1
+god_mode	= QS_LATCH_END		; 1 = god, take_damage returns
+cheat_god	= god_mode + 1		; table offset; cheat_bit, cheat_map follow
+cheat_bit	= cheat_god + 1
+cheat_map	= cheat_bit + 1		; at table end = waiting for the map letter
+cheat_map_latch	= cheat_map + 1		; level 1..26 for main
 cheat_was	= cheat_map_latch + 1	; 4 rising-edge slots
 cheat_dig_prev	= cheat_was + 4
 cheat_a		= cheat_dig_prev + 1
@@ -519,6 +515,7 @@ ABIL_FIRE	= 0			; joystick button ability (space toggles)
 ABIL_JUMP	= 1
 ABIL_SCAN	= 2			; DNA rig (shop item): fire near a bounty corpse opens the scan screen
 ROOM_NOCOMBAT	= 1			; room_bg bit 0 (unused by the paper byte): no fire mode, enemies stand
+ROOM_OPEN_SKY	= 1			; room_flags bit 0: no ceiling, a jump rises past room_y+room_sy
 HURT_FLASH_MS	= 300			; red border duration
 ENEMY_CULL_R	= 2			; view-space |x| vs z+R (8.8 high)
 ENEMY_CULL_H	= 6			; view-space |y| vs z+H (figure height)
@@ -793,10 +790,14 @@ TH_FOOT_SY		= 2			; ≈ 1.5 tall (C64 int)
 	!error "set_th_foot_box stores one extent into sx/sy/sz"
 }
 TH_GRAB_R		= 3			; Chebyshev pad outside that footprint
-TH_MAX			= 32		; MAP_NTHINGS ≤ this
+TH_MAX			= 128		; MAP_NTHINGS ≤ this; keep in sync with tools/genmap.py
 
 combat_armor	= $CD01 + A8_OFF			; 1 = blue (saves 1/2); 0 = green
-th_taken	= $CD04 + A8_OFF			; MAP_NTHINGS (≤ TH_MAX)
+; $CD04-$CD23 free (was th_taken while TH_MAX was 32).
+th_taken	= play_bss_free				; MAP_NTHINGS (≤ TH_MAX), main RAM below the bank window
+!if  th_taken + TH_MAX > a8_pal_hue {
+	!error "th_taken overlaps the PAL hue table: end=", th_taken + TH_MAX
+}
 player_hp	= $CD24 + A8_OFF			; 0..PLAYER_HP_MAX
 player_armour	= $CD25 + A8_OFF			; 0..PLAYER_ARMOUR_MAX
 en_state	= $CD26 + A8_OFF			; ENEMY_MAX: EN_*
