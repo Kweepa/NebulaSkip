@@ -43,6 +43,13 @@ import {
   MAX_BOUNTY_NAME_LEN,
   clampBounty,
   clampBountyName,
+  STAND_VAR_MAX,
+  STAND_VAR_NAME_MAX,
+  addStandVariantClip,
+  renameStandVariant,
+  standVarNameProblem,
+  clampStandVarName,
+  standVariantClips,
   doorTypes,
   placeableItemKeys,
   isDoorItem,
@@ -57,6 +64,12 @@ import {
   clampDoorScale,
   DOOR_MESH_KEYS,
   ITEM_MAX_UNIQUE,
+  ITEM_MAX_SPHERES,
+  ITEM_COORD_MIN,
+  ITEM_COORD_MAX,
+  ITEM_SPHERE_R_MIN,
+  ITEM_SPHERE_R_MAX,
+  parseItemSpheres,
   itemMeshStats,
   itemPagePlan,
   itemKeys,
@@ -252,6 +265,8 @@ let sharewareModels = {};
 let sharewareMissing = [];
 let overlayOn = true;
 let refSpriteOn = true;
+/** Side stick pane shows the right view (mirrored left: Z axis and sprite flipped). */
+let sideViewRight = true;
 let collisionOn = true;
 let stickWireOn = true;
 let drawingOrtho = false;
@@ -556,9 +571,10 @@ function syncStickScale() {
   stickFront?.setScale(px);
 }
 
-function makeStickOrtho(id, horiz, rot) {
+function makeStickOrtho(id, horiz, rot, mirror = null) {
   return new StickOrtho(document.getElementById(id), {
     horiz,
+    mirror,
     getEnemy: () => activeEnemy(),
     getFrame: () => frameIndex,
     getSelected: () => selectedVerts,
@@ -582,14 +598,18 @@ function makeStickOrtho(id, horiz, rot) {
       animView.draw();
     },
     showWire: () => stickWireOn,
-    getSprite: () => (refSpriteOn ? orthoSprite(rot) : null),
+    getSprite: () => {
+      if (!refSpriteOn) return null;
+      const s = orthoSprite(rot);
+      return s && mirror?.() ? { ...s, flip: !s.flip } : s;
+    },
     spriteScale: () => 0.35,
     vertLimit: () => vertLimitFor(activeEnemy()),
     clampVert: (n) => clampVertFor(activeEnemy())(n),
   });
 }
 
-const stickLeft = makeStickOrtho("stick-left-canvas", "z", 7);
+const stickLeft = makeStickOrtho("stick-left-canvas", "z", 7, () => sideViewRight);
 const stickFront = makeStickOrtho("stick-front-canvas", "x", 1);
 
 const itemView = new ItemView(document.getElementById("view-canvas"), {
@@ -1071,6 +1091,52 @@ function renderClipSoundFields(root, e, clip) {
     refreshAll();
   });
   root.appendChild(field("Attack frame", atk));
+}
+
+function addStandVariant(e) {
+  pushUndo();
+  const clip = addStandVariantClip(e);
+  if (!clip) {
+    setStatus("Can't add a stand animation (limit reached or no stand clip)", true);
+    return;
+  }
+  clipIndex = e.clips.indexOf(clip);
+  frameLocal = 0;
+  applyFrameLocal();
+  markDirty();
+  markUi();
+  refreshAll();
+  setStatus(`Added stand animation "${clip.name}". Name it below, then add frames.`);
+}
+
+/** Name field for the selected clip when it is a stand variant. */
+function renderStandVarName(root, e, clip) {
+  const stick = stickClipFor(e, clip);
+  if (!stick?.standVar) return;
+  const inp = document.createElement("input");
+  inp.type = "text";
+  inp.maxLength = STAND_VAR_NAME_MAX;
+  inp.value = stick.name;
+  inp.addEventListener("change", () => {
+    const before = stick.name;
+    const name = clampStandVarName(inp.value);
+    if (name === before) {
+      inp.value = before;
+      return;
+    }
+    const bad = standVarNameProblem(e, name, stick);
+    if (bad) {
+      inp.value = before;
+      setStatus(bad, true);
+      return;
+    }
+    pushUndo();
+    renameStandVariant(doc, e, stick, name);
+    markDirty();
+    refreshAll();
+    setStatus(`Renamed "${before}" to "${stick.name}"`);
+  });
+  root.appendChild(field("Stand animation name", inp));
 }
 
 function clipIsExported(e, name) {
@@ -2481,6 +2547,66 @@ function buildItemFlags(root, key) {
   }
 }
 
+/**
+ * Items tab: up to ITEM_MAX_SPHERES screen circles per item type (origin + radius, units).
+ * The game draws each as a screen circle (item_spheres, src/item_xf.asm). An origin that is
+ * not on an existing vertex costs one vertex of the item's 16.
+ */
+function buildItemSpheres(root, key) {
+  if (itemMeta(doc, key).door) return;
+  const mesh = doc.items[key];
+  const list = mesh.spheres || [];
+  const h = document.createElement("h3");
+  h.textContent = "Spheres";
+  root.appendChild(h);
+  const edit = (fn) => {
+    pushUndo();
+    const next = (mesh.spheres || []).map((s) => ({ ...s }));
+    fn(next);
+    const clean = parseItemSpheres(next);
+    if (clean.length) mesh.spheres = clean;
+    else delete mesh.spheres;
+    markDirty();
+    renderInspector();
+    itemView.draw();
+  };
+  list.forEach((s, i) => {
+    const spec = (axis) => ({
+      axis,
+      value: s[axis],
+      min: ITEM_COORD_MIN,
+      max: ITEM_COORD_MAX,
+      step: 0.25,
+      onChange: (v) => edit((a) => (a[i][axis] = v)),
+    });
+    root.appendChild(vec3Field(`Origin ${i + 1}`, [spec("x"), spec("y"), spec("z")]));
+    root.appendChild(
+      field(`Radius ${i + 1}`, numInput(s.r, (v) => edit((a) => (a[i].r = v)), ITEM_SPHERE_R_MIN, ITEM_SPHERE_R_MAX, 0.25))
+    );
+    const rm = document.createElement("button");
+    rm.type = "button";
+    rm.className = "danger";
+    rm.textContent = `Remove sphere ${i + 1}`;
+    rm.addEventListener("click", () => {
+      itemView.selectedSpheres = [];
+      edit((a) => a.splice(i, 1));
+    });
+    root.appendChild(rm);
+  });
+  const add = document.createElement("button");
+  add.type = "button";
+  add.textContent = "Add Sphere";
+  add.disabled = list.length >= ITEM_MAX_SPHERES;
+  add.title = `Up to ${ITEM_MAX_SPHERES}; starts 1 unit above the origin`;
+  add.addEventListener("click", () => edit((a) => a.push({ x: 0, y: 1, z: 0, r: 1 })));
+  root.appendChild(add);
+  const hint = document.createElement("p");
+  hint.className = "muted";
+  hint.textContent =
+    "Drawn as a circle facing the camera. Origin and radius are in units, 0.25 steps; the radius scales with the placed item. In the viewport, click the diamond to select the origin (move it with the gizmo like a vertex) and drag the circle to change the radius.";
+  root.appendChild(hint);
+}
+
 function syncSharewareFolderButtons() {
   const folder = sharewareFolderName();
   const label = folder ? "Change folder…" : "Open shareware folder";
@@ -2945,6 +3071,48 @@ function appendMixedKindStub(root, objs) {
   root.appendChild(row);
 }
 
+/** Placed-enemy stand animation: one toggle per shipped stand variant of the enemy's type. */
+function renderStandPicker(root, objs, apply) {
+  const types = new Set(objs.map((o) => o.enemy));
+  const tmpl = types.size === 1 ? findEnemyTemplate(doc, objs[0].enemy) : null;
+  const variants = standVariantClips(tmpl);
+  if (!variants.length) return;
+  const wrap = document.createElement("div");
+  wrap.className = "stand-pick";
+  const label = document.createElement("span");
+  label.className = "stand-pick-label";
+  label.textContent = "Stand animation";
+  wrap.appendChild(label);
+  const grid = document.createElement("div");
+  grid.className = "stand-grid";
+  const cur = unanimous(objs, (o) => o.stand || "");
+  const anyNoCombat = objs.some((o) => roomUnderObject(doc, o)?.noCombat);
+  grid.classList.toggle("inactive", !anyNoCombat);
+  for (const c of variants) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "toggle";
+    btn.textContent = c.name;
+    btn.title = c.name;
+    btn.classList.toggle("active", cur === c.name);
+    btn.addEventListener("click", () =>
+      apply((obj) => {
+        if (cur === c.name) delete obj.stand;
+        else obj.stand = c.name;
+      })
+    );
+    grid.appendChild(btn);
+  }
+  wrap.appendChild(grid);
+  const hint = document.createElement("p");
+  hint.className = "muted";
+  hint.textContent = anyNoCombat
+    ? "Plays instead of the normal stand. Click again for the normal stand."
+    : "Only used in no-combat rooms; ignored here.";
+  wrap.appendChild(hint);
+  root.appendChild(wrap);
+}
+
 function renderLayoutObjectFields(root, objs) {
   const kind = objs[0].kind;
   const apply = (fn) => {
@@ -3183,6 +3351,7 @@ function renderLayoutObjectFields(root, objs) {
     );
     btyRow.title = "0 = not a bounty. Snaps to 3, 7, 11 ... 1019 (one byte). Scannable with the DNA rig once dead.";
     root.appendChild(btyRow);
+    renderStandPicker(root, objs, apply);
   }
 
   if (kind === "trigger") {
@@ -3555,6 +3724,7 @@ function renderInspector() {
     hint.textContent = "Grid −4…4 · origin at 0,0,0 · Add Vert places at origin · Ctrl-drag a vertex to extrude a copy with a line · drop a vertex on another to merge.";
     root.appendChild(hint);
     buildItemFlags(root, itemMeshKey);
+    buildItemSpheres(root, itemMeshKey);
     buildIconEditor(root, itemMeshKey);
     return;
   }
@@ -3779,6 +3949,21 @@ function renderInspector() {
       li.append(box, nameBtn, len);
       ul.appendChild(li);
     });
+    if (spriteEnemy) {
+      const li = document.createElement("li");
+      const add = document.createElement("button");
+      add.type = "button";
+      add.className = "frame-name clip-add";
+      add.textContent = "+";
+      const full = e.clips.filter((c) => c.standVar).length >= STAND_VAR_MAX;
+      add.disabled = full;
+      add.title = full
+        ? `At most ${STAND_VAR_MAX} stand animations`
+        : "Add a stand animation (picked per placed enemy, used in no-combat rooms)";
+      add.addEventListener("click", () => addStandVariant(e));
+      li.appendChild(add);
+      ul.appendChild(li);
+    }
     root.appendChild(ul);
   }
   const packed = packedPoseBytes(e);
@@ -3876,6 +4061,7 @@ function renderInspector() {
       transport.appendChild(editRow);
     }
     root.appendChild(transport);
+    renderStandVarName(root, e, clip);
     renderClipSoundFields(root, e, clip);
   }
 
@@ -4673,6 +4859,15 @@ function setRefSpriteOn(on) {
   markUi();
 }
 
+function setSideViewRight(on) {
+  sideViewRight = !!on;
+  document.getElementById("btn-side-right")?.classList.toggle("active", sideViewRight);
+  const label = document.getElementById("stick-side-label");
+  if (label) label.textContent = sideViewRight ? "Right" : "Left";
+  if (editorMode === "anim") stickLeft.draw();
+  markUi();
+}
+
 function setMdlScale(value) {
   mdlScale = clampMdlScale(value);
   const range = document.getElementById("mdl-scale");
@@ -4757,6 +4952,9 @@ document.getElementById("btn-mode-font")?.addEventListener("click", () => {
 });
 document.getElementById("btn-mdl-overlay").addEventListener("click", () => {
   setRefSpriteOn(!refSpriteOn);
+});
+document.getElementById("btn-side-right")?.addEventListener("click", () => {
+  setSideViewRight(!sideViewRight);
 });
 document.getElementById("btn-collision-overlay")?.addEventListener("click", (e) => {
   collisionOn = !collisionOn;

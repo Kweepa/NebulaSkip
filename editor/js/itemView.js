@@ -11,6 +11,7 @@ import {
   ITEM_ORBIT_DIST_MAX,
   aabbCenter,
   clampItemCoord,
+  clampItemSphereR,
   itemSpinAngle,
   itemUniqueXZ,
 } from "./model.js";
@@ -35,6 +36,11 @@ const ITEM_VERT_HIT = 10;
 const ITEM_LINE_HIT = 6;
 const ITEM_BOX_CLICK = 4;
 const ITEM_ZOOM_K = 0.008;
+/** Pixel tolerance for grabbing a sphere's circumference. */
+const ITEM_RING_HIT = 6;
+const SPHERE_COL = "#e08a3e";
+const SPHERE_COL_HOT = "#ffb36b";
+const SPHERE_COL_SEL = "#d4a017";
 
 function clampItemDist(d) {
   return Math.max(ITEM_ORBIT_DIST_MIN, Math.min(ITEM_ORBIT_DIST_MAX, d));
@@ -60,8 +66,12 @@ export class ItemView {
     this.hoverVert = -1;
     this.hoverLine = -1;
     this.hoverGizmo = null;
+    this.hoverSphere = -1;
+    this.hoverRing = -1;
     this.selectedVerts = [];
     this.selectedLines = [];
+    /** Indices into mesh.spheres whose centres are selected (move with the gizmo like verts). */
+    this.selectedSpheres = [];
     this.enabled = false;
     this.pointerInside = false;
     this._ro = new ResizeObserver(() => this.resize());
@@ -103,7 +113,8 @@ export class ItemView {
       !this.drag &&
       !this.pointerInside &&
       !this.selectedVerts.length &&
-      !this.selectedLines.length
+      !this.selectedLines.length &&
+      !this.selectedSpheres.length
     );
   }
 
@@ -129,14 +140,17 @@ export class ItemView {
   }
 
   selection() {
-    return { verts: [...this.selectedVerts], lines: [...this.selectedLines] };
+    return { verts: [...this.selectedVerts], lines: [...this.selectedLines], spheres: [...this.selectedSpheres] };
   }
 
   clearSelection() {
     this.selectedVerts = [];
     this.selectedLines = [];
+    this.selectedSpheres = [];
     this.hoverVert = -1;
     this.hoverLine = -1;
+    this.hoverSphere = -1;
+    this.hoverRing = -1;
     this.hoverGizmo = null;
   }
 
@@ -161,6 +175,7 @@ export class ItemView {
     this.opts.endUndo?.();
     this.selectedVerts = [mesh.verts.length - 1];
     this.selectedLines = [];
+    this.selectedSpheres = [];
     this.opts.onChange?.();
     this.opts.onSelect?.();
     this.draw();
@@ -192,8 +207,11 @@ export class ItemView {
     if (!mesh) return false;
     const lines = [...this.selectedLines].filter((i) => i >= 0 && i < mesh.lines.length).sort((a, b) => b - a);
     const verts = [...this.selectedVerts].filter((i) => i >= 0 && i < mesh.verts.length).sort((a, b) => b - a);
-    if (!lines.length && !verts.length) return false;
+    const sphs = [...this.selectedSpheres].filter((i) => i >= 0 && i < (mesh.spheres?.length || 0)).sort((a, b) => b - a);
+    if (!lines.length && !verts.length && !sphs.length) return false;
     this.opts.beginUndo?.();
+    for (const i of sphs) mesh.spheres.splice(i, 1);
+    if (mesh.spheres && !mesh.spheres.length) delete mesh.spheres;
     for (const i of lines) mesh.lines.splice(i, 1);
     for (const i of verts) {
       mesh.verts.splice(i, 1);
@@ -269,6 +287,7 @@ export class ItemView {
     this.opts.endUndo?.();
     this.selectedVerts = placed.map((_, i) => base + i);
     this.selectedLines = [];
+    this.selectedSpheres = [];
     this.opts.onChange?.();
     this.opts.onSelect?.();
     this.draw();
@@ -374,8 +393,12 @@ export class ItemView {
 
   /** Frame mesh verts; if none, center on origin without changing dist. */
   focusObject() {
-    const points = this.#mesh().verts;
-    if (!points?.length) {
+    const mesh = this.#mesh();
+    const points = [...mesh.verts];
+    for (const s of mesh.spheres || []) {
+      points.push({ x: s.x - s.r, y: s.y - s.r, z: s.z - s.r }, { x: s.x + s.r, y: s.y + s.r, z: s.z + s.r });
+    }
+    if (!points.length) {
       this.orbit.target = { x: 0, y: 0, z: 0 };
       this.opts.onViewChanged?.();
       this.draw();
@@ -443,27 +466,27 @@ export class ItemView {
     };
   }
 
+  /** Gizmo anchor: centroid of the selected verts and sphere centres. */
   #selectionAnchor() {
     const mesh = this.#mesh();
     const selected = this.selectedVerts.filter((i) => mesh.verts[i]);
-    if (!selected.length) return null;
-    if (selected.length === 1) {
-      const i = selected[0];
-      return { v: mesh.verts[i], indices: selected };
-    }
+    const sph = this.selectedSpheres.filter((i) => mesh.spheres?.[i]);
+    const pts = [...selected.map((i) => mesh.verts[i]), ...sph.map((i) => mesh.spheres[i])];
+    if (!pts.length) return null;
+    if (pts.length === 1) return { v: pts[0], indices: selected, spheres: sph };
     let x = 0;
     let y = 0;
     let z = 0;
-    for (const i of selected) {
-      x += mesh.verts[i].x;
-      y += mesh.verts[i].y;
-      z += mesh.verts[i].z;
+    for (const p of pts) {
+      x += p.x;
+      y += p.y;
+      z += p.z;
     }
-    const n = selected.length;
-    return { v: { x: x / n, y: y / n, z: z / n }, indices: selected };
+    const n = pts.length;
+    return { v: { x: x / n, y: y / n, z: z / n }, indices: selected, spheres: sph };
   }
 
-  #applyVertDrag(origs, applyCoord) {
+  #applyVertDrag(origs, applyCoord, sorigs = []) {
     const mesh = this.#mesh();
     const next = mesh.verts.map((v) => ({ ...v }));
     for (const o of origs) {
@@ -472,12 +495,24 @@ export class ItemView {
       next[o.i].z = o.z;
       applyCoord(next[o.i], o);
     }
+    const nextSph = (mesh.spheres || []).map((s) => ({ ...s }));
+    for (const o of sorigs) {
+      nextSph[o.i].x = o.x;
+      nextSph[o.i].y = o.y;
+      nextSph[o.i].z = o.z;
+      applyCoord(nextSph[o.i], o);
+    }
     // Coincident verts are allowed mid-drag; #mergeDropped welds them on release.
-    if (!this.#uniqueOk(next)) return false;
+    if (!this.#uniqueOk(next, nextSph)) return false;
     for (const o of origs) {
       mesh.verts[o.i].x = next[o.i].x;
       mesh.verts[o.i].y = next[o.i].y;
       mesh.verts[o.i].z = next[o.i].z;
+    }
+    for (const o of sorigs) {
+      mesh.spheres[o.i].x = nextSph[o.i].x;
+      mesh.spheres[o.i].y = nextSph[o.i].y;
+      mesh.spheres[o.i].z = nextSph[o.i].z;
     }
     return true;
   }
@@ -489,6 +524,16 @@ export class ItemView {
       x: mesh.verts[i].x,
       y: mesh.verts[i].y,
       z: mesh.verts[i].z,
+    }));
+  }
+
+  #gizmoDragSphereOrigs(prim) {
+    const mesh = this.#mesh();
+    return prim.spheres.map((i) => ({
+      i,
+      x: mesh.spheres[i].x,
+      y: mesh.spheres[i].y,
+      z: mesh.spheres[i].z,
     }));
   }
 
@@ -533,7 +578,7 @@ export class ItemView {
       d.dupBlocked = true;
       return false;
     }
-    const ok = this.#applyVertDrag(d.origs, coordFn);
+    const ok = this.#applyVertDrag(d.origs, coordFn, d.sorigs);
     if (ok) d.moved = true;
     if (starting) {
       if (ok) {
@@ -591,7 +636,8 @@ export class ItemView {
   #startGizmoDrag(gizmoHit, prim, p, dup = false) {
     this.opts.beginUndo?.();
     this.drag = {
-      dup,
+      // Ctrl-drag copies vertices only; sphere centres in the selection just move.
+      dup: dup && prim.indices.length > 0,
       dupDone: false,
       dupBlocked: false,
       kind: gizmoHit.kind,
@@ -601,6 +647,7 @@ export class ItemView {
       grab: gizmoHit.world,
       gizmoAxisLen: gizmoHit.gizmoAxisLen ?? GIZMO_FALLBACK_LEN,
       origs: this.#gizmoDragOrigs(prim),
+      sorigs: this.#gizmoDragSphereOrigs(prim),
       orig: { x: prim.v.x, y: prim.v.y, z: prim.v.z },
       start: p,
     };
@@ -620,6 +667,63 @@ export class ItemView {
       }
     });
     return best;
+  }
+
+  /** Screen centre and radius (px) of sphere i, or null when behind the camera. Spin is off while the pointer is in. */
+  #sphereScreen(sp) {
+    const w = this.cssW;
+    const h = this.cssH;
+    const pr = projectPoint(sp, this.#cam(), w, h);
+    if (!pr.ok) return null;
+    return { sx: pr.sx, sy: pr.sy, z: pr.z, rad: (sp.r * Math.min(w, h) * 0.9) / pr.z };
+  }
+
+  /** Nearest sphere centre within the vert hit radius. `prefer` wins a tie (a sphere sitting on a vertex). */
+  #hitSphereCenter(mx, my, mesh) {
+    let best = -1;
+    let bestD = ITEM_VERT_HIT;
+    (mesh.spheres || []).forEach((sp, i) => {
+      const s = this.#sphereScreen(sp);
+      if (!s) return;
+      const d = Math.hypot(mx - s.sx, my - s.sy);
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    });
+    return { index: best, dist: bestD };
+  }
+
+  /** Sphere whose circumference passes within ITEM_RING_HIT px of the pointer. */
+  #hitSphereRing(mx, my, mesh) {
+    let best = -1;
+    let bestD = ITEM_RING_HIT;
+    (mesh.spheres || []).forEach((sp, i) => {
+      const s = this.#sphereScreen(sp);
+      if (!s || s.rad > 4 * Math.max(this.cssW, this.cssH)) return;
+      const d = Math.abs(Math.hypot(mx - s.sx, my - s.sy) - s.rad);
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    });
+    return best;
+  }
+
+  /**
+   * Vertex or sphere centre under the pointer. A vertex wins unless the sphere centre is strictly nearer,
+   * or the two coincide and the vertex is already selected (so a second click reaches the sphere).
+   */
+  #hitHandle(mx, my, mesh) {
+    const vi = this.#hitVert(mx, my, mesh.verts);
+    const sh = this.#hitSphereCenter(mx, my, mesh);
+    if (sh.index < 0) return { vert: vi, sphere: -1 };
+    if (vi < 0) return { vert: -1, sphere: sh.index };
+    const cam = this.#cam();
+    const p = projectPoint(mesh.verts[vi], cam, this.cssW, this.cssH);
+    const vd = Math.hypot(mx - p.sx, my - p.sy);
+    const sphereWins = sh.dist < vd || (sh.dist === vd && this.selectedVerts.includes(vi));
+    return sphereWins ? { vert: -1, sphere: sh.index } : { vert: vi, sphere: -1 };
   }
 
   #hitLine(mx, my, mesh) {
@@ -653,8 +757,9 @@ export class ItemView {
     return mesh.verts.some((v, i) => !skip.has(i) && v.x === x && v.y === y && v.z === z);
   }
 
-  #uniqueOk(verts) {
-    const { nx, nz } = itemUniqueXZ(verts);
+  /** Unique X/Z budget over the cooked verts: mesh verts plus sphere origins (an origin on a vert reuses it). */
+  #uniqueOk(verts, spheres = this.#mesh().spheres || []) {
+    const { nx, nz } = itemUniqueXZ([...verts, ...spheres]);
     return nx <= ITEM_MAX_UNIQUE && nz <= ITEM_MAX_UNIQUE;
   }
 
@@ -676,17 +781,37 @@ export class ItemView {
     if (i < 0) this.selectedVerts = [];
     else if (additive) {
       if (!this.selectedVerts.includes(i)) this.selectedVerts.push(i);
-    } else this.selectedVerts = [i];
+    } else {
+      this.selectedVerts = [i];
+      this.selectedSpheres = [];
+    }
     this.selectedLines = [];
     this.opts.onSelect?.();
   }
 
-  #selectVerts(indices, additive) {
+  #selectSphere(i, additive) {
+    if (additive) {
+      if (!this.selectedSpheres.includes(i)) this.selectedSpheres.push(i);
+    } else {
+      this.selectedSpheres = [i];
+      this.selectedVerts = [];
+    }
+    this.selectedLines = [];
+    this.opts.onSelect?.();
+  }
+
+  #selectVerts(indices, additive, sphereIndices = []) {
     if (additive) {
       for (const i of indices) {
         if (!this.selectedVerts.includes(i)) this.selectedVerts.push(i);
       }
-    } else this.selectedVerts = [...indices];
+      for (const i of sphereIndices) {
+        if (!this.selectedSpheres.includes(i)) this.selectedSpheres.push(i);
+      }
+    } else {
+      this.selectedVerts = [...indices];
+      this.selectedSpheres = [...sphereIndices];
+    }
     this.selectedLines = [];
     this.opts.onSelect?.();
   }
@@ -697,6 +822,7 @@ export class ItemView {
       if (!this.selectedLines.includes(i)) this.selectedLines.push(i);
     } else this.selectedLines = [i];
     this.selectedVerts = [];
+    this.selectedSpheres = [];
     this.opts.onSelect?.();
   }
 
@@ -740,10 +866,19 @@ export class ItemView {
       }
     }
 
-    const vi = this.#hitVert(p.x, p.y, mesh.verts);
-    if (vi >= 0) {
-      this.#selectVert(vi, e.shiftKey);
+    const hit = this.#hitHandle(p.x, p.y, mesh);
+    if (hit.vert >= 0 || hit.sphere >= 0) {
+      if (hit.vert >= 0) this.#selectVert(hit.vert, e.shiftKey);
+      else this.#selectSphere(hit.sphere, e.shiftKey);
       this.drag = { kind: "select" };
+      this.canvas.setPointerCapture(e.pointerId);
+      this.draw();
+      return;
+    }
+
+    const ri = this.#hitSphereRing(p.x, p.y, mesh);
+    if (ri >= 0) {
+      this.drag = { kind: "radius", si: ri, began: false };
       this.canvas.setPointerCapture(e.pointerId);
       this.draw();
       return;
@@ -769,12 +904,33 @@ export class ItemView {
     if (!this.drag) {
       const prim = this.#selectionAnchor();
       const cam = this.#cam();
-      this.hoverVert = this.#hitVert(p.x, p.y, mesh.verts);
+      const hit = this.#hitHandle(p.x, p.y, mesh);
+      this.hoverVert = hit.vert;
+      this.hoverSphere = hit.sphere;
       this.hoverGizmo =
-        prim && this.hoverVert < 0
+        prim && hit.vert < 0 && hit.sphere < 0
           ? hitTranslateGizmo(prim.v, cam, this.cssW, this.cssH, p.x, p.y)
           : null;
-      this.hoverLine = this.hoverGizmo || this.hoverVert >= 0 ? -1 : this.#hitLine(p.x, p.y, mesh);
+      const onHandle = this.hoverGizmo || hit.vert >= 0 || hit.sphere >= 0;
+      this.hoverRing = onHandle ? -1 : this.#hitSphereRing(p.x, p.y, mesh);
+      this.hoverLine = onHandle || this.hoverRing >= 0 ? -1 : this.#hitLine(p.x, p.y, mesh);
+      this.canvas.style.cursor = this.hoverRing >= 0 ? "nesw-resize" : "";
+      this.draw();
+      return;
+    }
+    if (this.drag.kind === "radius") {
+      const sp = mesh.spheres?.[this.drag.si];
+      const s = sp && this.#sphereScreen(sp);
+      if (!s) return;
+      // Inverse of the draw radius: r = px * z / focal.
+      const r = clampItemSphereR((Math.hypot(p.x - s.sx, p.y - s.sy) * s.z) / (Math.min(this.cssW, this.cssH) * 0.9));
+      if (r === sp.r) return;
+      if (!this.drag.began) {
+        this.opts.beginUndo?.();
+        this.drag.began = true;
+      }
+      sp.r = r;
+      this.opts.onChange?.();
       this.draw();
       return;
     }
@@ -889,6 +1045,15 @@ export class ItemView {
     return hits;
   }
 
+  #spheresInBox(rect) {
+    const hits = [];
+    (this.#mesh().spheres || []).forEach((sp, i) => {
+      const s = this.#sphereScreen(sp);
+      if (s && s.sx >= rect.x0 && s.sx <= rect.x1 && s.sy >= rect.y0 && s.sy <= rect.y1) hits.push(i);
+    });
+    return hits;
+  }
+
   #finishBox() {
     const rect = this.#boxRect();
     const additive = this.drag.additive;
@@ -896,11 +1061,12 @@ export class ItemView {
       if (!additive) {
         this.selectedVerts = [];
         this.selectedLines = [];
+        this.selectedSpheres = [];
         this.opts.onSelect?.();
       }
       return;
     }
-    this.#selectVerts(this.#vertsInBox(rect), additive);
+    this.#selectVerts(this.#vertsInBox(rect), additive, this.#spheresInBox(rect));
   }
 
   #onUp(e) {
@@ -916,7 +1082,9 @@ export class ItemView {
       }
       this.opts.endUndo?.();
     }
+    if (this.drag?.kind === "radius") this.opts.endUndo?.();
     this.drag = null;
+    this.canvas.style.cursor = "";
     if (orbitEnded) this.opts.onViewChanged?.();
     try {
       this.canvas.releasePointerCapture(e.pointerId);
@@ -1053,11 +1221,14 @@ export class ItemView {
     this.#drawGhost(ctx, cam, w, h);
 
     let shownVerts = this.selectedVerts;
+    let shownSpheres = this.selectedSpheres;
     if (this.drag?.kind === "box") {
       const r = this.#boxRect();
       if (r.w >= ITEM_BOX_CLICK || r.h >= ITEM_BOX_CLICK) {
         const hits = this.#vertsInBox(r);
+        const sHits = this.#spheresInBox(r);
         shownVerts = this.drag.additive ? [...new Set([...this.selectedVerts, ...hits])] : hits;
+        shownSpheres = this.drag.additive ? [...new Set([...this.selectedSpheres, ...sHits])] : sHits;
       }
     }
 
@@ -1076,6 +1247,47 @@ export class ItemView {
       if (!a || !b) return;
       const sel = this.selectedLines.includes(i);
       this.#strokeSeg(ctx, cam, w, h, a, b, sel ? "#f2d36b" : "#c8ccd4", sel ? 2.5 : 1.5);
+    });
+
+    // Spheres: smooth camera-facing circles (radius r * focal / z, as the game scales them; the game's
+    // pixel circle is only in the Preview view). Centre is a diamond handle, circumference is draggable.
+    (mesh.spheres || []).forEach((sp, i) => {
+      const c = yaw
+        ? { x: sp.x * Math.cos(yaw) + sp.z * Math.sin(yaw), y: sp.y, z: -sp.x * Math.sin(yaw) + sp.z * Math.cos(yaw) }
+        : sp;
+      const pr = projectPoint(c, cam, w, h);
+      if (!pr.ok) return;
+      const rad = (sp.r * Math.min(w, h) * 0.9) / pr.z;
+      const sel = shownSpheres.includes(i);
+      const hot = this.hoverRing === i || (this.drag?.kind === "radius" && this.drag.si === i);
+      const col = sel ? SPHERE_COL_SEL : hot ? SPHERE_COL_HOT : SPHERE_COL;
+      if (rad >= 0.5 && rad <= 4 * Math.max(w, h)) {
+        ctx.beginPath();
+        ctx.arc(pr.sx, pr.sy, rad, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(224, 138, 62, 0.07)";
+        ctx.fill();
+        ctx.strokeStyle = col;
+        ctx.lineWidth = hot ? 2.5 : 1.5;
+        ctx.stroke();
+      }
+      const ho = this.hoverSphere === i;
+      const d = sel || ho ? 6 : 5;
+      ctx.beginPath();
+      ctx.moveTo(pr.sx, pr.sy - d);
+      ctx.lineTo(pr.sx + d, pr.sy);
+      ctx.lineTo(pr.sx, pr.sy + d);
+      ctx.lineTo(pr.sx - d, pr.sy);
+      ctx.closePath();
+      ctx.fillStyle = ho && !sel ? "#fff" : col;
+      ctx.fill();
+      ctx.strokeStyle = "#0a0a0c";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      if (hot) {
+        ctx.fillStyle = col;
+        ctx.font = "11px Segoe UI, sans-serif";
+        ctx.fillText(`r ${sp.r}`, pr.sx + 9, pr.sy - 9);
+      }
     });
 
     dverts.forEach((v, i) => {

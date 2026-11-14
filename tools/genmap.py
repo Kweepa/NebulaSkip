@@ -9,6 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from roomgeom import clamp_room_shape, nudge_door_outside, room_geometry
+import genenemies
 import genitems
 import mapnames
 
@@ -195,6 +196,26 @@ def closest_elevator(trigger: dict, elevs: list[dict]) -> int | None:
             best_d = d
             best_i = i
     return best_i
+
+
+_STAND_INDEX: dict[str, dict[str, int]] = {}
+
+
+def stand_var_index(enemy_type: str, stand: str) -> int:
+    """Game stand-variant index (1-based, 0 = plain stand) for a placement's `stand` clip name.
+
+    Resolved through genenemies.stand_variants on the exported clip list, so it matches the
+    enemy_sv_* tables genenemies bakes into each type's pose row.
+    """
+    if not _STAND_INDEX:
+        for name, dos in zip(genenemies.TYPES, genenemies.DOS_NAME):
+            path = ROOT / "editor" / "enemies" / f"{dos}.json"
+            enemy = json.loads(path.read_text(encoding="utf-8"))
+            genenemies.apply_export_clips(enemy)
+            _STAND_INDEX[name] = {
+                c["name"]: i for i, c in enumerate(genenemies.stand_variants(enemy), 1)
+            }
+    return _STAND_INDEX.get(enemy_type, {}).get(stand, 0)
 
 
 def room_index(rooms: list[dict], obj: dict, kind: str) -> int:
@@ -1032,7 +1053,14 @@ def cook_one(level: dict, map_key: str) -> bytes:
         en_y.append(e["y"])
         en_z.append(e["z"] + e["sz"] // 2)
         en_type.append(ENEMY_TYPE[name])
-        en_rot.append(int(e.get("rot") or 0) & 7)
+        # Bits 0-2 octant, bits 3-5 stand variant (init_enemies splits them). Variants only
+        # play in no-combat rooms, so the runtime needs no room check: zero it elsewhere.
+        stand = 0
+        if e.get("stand") and rooms[ri].get("noCombat"):
+            stand = stand_var_index(name, e["stand"])
+            if not stand:
+                print(f"{map_key}: {name} stand {e['stand']!r} is not an exported stand animation; using the plain stand")
+        en_rot.append((int(e.get("rot") or 0) & 7) | (stand << 3))
         en_room.append(ri)
         en_tag.append(en_tag_ids.get((e.get("tag") or "").strip(), 0))
         bits = int(e.get("bounty") or 0)

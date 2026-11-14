@@ -122,7 +122,9 @@ init_enemies
 	sta en_step,x
 	sta en_step_h,x
 	sta en_pain_i,x
-	+lda_mx en_rot			; map rot = editor octant (0=+Z)
+	+lda_mx en_rot			; map byte: bits 0-2 editor octant (0=+Z), 3-5 stand variant
+	pha
+	and #7
 	sta en_dir,x
 	asl
 	asl
@@ -130,6 +132,12 @@ init_enemies
 	asl
 	asl
 	+sta_mx en_rot
+	pla
+	lsr
+	lsr
+	lsr
+	and #SV_MAX - 1
+	sta en_stand,x			; genmap zeroes this outside no-combat rooms
 	+ldy_mx en_type
 	lda enemy_hp_init,y
 	sta en_hp,x

@@ -23,6 +23,8 @@ ITEM_BIAS = 1
 ITEM_MAX_VERTS = 16
 ITEM_MAX_LINES = 16
 ITEM_MAX_UNIQUE = 6
+ITEM_MAX_SPHERES = 2  # keep in sync with editor/js/model.js
+ITEM_SPHERE_R_MAX = 127  # quarter-units
 ITEM_OFFSET_MAX = 255  # per-slot vo/eo/uo/zo are one byte
 ITEM_PAGES_MAX = 2  # keep in sync with editor/js/model.js
 
@@ -290,7 +292,32 @@ def parse_mesh(raw) -> dict:
             continue
         line_seen.add((lo, hi))
         lines.append([lo, hi])
-    return {"verts": verts, "lines": lines}
+    return {"verts": verts, "lines": lines, "spheres": parse_spheres((raw or {}).get("spheres"))}
+
+
+def parse_spheres(raw) -> list[dict]:
+    """Up to ITEM_MAX_SPHERES {x,y,z,r}: origin on the vert grid (units, 0.25 snap) and r in
+    units, returned as quarter-units (1..127). Mirror of parseItemSpheres in editor/js/model.js."""
+    out: list[dict] = []
+    for s in raw if isinstance(raw, list) else []:
+        if not isinstance(s, dict) or len(out) >= ITEM_MAX_SPHERES:
+            continue
+        try:
+            r = js_round(float(s.get("r", 0)) * ITEM_POS_Q)
+        except (TypeError, ValueError):
+            continue
+        r = max(0, min(ITEM_SPHERE_R_MAX, r))
+        if r <= 0:
+            continue
+        out.append(
+            {
+                "x": clamp_grid(s.get("x", 0)),
+                "y": clamp_grid(s.get("y", 0)),
+                "z": clamp_grid(s.get("z", 0)),
+                "r": r,
+            }
+        )
+    return out
 
 
 def unique_u8(vals: list[int], cap: int, what: str, name: str) -> tuple[list[int], list[int]]:
@@ -307,10 +334,23 @@ def unique_u8(vals: list[int], cap: int, what: str, name: str) -> tuple[list[int
 
 
 def cook(mesh: dict, name: str) -> dict:
-    verts = mesh["verts"]
+    verts = list(mesh["verts"])
     lines = mesh["lines"]
     if not verts or not lines:
         raise SystemExit(f"item {name!r} has no geometry")
+    # Each sphere origin is a vertex the mesh pipeline already transforms and projects; the
+    # sphere routine reads its screen position. An origin on an existing vert reuses it,
+    # otherwise it is appended with no edges.
+    sph: list[tuple[int, int]] = []
+    for s in mesh.get("spheres") or []:
+        key = (pack_u(s["x"]), pack_u(s["y"]), pack_u(s["z"]))
+        vi = next((i for i, v in enumerate(verts) if (pack_u(v["x"]), pack_u(v["y"]), pack_u(v["z"])) == key), -1)
+        if vi < 0:
+            vi = len(verts)
+            verts.append({"x": s["x"], "y": s["y"], "z": s["z"]})
+        sph.append((vi, s["r"]))
+    if len(verts) > ITEM_MAX_VERTS:
+        raise SystemExit(f"item {name!r} has {len(verts)} verts incl. sphere origins (max {ITEM_MAX_VERTS})")
     ux, xid = unique_u8([pack_u(v["x"]) for v in verts], ITEM_MAX_UNIQUE, "X", name)
     uz, zid = unique_u8([pack_u(v["z"]) for v in verts], ITEM_MAX_UNIQUE, "Z", name)
     pairs: list[tuple[int, int]] = []
@@ -340,6 +380,7 @@ def cook(mesh: dict, name: str) -> dict:
         "col": col,
         "ea": ea,
         "eb": eb,
+        "sph": sph,
     }
 
 
@@ -531,12 +572,32 @@ def main() -> None:
     def s8_abs(v: int) -> int:
         return abs(v - 256 if v > 127 else v)  # cooked ux/uz are u8-masked
 
+    # A sphere reaches |origin| + r from the centre (r in quarter-units, like ux/uz).
     cr = [
-        max(1, math.ceil(math.hypot(max(map(s8_abs, c["ux"])), max(map(s8_abs, c["uz"]))) / ITEM_POS_Q))
+        max(
+            1,
+            math.ceil(
+                (
+                    math.hypot(max(map(s8_abs, c["ux"])), max(map(s8_abs, c["uz"])))
+                    + max((r for _, r in c["sph"]), default=0)
+                )
+                / ITEM_POS_Q
+            ),
+        )
         if c
         else 1
         for c in cooked
     ]
+    # Spheres: count per slot, then (hidden or shared) origin vertex index and radius, two per
+    # slot (index slot*2 + i). item_spheres reads these after stroke_mesh.
+    ns = [len(c["sph"]) if c else 0 for c in cooked]
+    sv: list[int] = []
+    sr: list[int] = []
+    for c in cooked:
+        pair = (c["sph"] if c else []) + [(0, 0)] * ITEM_MAX_SPHERES
+        for vi, r in pair[:ITEM_MAX_SPHERES]:
+            sv.append(vi)
+            sr.append(r)
 
     blob_names = ("ux", "uz", "vy", "xid", "zid", "col", "ea", "eb")
     parts = [
@@ -553,6 +614,10 @@ def main() -> None:
         btable("item_rot", rot).rstrip(),
         "; thing frustum-cull half-extent in units about box+ITEM_BIAS (th_cull_hit)",
         btable("item_cr", cr).rstrip(),
+        "; editor spheres: count per slot; origin vertex and radius (quarter-units), index slot*2+i",
+        btable("item_ns", ns).rstrip(),
+        btable("item_sv", sv).rstrip(),
+        btable("item_sr", sr).rstrip(),
         "",
     ]
     parts.append(th_names(meta))

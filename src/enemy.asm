@@ -292,10 +292,10 @@ enemy_anim_step
 	jmp .eas_lp
 
 .eas_loop
-	jsr ldy_slot
+	jsr sv_var_off
 	inc en_frame,x
 	lda en_frame,x
-	cmp enemy_stand_len,y
+	cmp enemy_sv_len,y
 	bcs +
 	jmp .eas_n
 +

@@ -381,6 +381,45 @@ h2 {
   color: var(--accent);
 }
 
+.export-clip-list button.clip-add {
+  flex: 0 0 auto;
+  min-width: 2rem;
+  text-align: center;
+  font-weight: 600;
+  border: 1px solid var(--border);
+}
+
+.stand-pick {
+  margin-bottom: 0.4rem;
+}
+
+.stand-pick-label {
+  display: block;
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin-bottom: 0.25rem;
+}
+
+.stand-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 2px;
+}
+
+.stand-grid button {
+  min-width: 0;
+  padding: 0.15rem 0.3rem;
+  font-size: 0.75rem;
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stand-grid.inactive {
+  opacity: 0.5;
+}
+
 .anim-transport {
   margin-top: 0.35rem;
 }
@@ -1788,6 +1827,7 @@ body.font-dragging * {
         <ul id="enemy-list" class="object-list"></ul>
         <div class="toolbar-actions mdl-overlay-row">
           <button type="button" id="btn-mdl-overlay" class="toggle active">Ref sprite</button>
+          <button type="button" id="btn-side-right" class="toggle active" title="Side view: on = right view, off = left view (mirrors the axis and the sprite)">Right view</button>
           <button type="button" id="btn-collision-overlay" class="toggle active" title="Player-vs-enemy block volume (ENEMY_BLOCK_R x ENEMY_CULL_H)">Collision</button>
         </div>
         <div class="btn-row">
@@ -1820,7 +1860,7 @@ body.font-dragging * {
       <div class="map-stage" id="map-stage">
         <div class="stick-pane" id="stick-left" hidden>
           <canvas id="stick-left-canvas"></canvas>
-          <span class="stick-label">Left</span>
+          <span class="stick-label" id="stick-side-label">Right</span>
         </div>
         <div class="stick-pane" id="stick-front" hidden>
           <canvas id="stick-front-canvas"></canvas>
@@ -5011,6 +5051,14 @@ const ITEM_WORLD_BIAS = 1;
 const ITEM_MAX_VERTS = 16;
 const ITEM_MAX_LINES = 16;
 const ITEM_MAX_UNIQUE = 6;
+/** Item spheres: up to two screen circles per item type (origin + radius), drawn by item_spheres in the game. */
+const ITEM_MAX_SPHERES = 2;
+/** Radius in units, quarter-unit steps, packed byte round(r*4) in 1..127. */
+const ITEM_SPHERE_R_MIN = 1 / ITEM_POS_Q;
+const ITEM_SPHERE_R_MAX = 127 / ITEM_POS_Q;
+/** Game camera focal length (mem.asm FOCAL) and the persp88 radius cap (PERSP_MAX), screen px in the 192x128 view. */
+const SPHERE_FOCAL = 100;
+const SPHERE_PERSP_MAX = 80;
 
 const DOOR_LOCKS = ["unlocked", "yellow", "blue", "red", "remote"];
 const DOOR_LOCK_LABELS = {
@@ -5475,7 +5523,30 @@ function parseItemMesh(raw) {
     lineSeen.add(k);
     lines.push([lo, hi]);
   }
-  return { verts, lines };
+  const spheres = parseItemSpheres(raw.spheres);
+  return spheres.length ? { verts, lines, spheres } : { verts, lines };
+}
+
+function clampItemSphereR(n) {
+  const q = Math.round(Number(n) * ITEM_POS_Q) / ITEM_POS_Q;
+  if (!Number.isFinite(q) || q < ITEM_SPHERE_R_MIN) return ITEM_SPHERE_R_MIN;
+  return Math.min(q, ITEM_SPHERE_R_MAX);
+}
+
+/** Up to ITEM_MAX_SPHERES {x,y,z,r}: origin on the vert grid, r in units (quarter steps). Mirror of parse_spheres in tools/genitems.py. */
+function parseItemSpheres(raw) {
+  const out = [];
+  for (const s of Array.isArray(raw) ? raw : []) {
+    if (!s || typeof s !== "object" || out.length >= ITEM_MAX_SPHERES) continue;
+    if (!(Math.round(Number(s.r) * ITEM_POS_Q) > 0)) continue;
+    out.push({
+      x: clampItemCoord(Number(s.x) || 0),
+      y: clampItemCoord(Number(s.y) || 0),
+      z: clampItemCoord(Number(s.z) || 0),
+      r: clampItemSphereR(s.r),
+    });
+  }
+  return out;
 }
 
 function parseItemMeshes(raw) {
@@ -5584,8 +5655,25 @@ function itemUniqueXZ(verts) {
   return { nx: xs.size, nz: zs.size, xs, zs };
 }
 
+/**
+ * Mesh verts plus the vertices the cooker adds for sphere origins (tools/genitems.py cook):
+ * an origin that lands on an existing vert reuses it, otherwise it is appended with no edges.
+ */
+function itemCookedVerts(mesh) {
+  const verts = [...(mesh?.verts || [])];
+  const key = (v) => `${Math.round(v.x * ITEM_POS_Q)},${Math.round(v.y * ITEM_POS_Q)},${Math.round(v.z * ITEM_POS_Q)}`;
+  const have = new Set(verts.map(key));
+  for (const s of mesh?.spheres || []) {
+    if (!have.has(key(s))) {
+      have.add(key(s));
+      verts.push({ x: s.x, y: s.y, z: s.z });
+    }
+  }
+  return verts;
+}
+
 function itemMeshStats(mesh) {
-  const verts = mesh?.verts || [];
+  const verts = itemCookedVerts(mesh);
   const lines = mesh?.lines || [];
   const { nx, nz } = itemUniqueXZ(verts);
   const nv = verts.length;
@@ -5595,6 +5683,7 @@ function itemMeshStats(mesh) {
     ne,
     nx,
     nz,
+    nsph: mesh?.spheres?.length || 0,
     bytes: nx + nz + nv * 4 + ne * 2,
     over: nx > ITEM_MAX_UNIQUE || nz > ITEM_MAX_UNIQUE || nv > ITEM_MAX_VERTS || ne > ITEM_MAX_LINES,
   };
@@ -5684,6 +5773,10 @@ function itemScaleFits(mesh, scale) {
     if (Math.hypot(Number(v.x), Number(v.z)) > max) return false;
     if (Math.abs(Number(v.y)) > max) return false;
   }
+  for (const s of mesh?.spheres || []) {
+    if (Math.hypot(Number(s.x), Number(s.z)) > max || Math.abs(Number(s.y)) > max) return false;
+    if (Number(s.r) * clampItemScale(scale) > 127) return false; // radius << shift must stay below the 16-bit sign
+  }
   return true;
 }
 
@@ -5714,6 +5807,57 @@ function itemMeshWorldSegs(obj, mesh, yaw = 0) {
     if (verts[a] && verts[b]) segs.push({ a: verts[a], b: verts[b] });
   }
   return segs;
+}
+
+/**
+ * World-space sphere for a placed item, same transform as itemMeshWorldSegs (scale, yaw, +ITEM_WORLD_BIAS).
+ * r is scaled with the item, like the game's `r << item_scale_shl`.
+ * @returns {{x:number,y:number,z:number,r:number}[]}
+ */
+function itemSphereWorld(obj, mesh, yaw = 0) {
+  const c = Math.cos(yaw);
+  const s = Math.sin(yaw);
+  const k = clampItemScale(obj.scale ?? (obj.big ? 8 : 1));
+  return (mesh?.spheres || []).map((sp) => {
+    const lx = Number(sp.x) * k;
+    const lz = Number(sp.z) * k;
+    return {
+      x: obj.x + (lx * c + lz * s) + ITEM_WORLD_BIAS,
+      y: obj.y + Number(sp.y) * k,
+      z: obj.z + (-lx * s + lz * c) + ITEM_WORLD_BIAS,
+      r: Number(sp.r) * k,
+    };
+  });
+}
+
+/** Screen radius in px (192x128 view) of a world radius at eye depth z: persp88, r * FOCAL / z, capped at PERSP_MAX. */
+function sphereScreenRadius(r, z) {
+  if (!(z > 0)) return 0;
+  return Math.min(SPHERE_PERSP_MAX, Math.round((r * SPHERE_FOCAL) / z));
+}
+
+/**
+ * Bresenham / midpoint circle, the same integer steps as sph_bres in src/item_xf.asm:
+ *   x = R, y = 0, d = 1 - R; while x >= y: emit 8 mirrors; y++; d < 0 ? d += 2y+1 : (x--, d += 2(y-x)+1).
+ * @param {number} R integer screen radius in px (>= 1)
+ * @returns {[number, number][]} integer offsets (dx, dy) from the centre, duplicates included
+ */
+function sphereCircle(R) {
+  R = Math.max(1, Math.min(SPHERE_PERSP_MAX, Math.round(R)));
+  let x = R;
+  let y = 0;
+  let d = 1 - R;
+  const pts = [];
+  while (x >= y) {
+    pts.push([x, y], [-x, y], [x, -y], [-x, -y], [y, x], [-y, x], [y, -x], [-y, -x]);
+    y++;
+    if (d < 0) d += 2 * y + 1;
+    else {
+      x--;
+      d += 2 * (y - x) + 1;
+    }
+  }
+  return pts;
 }
 
 /** Fixed equilateral tetra: height 1.5, base side = height/φ. */
@@ -6348,6 +6492,9 @@ function clampObject(obj) {
     const bnm = clampBountyName(obj.bountyName);
     if (bnm) obj.bountyName = bnm;
     else delete obj.bountyName;
+    const stand = clampStandVarName(obj.stand);
+    if (stand) obj.stand = stand;
+    else delete obj.stand;
   }
   if (obj.kind === "trigger") {
     obj.purpose = clampTriggerPurpose(obj.purpose);
@@ -6469,6 +6616,8 @@ function createObject(kind, x, y, z, extra = {}) {
     if (bty) obj.bounty = bty;
     const bnm = clampBountyName(extra.bountyName);
     if (bnm) obj.bountyName = bnm;
+    const stand = clampStandVarName(extra.stand);
+    if (stand) obj.stand = stand;
   }
   if (kind === "trigger") {
     obj.purpose = clampTriggerPurpose(extra.purpose);
@@ -6556,6 +6705,17 @@ function clampBountyName(s) {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, MAX_BOUNTY_NAME_LEN);
+}
+
+/** Stand-variant clip name: printable ASCII, single spaces, trimmed. */
+const STAND_VAR_NAME_MAX = 16;
+const STAND_VAR_MAX = 7; // keep in sync with tools/genenemies.py SV_MAX - 1
+function clampStandVarName(s) {
+  return String(s ?? "")
+    .replace(/[^\x20-\x7e]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, STAND_VAR_NAME_MAX);
 }
 
 /** Bits paid for a bounty: 0 (none) or the nearest 4n-1 in 3..1019. */
@@ -6680,14 +6840,31 @@ function roleCycleFrame(template, now, roleName) {
   return frames[fi];
 }
 
-/** World-space stick verts (1/4 scale, feet on floor center). Enemies loop walk, player spawns loop stand. */
-function enemyPlacementWorldVerts(obj, template, now = performance.now()) {
+/** Frame of the named stand-variant clip at the game step clock, or null if it isn't a shipped variant. */
+function standVarCycleFrame(template, now, name) {
+  if (!template?.frames?.length || !standVarIndex(template, name)) return null;
+  const clip = template.clips.find((c) => c.name === name);
+  const len = clip.len | 0;
+  const fi = (clip.start | 0) + (len > 0 ? Math.floor(now / walkStepMs(template.name)) % len : 0);
+  return template.frames[fi] || null;
+}
+
+/**
+ * World-space stick verts (1/4 scale, feet on floor center). Enemies loop walk, player spawns loop
+ * stand. With `doc`, an enemy in a no-combat room loops its chosen stand variant instead.
+ */
+function enemyPlacementWorldVerts(obj, template, now = performance.now(), doc = null) {
+  let standFrame = null;
+  if (doc && obj?.kind === "enemy" && obj.stand) {
+    if (roomUnderObject(doc, obj)?.noCombat) standFrame = standVarCycleFrame(template, now, obj.stand);
+  }
   const frame =
-    obj?.kind === "enemy"
+    standFrame ||
+    (obj?.kind === "enemy"
       ? roleCycleFrame(template, now, "run")
       : obj?.kind === "spawn"
         ? roleCycleFrame(template, now, "stand")
-        : enemyPreviewFrame(template);
+        : enemyPreviewFrame(template));
   if (!frame) return [];
   const ox = obj.x + obj.sx / 2;
   const oy = obj.y;
@@ -6937,6 +7114,90 @@ function clipIsAttackRole(enemyName, clipName) {
   const names = ROLE_CLIPS[enemyName]?.attack || [];
   const key = poseClipKey(clipName);
   return names.some((n) => poseClipKey(n) === key);
+}
+
+const STAND_VAR_RESERVED = new Set(["stand", "alert", "run", "walk", "hover"]);
+
+function clipExported(enemy, name) {
+  return !Array.isArray(enemy?.exportClips) || enemy.exportClips.includes(name);
+}
+
+/**
+ * Stand variants that ship, in clip order (index i here is game variant i + 1; 0 is the plain
+ * stand clip). Capped at STAND_VAR_MAX. Keep in sync with tools/genenemies.py stand_variants.
+ */
+function standVariantClips(enemy) {
+  return (enemy?.clips || [])
+    .filter((c) => c.standVar && clipExported(enemy, c.name))
+    .slice(0, STAND_VAR_MAX);
+}
+
+/** 0 = plain stand clip, else 1-based index into standVariantClips. */
+function standVarIndex(enemy, name) {
+  if (!name) return 0;
+  const i = standVariantClips(enemy).findIndex((c) => c.name === name);
+  return i + 1;
+}
+
+/** Why `name` can't be a stand-variant name for this enemy ("" if fine). `self` is the clip being renamed. */
+function standVarNameProblem(enemy, name, self = null) {
+  if (!name) return "Name can't be empty";
+  const key = poseClipKey(name);
+  if (STAND_VAR_RESERVED.has(key) || /^pain[a-z]?$/.test(key) || /^(bdeath|death[a-z]?)$/.test(key)) {
+    return `"${name}" is reserved for a built-in clip role`;
+  }
+  const roleNames = Object.values(ROLE_CLIPS[enemy?.name] || {}).flat();
+  if (roleNames.some((n) => poseClipKey(n) === key)) {
+    return `"${name}" is a built-in clip name`;
+  }
+  for (const c of enemy?.clips || []) {
+    if (c !== self && poseClipKey(c.name) === key) return `"${name}" is already a clip`;
+  }
+  return "";
+}
+
+/**
+ * Append a stand-variant clip: one frame copied from the plain stand clip's first frame (and
+ * sprite letter), exported by default. Returns the clip, or null when full / no stand clip.
+ */
+function addStandVariantClip(enemy) {
+  const clips = enemy.clips || (enemy.clips = []);
+  if (clips.filter((c) => c.standVar).length >= STAND_VAR_MAX) return null;
+  const base = findPoseClip(clips, "stand");
+  const stand = base ? clips.find((c) => (c.start | 0) === base[0]) : null;
+  const src = enemy.frames?.[stand ? stand.start | 0 : 0];
+  if (!src) return null;
+  let name = "stand 2";
+  for (let n = 3; standVarNameProblem(enemy, name); n++) name = `stand ${n}`;
+  const start = enemy.frames.length;
+  enemy.frames.push(src.map((v) => ({ x: v.x, y: v.y, z: v.z })));
+  const clip = { name, start, len: 1, standVar: true };
+  if (Array.isArray(stand?.sprites)) clip.sprites = [stand.sprites[0] || "A"];
+  clips.push(clip);
+  if (Array.isArray(enemy.exportClips)) enemy.exportClips.push(name);
+  return clip;
+}
+
+/**
+ * Rename a stand variant everywhere it is referenced: the clip, exportClips, and every placed
+ * enemy's `stand` in doc.maps. Returns the problem string, or "" when applied.
+ */
+function renameStandVariant(doc, enemy, clip, raw) {
+  const name = clampStandVarName(raw);
+  if (name === clip.name) return "";
+  const bad = standVarNameProblem(enemy, name, clip);
+  if (bad) return bad;
+  const old = clip.name;
+  clip.name = name;
+  if (Array.isArray(enemy.exportClips)) {
+    enemy.exportClips = enemy.exportClips.map((n) => (n === old ? name : n));
+  }
+  for (const m of Object.values(doc.maps || {})) {
+    for (const o of m.objects || []) {
+      if (o.kind === "enemy" && o.enemy === enemy.name && o.stand === old) o.stand = name;
+    }
+  }
+  return "";
 }
 
 function poseClipByName(clips, name) {
@@ -7898,6 +8159,7 @@ function parseClipMeta(raw) {
     seen.add(name);
     const clip = { name, start: c?.start | 0, len: Math.max(1, c?.len | 0) };
     if (Array.isArray(c?.sprites)) clip.sprites = c.sprites.map((s) => String(s || "A").slice(0, 1));
+    if (c?.standVar) clip.standVar = true;
     const sound = parseClipSound(c?.sound);
     if (sound) {
       clip.sound = sound;
@@ -7917,6 +8179,7 @@ function persistClip(c) {
     out.len = c.len | 0;
     out.sprites = c.sprites.map((s) => String(s || "A").slice(0, 1));
   }
+  if (c.standVar) out.standVar = true;
   if (c.sound) {
     out.sound = c.sound;
     out.soundFrame = c.soundFrame | 0;
@@ -8155,6 +8418,7 @@ function parseObjects(list) {
       tag: o.tag,
       bounty: o.bounty,
       bountyName: o.bountyName,
+      stand: o.stand,
       enableTag: o.enableTag,
       lockKey: o.lockKey,
       doorType: o.doorType,
@@ -11114,7 +11378,7 @@ class LayoutView {
     }
     if (isFigureObject(obj)) {
       const tmpl = findEnemyTemplate(doc, figureTemplateName(obj));
-      const verts = enemyPlacementWorldVerts(obj, tmpl);
+      const verts = enemyPlacementWorldVerts(obj, tmpl, undefined, doc);
       if (tmpl && verts.length) {
         for (const [i, j] of tmpl.lines) {
           if (verts[i] && verts[j]) segs.push({ a: verts[i], b: verts[j] });
@@ -11717,6 +11981,17 @@ class LayoutView {
     ctx.stroke();
   }
 
+  /** Item sphere: a camera-facing circle, r * focal / z in px (the game draws it as a screen circle). */
+  #sphere3(ctx, s, cam, w, h) {
+    const pr = projectPoint(s, cam, w, h);
+    if (!pr.ok) return;
+    const rad = (s.r * Math.min(w, h) * 0.9) / pr.z;
+    if (!(rad >= 0.5) || rad > 4 * Math.max(w, h)) return;
+    ctx.beginPath();
+    ctx.arc(pr.sx, pr.sy, rad, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
   /** Downward marker above each Maps-panel search hit. Ignores Local / Rooms Only. */
   #drawSearchArrows(ctx, doc, cam, w, h) {
     const terms = layoutSearchTerms(this.opts.getLayoutSearch?.() || "");
@@ -11759,7 +12034,7 @@ class LayoutView {
       }
       ctx.globalAlpha = 1;
       const tmpl = findEnemyTemplate(doc, figureTemplateName(obj));
-      const verts = enemyPlacementWorldVerts(obj, tmpl);
+      const verts = enemyPlacementWorldVerts(obj, tmpl, undefined, doc);
       if (tmpl && verts.length) {
         ctx.lineWidth = selected ? 2 : 1.5;
         for (const [i, j] of tmpl.lines) {
@@ -11769,9 +12044,11 @@ class LayoutView {
       if (obj.kind === "spawn" && obj.showJump) this.#drawJumpArc(ctx, doc, obj, cam, w, h);
     } else if (obj.kind === "pickup") {
       const mesh = itemMeshFor(doc, obj.pickup);
-      for (const seg of itemMeshWorldSegs(obj, mesh, itemYawFor(doc, obj.pickup, obj.rot))) {
+      const yaw = itemYawFor(doc, obj.pickup, obj.rot);
+      for (const seg of itemMeshWorldSegs(obj, mesh, yaw)) {
         this.#line3(ctx, seg.a, seg.b, cam, w, h);
       }
+      for (const s of itemSphereWorld(obj, mesh, yaw)) this.#sphere3(ctx, s, cam, w, h);
     } else if (obj.kind === "room") {
       const g = roomGeometry(obj);
       this.#drawRoomWalls(ctx, obj, g, cam, w, h);
@@ -11856,9 +12133,11 @@ class LayoutView {
           const tmpl = obj.kind === "pickup" ? null : findEnemyTemplate(doc, figureTemplateName(obj));
           if (obj.kind === "pickup") {
             const mesh = itemMeshFor(doc, obj.pickup);
-            for (const seg of itemMeshWorldSegs(obj, mesh, itemYawFor(doc, obj.pickup, obj.rot))) {
+            const yaw = itemYawFor(doc, obj.pickup, obj.rot);
+            for (const seg of itemMeshWorldSegs(obj, mesh, yaw)) {
               this.#line3(ctx, seg.a, seg.b, cam, w, h);
             }
+            for (const s of itemSphereWorld(obj, mesh, yaw)) this.#sphere3(ctx, s, cam, w, h);
           } else if (tmpl) {
             for (const [i, j] of tmpl.lines) {
               if (verts[i] && verts[j]) this.#line3(ctx, verts[i], verts[j], cam, w, h);
@@ -12560,6 +12839,25 @@ class PreviewView {
     ctx.stroke();
   }
 
+  /**
+   * Item sphere as a smooth stroked ellipse, same projection and stroke as the mesh lines. Radius is
+   * r * FOCAL / z game px (ZCLIP and the PERSP_MAX cap kept), scaled by the preview's pixel aspect.
+   * The game's Bresenham pixel circle is not reproduced here.
+   */
+  #sphere(ctx, cam, s, color) {
+    const c = worldToCamera(s, cam);
+    if (c.z < 1) return; // ZCLIP
+    const R = Math.min(SPHERE_PERSP_MAX, (s.r * GAME_FOCAL) / c.z);
+    if (R < 0.5) return;
+    const p = pvProjectCam(c);
+    if (p.sx < -PREVIEW_W || p.sx > 2 * PREVIEW_W || p.sy < -PREVIEW_H || p.sy > 2 * PREVIEW_H) return;
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.ellipse(p.sx + 0.5, p.sy + 0.5, R * PREVIEW_SX, R * PREVIEW_SY, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
   #drawObject(ctx, doc, obj, cam, color, room) {
     if (obj.kind === "doorway") {
       const mesh = itemMeshFor(doc, obj.doorType);
@@ -12584,9 +12882,11 @@ class PreviewView {
     }
     if (obj.kind === "pickup") {
       const mesh = itemMeshFor(doc, obj.pickup);
-      for (const seg of itemMeshWorldSegs(obj, mesh, itemYawFor(doc, obj.pickup, obj.rot))) {
+      const yaw = itemYawFor(doc, obj.pickup, obj.rot);
+      for (const seg of itemMeshWorldSegs(obj, mesh, yaw)) {
         this.#stroke(ctx, cam, seg.a, seg.b, color);
       }
+      for (const s of itemSphereWorld(obj, mesh, yaw)) this.#sphere(ctx, cam, s, color);
       return;
     }
     if (obj.kind === "slope") {
@@ -12597,7 +12897,7 @@ class PreviewView {
     }
     if (isFigureObject(obj)) {
       const tmpl = findEnemyTemplate(doc, figureTemplateName(obj));
-      const verts = enemyPlacementWorldVerts(obj, tmpl);
+      const verts = enemyPlacementWorldVerts(obj, tmpl, undefined, doc);
       if (tmpl && verts.length) {
         for (const [i, j] of tmpl.lines) {
           if (verts[i] && verts[j]) this.#stroke(ctx, cam, verts[i], verts[j], color);
@@ -13521,6 +13821,11 @@ const ITEM_VERT_HIT = 10;
 const ITEM_LINE_HIT = 6;
 const ITEM_BOX_CLICK = 4;
 const ITEM_ZOOM_K = 0.008;
+/** Pixel tolerance for grabbing a sphere's circumference. */
+const ITEM_RING_HIT = 6;
+const SPHERE_COL = "#e08a3e";
+const SPHERE_COL_HOT = "#ffb36b";
+const SPHERE_COL_SEL = "#d4a017";
 
 function clampItemDist(d) {
   return Math.max(ITEM_ORBIT_DIST_MIN, Math.min(ITEM_ORBIT_DIST_MAX, d));
@@ -13546,8 +13851,12 @@ class ItemView {
     this.hoverVert = -1;
     this.hoverLine = -1;
     this.hoverGizmo = null;
+    this.hoverSphere = -1;
+    this.hoverRing = -1;
     this.selectedVerts = [];
     this.selectedLines = [];
+    /** Indices into mesh.spheres whose centres are selected (move with the gizmo like verts). */
+    this.selectedSpheres = [];
     this.enabled = false;
     this.pointerInside = false;
     this._ro = new ResizeObserver(() => this.resize());
@@ -13589,7 +13898,8 @@ class ItemView {
       !this.drag &&
       !this.pointerInside &&
       !this.selectedVerts.length &&
-      !this.selectedLines.length
+      !this.selectedLines.length &&
+      !this.selectedSpheres.length
     );
   }
 
@@ -13615,14 +13925,17 @@ class ItemView {
   }
 
   selection() {
-    return { verts: [...this.selectedVerts], lines: [...this.selectedLines] };
+    return { verts: [...this.selectedVerts], lines: [...this.selectedLines], spheres: [...this.selectedSpheres] };
   }
 
   clearSelection() {
     this.selectedVerts = [];
     this.selectedLines = [];
+    this.selectedSpheres = [];
     this.hoverVert = -1;
     this.hoverLine = -1;
+    this.hoverSphere = -1;
+    this.hoverRing = -1;
     this.hoverGizmo = null;
   }
 
@@ -13647,6 +13960,7 @@ class ItemView {
     this.opts.endUndo?.();
     this.selectedVerts = [mesh.verts.length - 1];
     this.selectedLines = [];
+    this.selectedSpheres = [];
     this.opts.onChange?.();
     this.opts.onSelect?.();
     this.draw();
@@ -13678,8 +13992,11 @@ class ItemView {
     if (!mesh) return false;
     const lines = [...this.selectedLines].filter((i) => i >= 0 && i < mesh.lines.length).sort((a, b) => b - a);
     const verts = [...this.selectedVerts].filter((i) => i >= 0 && i < mesh.verts.length).sort((a, b) => b - a);
-    if (!lines.length && !verts.length) return false;
+    const sphs = [...this.selectedSpheres].filter((i) => i >= 0 && i < (mesh.spheres?.length || 0)).sort((a, b) => b - a);
+    if (!lines.length && !verts.length && !sphs.length) return false;
     this.opts.beginUndo?.();
+    for (const i of sphs) mesh.spheres.splice(i, 1);
+    if (mesh.spheres && !mesh.spheres.length) delete mesh.spheres;
     for (const i of lines) mesh.lines.splice(i, 1);
     for (const i of verts) {
       mesh.verts.splice(i, 1);
@@ -13755,6 +14072,7 @@ class ItemView {
     this.opts.endUndo?.();
     this.selectedVerts = placed.map((_, i) => base + i);
     this.selectedLines = [];
+    this.selectedSpheres = [];
     this.opts.onChange?.();
     this.opts.onSelect?.();
     this.draw();
@@ -13860,8 +14178,12 @@ class ItemView {
 
   /** Frame mesh verts; if none, center on origin without changing dist. */
   focusObject() {
-    const points = this.#mesh().verts;
-    if (!points?.length) {
+    const mesh = this.#mesh();
+    const points = [...mesh.verts];
+    for (const s of mesh.spheres || []) {
+      points.push({ x: s.x - s.r, y: s.y - s.r, z: s.z - s.r }, { x: s.x + s.r, y: s.y + s.r, z: s.z + s.r });
+    }
+    if (!points.length) {
       this.orbit.target = { x: 0, y: 0, z: 0 };
       this.opts.onViewChanged?.();
       this.draw();
@@ -13929,27 +14251,27 @@ class ItemView {
     };
   }
 
+  /** Gizmo anchor: centroid of the selected verts and sphere centres. */
   #selectionAnchor() {
     const mesh = this.#mesh();
     const selected = this.selectedVerts.filter((i) => mesh.verts[i]);
-    if (!selected.length) return null;
-    if (selected.length === 1) {
-      const i = selected[0];
-      return { v: mesh.verts[i], indices: selected };
-    }
+    const sph = this.selectedSpheres.filter((i) => mesh.spheres?.[i]);
+    const pts = [...selected.map((i) => mesh.verts[i]), ...sph.map((i) => mesh.spheres[i])];
+    if (!pts.length) return null;
+    if (pts.length === 1) return { v: pts[0], indices: selected, spheres: sph };
     let x = 0;
     let y = 0;
     let z = 0;
-    for (const i of selected) {
-      x += mesh.verts[i].x;
-      y += mesh.verts[i].y;
-      z += mesh.verts[i].z;
+    for (const p of pts) {
+      x += p.x;
+      y += p.y;
+      z += p.z;
     }
-    const n = selected.length;
-    return { v: { x: x / n, y: y / n, z: z / n }, indices: selected };
+    const n = pts.length;
+    return { v: { x: x / n, y: y / n, z: z / n }, indices: selected, spheres: sph };
   }
 
-  #applyVertDrag(origs, applyCoord) {
+  #applyVertDrag(origs, applyCoord, sorigs = []) {
     const mesh = this.#mesh();
     const next = mesh.verts.map((v) => ({ ...v }));
     for (const o of origs) {
@@ -13958,12 +14280,24 @@ class ItemView {
       next[o.i].z = o.z;
       applyCoord(next[o.i], o);
     }
+    const nextSph = (mesh.spheres || []).map((s) => ({ ...s }));
+    for (const o of sorigs) {
+      nextSph[o.i].x = o.x;
+      nextSph[o.i].y = o.y;
+      nextSph[o.i].z = o.z;
+      applyCoord(nextSph[o.i], o);
+    }
     // Coincident verts are allowed mid-drag; #mergeDropped welds them on release.
-    if (!this.#uniqueOk(next)) return false;
+    if (!this.#uniqueOk(next, nextSph)) return false;
     for (const o of origs) {
       mesh.verts[o.i].x = next[o.i].x;
       mesh.verts[o.i].y = next[o.i].y;
       mesh.verts[o.i].z = next[o.i].z;
+    }
+    for (const o of sorigs) {
+      mesh.spheres[o.i].x = nextSph[o.i].x;
+      mesh.spheres[o.i].y = nextSph[o.i].y;
+      mesh.spheres[o.i].z = nextSph[o.i].z;
     }
     return true;
   }
@@ -13975,6 +14309,16 @@ class ItemView {
       x: mesh.verts[i].x,
       y: mesh.verts[i].y,
       z: mesh.verts[i].z,
+    }));
+  }
+
+  #gizmoDragSphereOrigs(prim) {
+    const mesh = this.#mesh();
+    return prim.spheres.map((i) => ({
+      i,
+      x: mesh.spheres[i].x,
+      y: mesh.spheres[i].y,
+      z: mesh.spheres[i].z,
     }));
   }
 
@@ -14019,7 +14363,7 @@ class ItemView {
       d.dupBlocked = true;
       return false;
     }
-    const ok = this.#applyVertDrag(d.origs, coordFn);
+    const ok = this.#applyVertDrag(d.origs, coordFn, d.sorigs);
     if (ok) d.moved = true;
     if (starting) {
       if (ok) {
@@ -14077,7 +14421,8 @@ class ItemView {
   #startGizmoDrag(gizmoHit, prim, p, dup = false) {
     this.opts.beginUndo?.();
     this.drag = {
-      dup,
+      // Ctrl-drag copies vertices only; sphere centres in the selection just move.
+      dup: dup && prim.indices.length > 0,
       dupDone: false,
       dupBlocked: false,
       kind: gizmoHit.kind,
@@ -14087,6 +14432,7 @@ class ItemView {
       grab: gizmoHit.world,
       gizmoAxisLen: gizmoHit.gizmoAxisLen ?? GIZMO_FALLBACK_LEN,
       origs: this.#gizmoDragOrigs(prim),
+      sorigs: this.#gizmoDragSphereOrigs(prim),
       orig: { x: prim.v.x, y: prim.v.y, z: prim.v.z },
       start: p,
     };
@@ -14106,6 +14452,63 @@ class ItemView {
       }
     });
     return best;
+  }
+
+  /** Screen centre and radius (px) of sphere i, or null when behind the camera. Spin is off while the pointer is in. */
+  #sphereScreen(sp) {
+    const w = this.cssW;
+    const h = this.cssH;
+    const pr = projectPoint(sp, this.#cam(), w, h);
+    if (!pr.ok) return null;
+    return { sx: pr.sx, sy: pr.sy, z: pr.z, rad: (sp.r * Math.min(w, h) * 0.9) / pr.z };
+  }
+
+  /** Nearest sphere centre within the vert hit radius. `prefer` wins a tie (a sphere sitting on a vertex). */
+  #hitSphereCenter(mx, my, mesh) {
+    let best = -1;
+    let bestD = ITEM_VERT_HIT;
+    (mesh.spheres || []).forEach((sp, i) => {
+      const s = this.#sphereScreen(sp);
+      if (!s) return;
+      const d = Math.hypot(mx - s.sx, my - s.sy);
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    });
+    return { index: best, dist: bestD };
+  }
+
+  /** Sphere whose circumference passes within ITEM_RING_HIT px of the pointer. */
+  #hitSphereRing(mx, my, mesh) {
+    let best = -1;
+    let bestD = ITEM_RING_HIT;
+    (mesh.spheres || []).forEach((sp, i) => {
+      const s = this.#sphereScreen(sp);
+      if (!s || s.rad > 4 * Math.max(this.cssW, this.cssH)) return;
+      const d = Math.abs(Math.hypot(mx - s.sx, my - s.sy) - s.rad);
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    });
+    return best;
+  }
+
+  /**
+   * Vertex or sphere centre under the pointer. A vertex wins unless the sphere centre is strictly nearer,
+   * or the two coincide and the vertex is already selected (so a second click reaches the sphere).
+   */
+  #hitHandle(mx, my, mesh) {
+    const vi = this.#hitVert(mx, my, mesh.verts);
+    const sh = this.#hitSphereCenter(mx, my, mesh);
+    if (sh.index < 0) return { vert: vi, sphere: -1 };
+    if (vi < 0) return { vert: -1, sphere: sh.index };
+    const cam = this.#cam();
+    const p = projectPoint(mesh.verts[vi], cam, this.cssW, this.cssH);
+    const vd = Math.hypot(mx - p.sx, my - p.sy);
+    const sphereWins = sh.dist < vd || (sh.dist === vd && this.selectedVerts.includes(vi));
+    return sphereWins ? { vert: -1, sphere: sh.index } : { vert: vi, sphere: -1 };
   }
 
   #hitLine(mx, my, mesh) {
@@ -14139,8 +14542,9 @@ class ItemView {
     return mesh.verts.some((v, i) => !skip.has(i) && v.x === x && v.y === y && v.z === z);
   }
 
-  #uniqueOk(verts) {
-    const { nx, nz } = itemUniqueXZ(verts);
+  /** Unique X/Z budget over the cooked verts: mesh verts plus sphere origins (an origin on a vert reuses it). */
+  #uniqueOk(verts, spheres = this.#mesh().spheres || []) {
+    const { nx, nz } = itemUniqueXZ([...verts, ...spheres]);
     return nx <= ITEM_MAX_UNIQUE && nz <= ITEM_MAX_UNIQUE;
   }
 
@@ -14162,17 +14566,37 @@ class ItemView {
     if (i < 0) this.selectedVerts = [];
     else if (additive) {
       if (!this.selectedVerts.includes(i)) this.selectedVerts.push(i);
-    } else this.selectedVerts = [i];
+    } else {
+      this.selectedVerts = [i];
+      this.selectedSpheres = [];
+    }
     this.selectedLines = [];
     this.opts.onSelect?.();
   }
 
-  #selectVerts(indices, additive) {
+  #selectSphere(i, additive) {
+    if (additive) {
+      if (!this.selectedSpheres.includes(i)) this.selectedSpheres.push(i);
+    } else {
+      this.selectedSpheres = [i];
+      this.selectedVerts = [];
+    }
+    this.selectedLines = [];
+    this.opts.onSelect?.();
+  }
+
+  #selectVerts(indices, additive, sphereIndices = []) {
     if (additive) {
       for (const i of indices) {
         if (!this.selectedVerts.includes(i)) this.selectedVerts.push(i);
       }
-    } else this.selectedVerts = [...indices];
+      for (const i of sphereIndices) {
+        if (!this.selectedSpheres.includes(i)) this.selectedSpheres.push(i);
+      }
+    } else {
+      this.selectedVerts = [...indices];
+      this.selectedSpheres = [...sphereIndices];
+    }
     this.selectedLines = [];
     this.opts.onSelect?.();
   }
@@ -14183,6 +14607,7 @@ class ItemView {
       if (!this.selectedLines.includes(i)) this.selectedLines.push(i);
     } else this.selectedLines = [i];
     this.selectedVerts = [];
+    this.selectedSpheres = [];
     this.opts.onSelect?.();
   }
 
@@ -14226,10 +14651,19 @@ class ItemView {
       }
     }
 
-    const vi = this.#hitVert(p.x, p.y, mesh.verts);
-    if (vi >= 0) {
-      this.#selectVert(vi, e.shiftKey);
+    const hit = this.#hitHandle(p.x, p.y, mesh);
+    if (hit.vert >= 0 || hit.sphere >= 0) {
+      if (hit.vert >= 0) this.#selectVert(hit.vert, e.shiftKey);
+      else this.#selectSphere(hit.sphere, e.shiftKey);
       this.drag = { kind: "select" };
+      this.canvas.setPointerCapture(e.pointerId);
+      this.draw();
+      return;
+    }
+
+    const ri = this.#hitSphereRing(p.x, p.y, mesh);
+    if (ri >= 0) {
+      this.drag = { kind: "radius", si: ri, began: false };
       this.canvas.setPointerCapture(e.pointerId);
       this.draw();
       return;
@@ -14255,12 +14689,33 @@ class ItemView {
     if (!this.drag) {
       const prim = this.#selectionAnchor();
       const cam = this.#cam();
-      this.hoverVert = this.#hitVert(p.x, p.y, mesh.verts);
+      const hit = this.#hitHandle(p.x, p.y, mesh);
+      this.hoverVert = hit.vert;
+      this.hoverSphere = hit.sphere;
       this.hoverGizmo =
-        prim && this.hoverVert < 0
+        prim && hit.vert < 0 && hit.sphere < 0
           ? hitTranslateGizmo(prim.v, cam, this.cssW, this.cssH, p.x, p.y)
           : null;
-      this.hoverLine = this.hoverGizmo || this.hoverVert >= 0 ? -1 : this.#hitLine(p.x, p.y, mesh);
+      const onHandle = this.hoverGizmo || hit.vert >= 0 || hit.sphere >= 0;
+      this.hoverRing = onHandle ? -1 : this.#hitSphereRing(p.x, p.y, mesh);
+      this.hoverLine = onHandle || this.hoverRing >= 0 ? -1 : this.#hitLine(p.x, p.y, mesh);
+      this.canvas.style.cursor = this.hoverRing >= 0 ? "nesw-resize" : "";
+      this.draw();
+      return;
+    }
+    if (this.drag.kind === "radius") {
+      const sp = mesh.spheres?.[this.drag.si];
+      const s = sp && this.#sphereScreen(sp);
+      if (!s) return;
+      // Inverse of the draw radius: r = px * z / focal.
+      const r = clampItemSphereR((Math.hypot(p.x - s.sx, p.y - s.sy) * s.z) / (Math.min(this.cssW, this.cssH) * 0.9));
+      if (r === sp.r) return;
+      if (!this.drag.began) {
+        this.opts.beginUndo?.();
+        this.drag.began = true;
+      }
+      sp.r = r;
+      this.opts.onChange?.();
       this.draw();
       return;
     }
@@ -14375,6 +14830,15 @@ class ItemView {
     return hits;
   }
 
+  #spheresInBox(rect) {
+    const hits = [];
+    (this.#mesh().spheres || []).forEach((sp, i) => {
+      const s = this.#sphereScreen(sp);
+      if (s && s.sx >= rect.x0 && s.sx <= rect.x1 && s.sy >= rect.y0 && s.sy <= rect.y1) hits.push(i);
+    });
+    return hits;
+  }
+
   #finishBox() {
     const rect = this.#boxRect();
     const additive = this.drag.additive;
@@ -14382,11 +14846,12 @@ class ItemView {
       if (!additive) {
         this.selectedVerts = [];
         this.selectedLines = [];
+        this.selectedSpheres = [];
         this.opts.onSelect?.();
       }
       return;
     }
-    this.#selectVerts(this.#vertsInBox(rect), additive);
+    this.#selectVerts(this.#vertsInBox(rect), additive, this.#spheresInBox(rect));
   }
 
   #onUp(e) {
@@ -14402,7 +14867,9 @@ class ItemView {
       }
       this.opts.endUndo?.();
     }
+    if (this.drag?.kind === "radius") this.opts.endUndo?.();
     this.drag = null;
+    this.canvas.style.cursor = "";
     if (orbitEnded) this.opts.onViewChanged?.();
     try {
       this.canvas.releasePointerCapture(e.pointerId);
@@ -14539,11 +15006,14 @@ class ItemView {
     this.#drawGhost(ctx, cam, w, h);
 
     let shownVerts = this.selectedVerts;
+    let shownSpheres = this.selectedSpheres;
     if (this.drag?.kind === "box") {
       const r = this.#boxRect();
       if (r.w >= ITEM_BOX_CLICK || r.h >= ITEM_BOX_CLICK) {
         const hits = this.#vertsInBox(r);
+        const sHits = this.#spheresInBox(r);
         shownVerts = this.drag.additive ? [...new Set([...this.selectedVerts, ...hits])] : hits;
+        shownSpheres = this.drag.additive ? [...new Set([...this.selectedSpheres, ...sHits])] : sHits;
       }
     }
 
@@ -14562,6 +15032,47 @@ class ItemView {
       if (!a || !b) return;
       const sel = this.selectedLines.includes(i);
       this.#strokeSeg(ctx, cam, w, h, a, b, sel ? "#f2d36b" : "#c8ccd4", sel ? 2.5 : 1.5);
+    });
+
+    // Spheres: smooth camera-facing circles (radius r * focal / z, as the game scales them; the game's
+    // pixel circle is only in the Preview view). Centre is a diamond handle, circumference is draggable.
+    (mesh.spheres || []).forEach((sp, i) => {
+      const c = yaw
+        ? { x: sp.x * Math.cos(yaw) + sp.z * Math.sin(yaw), y: sp.y, z: -sp.x * Math.sin(yaw) + sp.z * Math.cos(yaw) }
+        : sp;
+      const pr = projectPoint(c, cam, w, h);
+      if (!pr.ok) return;
+      const rad = (sp.r * Math.min(w, h) * 0.9) / pr.z;
+      const sel = shownSpheres.includes(i);
+      const hot = this.hoverRing === i || (this.drag?.kind === "radius" && this.drag.si === i);
+      const col = sel ? SPHERE_COL_SEL : hot ? SPHERE_COL_HOT : SPHERE_COL;
+      if (rad >= 0.5 && rad <= 4 * Math.max(w, h)) {
+        ctx.beginPath();
+        ctx.arc(pr.sx, pr.sy, rad, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(224, 138, 62, 0.07)";
+        ctx.fill();
+        ctx.strokeStyle = col;
+        ctx.lineWidth = hot ? 2.5 : 1.5;
+        ctx.stroke();
+      }
+      const ho = this.hoverSphere === i;
+      const d = sel || ho ? 6 : 5;
+      ctx.beginPath();
+      ctx.moveTo(pr.sx, pr.sy - d);
+      ctx.lineTo(pr.sx + d, pr.sy);
+      ctx.lineTo(pr.sx, pr.sy + d);
+      ctx.lineTo(pr.sx - d, pr.sy);
+      ctx.closePath();
+      ctx.fillStyle = ho && !sel ? "#fff" : col;
+      ctx.fill();
+      ctx.strokeStyle = "#0a0a0c";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      if (hot) {
+        ctx.fillStyle = col;
+        ctx.font = "11px Segoe UI, sans-serif";
+        ctx.fillText(`r ${sp.r}`, pr.sx + 9, pr.sy - 9);
+      }
     });
 
     dverts.forEach((v, i) => {
@@ -16078,8 +16589,9 @@ class StickOrtho {
 
   // Front looks along -Z, so screen-right is -X, matching the perspective camera.
   // Left looks along +X (180° from the old right view), so screen-right is -Z.
+  // opts.mirror() flips the horizontal axis (left view becomes the right view).
   #sign() {
-    return -1;
+    return this.opts.mirror?.() ? 1 : -1;
   }
 
   #toScreen(v) {
@@ -16197,6 +16709,50 @@ class StickOrtho {
     this.opts.onZoom?.(e.deltaY > 0 ? 1.1 : 1 / 1.1);
   }
 
+  /** 1-unit grid in vertex coordinates; major lines every 8 and 32. Origin axes are brighter. */
+  #drawGrid(o) {
+    const ctx = this.ctx;
+    const w = this.cssW;
+    const h = this.cssH;
+    const px = this.px;
+    // Coarsen by powers of two until cells are at least ~5 px.
+    let step = 1;
+    while (step * px < 5 && step < 64) step *= 2;
+    const line = (pos, vertical, style) => {
+      ctx.strokeStyle = style;
+      ctx.beginPath();
+      if (vertical) {
+        const x = Math.round(pos) + 0.5;
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, h);
+      } else {
+        const y = Math.round(pos) + 0.5;
+        ctx.moveTo(0, y);
+        ctx.lineTo(w, y);
+      }
+      ctx.stroke();
+    };
+    const style = (n) => {
+      if (n === 0) return "rgba(120,150,190,0.55)";
+      if (n % 32 === 0) return "rgba(120,150,190,0.30)";
+      if (n % 8 === 0) return "rgba(120,150,190,0.18)";
+      return "rgba(120,150,190,0.07)";
+    };
+    ctx.save();
+    ctx.lineWidth = 1;
+    // Screen x = o.x + sign*n*px; screen y = o.y - n*px.
+    const s = this.#sign();
+    const nA = ((0 - o.x) / px) * s;
+    const nB = ((w - o.x) / px) * s;
+    const nxMin = Math.ceil(Math.min(nA, nB) / step) * step;
+    const nxMax = Math.floor(Math.max(nA, nB) / step) * step;
+    for (let n = nxMin; n <= nxMax; n += step) line(o.x + s * n * px, true, style(n));
+    const nyMin = Math.ceil((o.y - h) / px / step) * step;
+    const nyMax = Math.floor(o.y / px / step) * step;
+    for (let n = nyMin; n <= nyMax; n += step) line(o.y - n * px, false, style(n));
+    ctx.restore();
+  }
+
   draw() {
     if (!this.enabled) return;
     const ctx = this.ctx;
@@ -16208,6 +16764,7 @@ class StickOrtho {
     const e = this.#enemy();
     const verts = this.#verts();
     const o = this.#origin();
+    this.#drawGrid(o);
     const sprite = this.opts.getSprite?.();
     const scale = this.opts.spriteScale?.() ?? 1;
     if (sprite?.canvas) {
@@ -16296,6 +16853,8 @@ let sharewareModels = {};
 let sharewareMissing = [];
 let overlayOn = true;
 let refSpriteOn = true;
+/** Side stick pane shows the right view (mirrored left: Z axis and sprite flipped). */
+let sideViewRight = true;
 let collisionOn = true;
 let stickWireOn = true;
 let drawingOrtho = false;
@@ -16600,9 +17159,10 @@ function syncStickScale() {
   stickFront?.setScale(px);
 }
 
-function makeStickOrtho(id, horiz, rot) {
+function makeStickOrtho(id, horiz, rot, mirror = null) {
   return new StickOrtho(document.getElementById(id), {
     horiz,
+    mirror,
     getEnemy: () => activeEnemy(),
     getFrame: () => frameIndex,
     getSelected: () => selectedVerts,
@@ -16626,14 +17186,18 @@ function makeStickOrtho(id, horiz, rot) {
       animView.draw();
     },
     showWire: () => stickWireOn,
-    getSprite: () => (refSpriteOn ? orthoSprite(rot) : null),
+    getSprite: () => {
+      if (!refSpriteOn) return null;
+      const s = orthoSprite(rot);
+      return s && mirror?.() ? { ...s, flip: !s.flip } : s;
+    },
     spriteScale: () => 0.35,
     vertLimit: () => vertLimitFor(activeEnemy()),
     clampVert: (n) => clampVertFor(activeEnemy())(n),
   });
 }
 
-const stickLeft = makeStickOrtho("stick-left-canvas", "z", 7);
+const stickLeft = makeStickOrtho("stick-left-canvas", "z", 7, () => sideViewRight);
 const stickFront = makeStickOrtho("stick-front-canvas", "x", 1);
 
 const itemView = new ItemView(document.getElementById("view-canvas"), {
@@ -17115,6 +17679,52 @@ function renderClipSoundFields(root, e, clip) {
     refreshAll();
   });
   root.appendChild(field("Attack frame", atk));
+}
+
+function addStandVariant(e) {
+  pushUndo();
+  const clip = addStandVariantClip(e);
+  if (!clip) {
+    setStatus("Can't add a stand animation (limit reached or no stand clip)", true);
+    return;
+  }
+  clipIndex = e.clips.indexOf(clip);
+  frameLocal = 0;
+  applyFrameLocal();
+  markDirty();
+  markUi();
+  refreshAll();
+  setStatus(`Added stand animation "${clip.name}". Name it below, then add frames.`);
+}
+
+/** Name field for the selected clip when it is a stand variant. */
+function renderStandVarName(root, e, clip) {
+  const stick = stickClipFor(e, clip);
+  if (!stick?.standVar) return;
+  const inp = document.createElement("input");
+  inp.type = "text";
+  inp.maxLength = STAND_VAR_NAME_MAX;
+  inp.value = stick.name;
+  inp.addEventListener("change", () => {
+    const before = stick.name;
+    const name = clampStandVarName(inp.value);
+    if (name === before) {
+      inp.value = before;
+      return;
+    }
+    const bad = standVarNameProblem(e, name, stick);
+    if (bad) {
+      inp.value = before;
+      setStatus(bad, true);
+      return;
+    }
+    pushUndo();
+    renameStandVariant(doc, e, stick, name);
+    markDirty();
+    refreshAll();
+    setStatus(`Renamed "${before}" to "${stick.name}"`);
+  });
+  root.appendChild(field("Stand animation name", inp));
 }
 
 function clipIsExported(e, name) {
@@ -18525,6 +19135,66 @@ function buildItemFlags(root, key) {
   }
 }
 
+/**
+ * Items tab: up to ITEM_MAX_SPHERES screen circles per item type (origin + radius, units).
+ * The game draws each as a screen circle (item_spheres, src/item_xf.asm). An origin that is
+ * not on an existing vertex costs one vertex of the item's 16.
+ */
+function buildItemSpheres(root, key) {
+  if (itemMeta(doc, key).door) return;
+  const mesh = doc.items[key];
+  const list = mesh.spheres || [];
+  const h = document.createElement("h3");
+  h.textContent = "Spheres";
+  root.appendChild(h);
+  const edit = (fn) => {
+    pushUndo();
+    const next = (mesh.spheres || []).map((s) => ({ ...s }));
+    fn(next);
+    const clean = parseItemSpheres(next);
+    if (clean.length) mesh.spheres = clean;
+    else delete mesh.spheres;
+    markDirty();
+    renderInspector();
+    itemView.draw();
+  };
+  list.forEach((s, i) => {
+    const spec = (axis) => ({
+      axis,
+      value: s[axis],
+      min: ITEM_COORD_MIN,
+      max: ITEM_COORD_MAX,
+      step: 0.25,
+      onChange: (v) => edit((a) => (a[i][axis] = v)),
+    });
+    root.appendChild(vec3Field(`Origin ${i + 1}`, [spec("x"), spec("y"), spec("z")]));
+    root.appendChild(
+      field(`Radius ${i + 1}`, numInput(s.r, (v) => edit((a) => (a[i].r = v)), ITEM_SPHERE_R_MIN, ITEM_SPHERE_R_MAX, 0.25))
+    );
+    const rm = document.createElement("button");
+    rm.type = "button";
+    rm.className = "danger";
+    rm.textContent = `Remove sphere ${i + 1}`;
+    rm.addEventListener("click", () => {
+      itemView.selectedSpheres = [];
+      edit((a) => a.splice(i, 1));
+    });
+    root.appendChild(rm);
+  });
+  const add = document.createElement("button");
+  add.type = "button";
+  add.textContent = "Add Sphere";
+  add.disabled = list.length >= ITEM_MAX_SPHERES;
+  add.title = `Up to ${ITEM_MAX_SPHERES}; starts 1 unit above the origin`;
+  add.addEventListener("click", () => edit((a) => a.push({ x: 0, y: 1, z: 0, r: 1 })));
+  root.appendChild(add);
+  const hint = document.createElement("p");
+  hint.className = "muted";
+  hint.textContent =
+    "Drawn as a circle facing the camera. Origin and radius are in units, 0.25 steps; the radius scales with the placed item. In the viewport, click the diamond to select the origin (move it with the gizmo like a vertex) and drag the circle to change the radius.";
+  root.appendChild(hint);
+}
+
 function syncSharewareFolderButtons() {
   const folder = sharewareFolderName();
   const label = folder ? "Change folder…" : "Open shareware folder";
@@ -18989,6 +19659,48 @@ function appendMixedKindStub(root, objs) {
   root.appendChild(row);
 }
 
+/** Placed-enemy stand animation: one toggle per shipped stand variant of the enemy's type. */
+function renderStandPicker(root, objs, apply) {
+  const types = new Set(objs.map((o) => o.enemy));
+  const tmpl = types.size === 1 ? findEnemyTemplate(doc, objs[0].enemy) : null;
+  const variants = standVariantClips(tmpl);
+  if (!variants.length) return;
+  const wrap = document.createElement("div");
+  wrap.className = "stand-pick";
+  const label = document.createElement("span");
+  label.className = "stand-pick-label";
+  label.textContent = "Stand animation";
+  wrap.appendChild(label);
+  const grid = document.createElement("div");
+  grid.className = "stand-grid";
+  const cur = unanimous(objs, (o) => o.stand || "");
+  const anyNoCombat = objs.some((o) => roomUnderObject(doc, o)?.noCombat);
+  grid.classList.toggle("inactive", !anyNoCombat);
+  for (const c of variants) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "toggle";
+    btn.textContent = c.name;
+    btn.title = c.name;
+    btn.classList.toggle("active", cur === c.name);
+    btn.addEventListener("click", () =>
+      apply((obj) => {
+        if (cur === c.name) delete obj.stand;
+        else obj.stand = c.name;
+      })
+    );
+    grid.appendChild(btn);
+  }
+  wrap.appendChild(grid);
+  const hint = document.createElement("p");
+  hint.className = "muted";
+  hint.textContent = anyNoCombat
+    ? "Plays instead of the normal stand. Click again for the normal stand."
+    : "Only used in no-combat rooms; ignored here.";
+  wrap.appendChild(hint);
+  root.appendChild(wrap);
+}
+
 function renderLayoutObjectFields(root, objs) {
   const kind = objs[0].kind;
   const apply = (fn) => {
@@ -19227,6 +19939,7 @@ function renderLayoutObjectFields(root, objs) {
     );
     btyRow.title = "0 = not a bounty. Snaps to 3, 7, 11 ... 1019 (one byte). Scannable with the DNA rig once dead.";
     root.appendChild(btyRow);
+    renderStandPicker(root, objs, apply);
   }
 
   if (kind === "trigger") {
@@ -19599,6 +20312,7 @@ function renderInspector() {
     hint.textContent = "Grid −4…4 · origin at 0,0,0 · Add Vert places at origin · Ctrl-drag a vertex to extrude a copy with a line · drop a vertex on another to merge.";
     root.appendChild(hint);
     buildItemFlags(root, itemMeshKey);
+    buildItemSpheres(root, itemMeshKey);
     buildIconEditor(root, itemMeshKey);
     return;
   }
@@ -19823,6 +20537,21 @@ function renderInspector() {
       li.append(box, nameBtn, len);
       ul.appendChild(li);
     });
+    if (spriteEnemy) {
+      const li = document.createElement("li");
+      const add = document.createElement("button");
+      add.type = "button";
+      add.className = "frame-name clip-add";
+      add.textContent = "+";
+      const full = e.clips.filter((c) => c.standVar).length >= STAND_VAR_MAX;
+      add.disabled = full;
+      add.title = full
+        ? `At most ${STAND_VAR_MAX} stand animations`
+        : "Add a stand animation (picked per placed enemy, used in no-combat rooms)";
+      add.addEventListener("click", () => addStandVariant(e));
+      li.appendChild(add);
+      ul.appendChild(li);
+    }
     root.appendChild(ul);
   }
   const packed = packedPoseBytes(e);
@@ -19920,6 +20649,7 @@ function renderInspector() {
       transport.appendChild(editRow);
     }
     root.appendChild(transport);
+    renderStandVarName(root, e, clip);
     renderClipSoundFields(root, e, clip);
   }
 
@@ -20717,6 +21447,15 @@ function setRefSpriteOn(on) {
   markUi();
 }
 
+function setSideViewRight(on) {
+  sideViewRight = !!on;
+  document.getElementById("btn-side-right")?.classList.toggle("active", sideViewRight);
+  const label = document.getElementById("stick-side-label");
+  if (label) label.textContent = sideViewRight ? "Right" : "Left";
+  if (editorMode === "anim") stickLeft.draw();
+  markUi();
+}
+
 function setMdlScale(value) {
   mdlScale = clampMdlScale(value);
   const range = document.getElementById("mdl-scale");
@@ -20801,6 +21540,9 @@ document.getElementById("btn-mode-font")?.addEventListener("click", () => {
 });
 document.getElementById("btn-mdl-overlay").addEventListener("click", () => {
   setRefSpriteOn(!refSpriteOn);
+});
+document.getElementById("btn-side-right")?.addEventListener("click", () => {
+  setSideViewRight(!sideViewRight);
 });
 document.getElementById("btn-collision-overlay")?.addEventListener("click", (e) => {
   collisionOn = !collisionOn;

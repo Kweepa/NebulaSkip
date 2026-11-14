@@ -7,7 +7,7 @@ ITEM_NPAGES	= 1
 
 ; Resident: indexed by th_cull_hit, item_pick_rot and the nv = 0 fallbacks.
 item_nv
-	!byte 12,12,5,7,10,8,5,8,7,7,8,8,8,6,10,10
+	!byte 12,12,5,7,10,8,5,8,7,7,7,8,8,6,10,10
 	!byte 12,12,10,9,6,10,3,4,4,3,10
 ; 1 = yaw-spins about box+ITEM_BIAS (editor Rotating flag)
 item_rot
@@ -15,8 +15,22 @@ item_rot
 	!byte 0,0,0,0,0,0,1,0,0,0,0
 ; thing frustum-cull half-extent in units about box+ITEM_BIAS (th_cull_hit)
 item_cr
-	!byte 1,2,2,2,2,2,1,1,1,2,2,2,2,2,2,2
+	!byte 1,2,2,2,2,2,1,1,1,2,3,2,2,2,2,2
 	!byte 4,3,2,2,1,2,7,2,2,2,2
+; editor spheres: count per slot; origin vertex and radius (quarter-units), index slot*2+i
+item_ns
+	!byte 0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0
+	!byte 0,0,0,0,0,0,0,0,0,0,0
+item_sv
+	!byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+	!byte 0,0,0,0,6,0,0,0,0,0,0,0,0,0,0,0
+	!byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+	!byte 0,0,0,0,0,0
+item_sr
+	!byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+	!byte 0,0,0,0,4,0,0,0,0,0,0,0,0,0,0,0
+	!byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+	!byte 0,0,0,0,0,0
 
 ; TH_* names for hud_got (editor item names; keycards keep their glyph until renamed)
 thn_0

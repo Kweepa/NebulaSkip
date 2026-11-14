@@ -631,6 +631,7 @@ draw_pickup_mesh
 	lda #0
 	sta th_draw_fl
 	jsr stroke_mesh
+	jsr item_spheres		; editor spheres: circles from the projected origin verts
 	jmp e_leave
 
 fill_item_verts
@@ -645,6 +646,13 @@ fill_item_verts
 +
 	lda #0
 	sta rot1				; no door scale
+	sty item_slot_cur		; item_spheres runs after stroke_mesh, when th_draw_fl is already cleared
+	lda th_draw_fl
+	and #$c0
+	asl
+	rol
+	rol
+	sta item_scale_shl		; scale shift 0..3, as item_big_shl
 	jsr E_ITEM_SLOT
 	; item_rot (editor Rotating flag): 1 yaw-spins about box+ITEM_BIAS, 0 holds the placed
 	; facing (th_draw_fl bits 0-2, x32 = 45 deg steps in 256-unit yaw).

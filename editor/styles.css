@@ -373,6 +373,45 @@ h2 {
   color: var(--accent);
 }
 
+.export-clip-list button.clip-add {
+  flex: 0 0 auto;
+  min-width: 2rem;
+  text-align: center;
+  font-weight: 600;
+  border: 1px solid var(--border);
+}
+
+.stand-pick {
+  margin-bottom: 0.4rem;
+}
+
+.stand-pick-label {
+  display: block;
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin-bottom: 0.25rem;
+}
+
+.stand-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 2px;
+}
+
+.stand-grid button {
+  min-width: 0;
+  padding: 0.15rem 0.3rem;
+  font-size: 0.75rem;
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stand-grid.inactive {
+  opacity: 0.5;
+}
+
 .anim-transport {
   margin-top: 0.35rem;
 }

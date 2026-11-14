@@ -240,6 +240,7 @@
       "dir": 1,
       "rot": 4,
       "enemy": "Human",
+      "stand": "leanoncounter",
       "roomId": "db241be9-929a-4455-ba75-6b573e52cd96"
     },
     {
@@ -284,7 +285,7 @@
       "kind": "enemy",
       "x": 151,
       "y": 64,
-      "z": 73,
+      "z": 74,
       "sx": 2,
       "sy": 4,
       "sz": 2,
@@ -293,6 +294,7 @@
       "dir": 1,
       "rot": 4,
       "enemy": "Human",
+      "stand": "leanonwall",
       "roomId": "a332164c-ce1a-4e8d-9cbe-e03e03ff0541"
     },
     {

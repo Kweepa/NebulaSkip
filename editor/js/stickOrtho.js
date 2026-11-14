@@ -69,8 +69,9 @@ export class StickOrtho {
 
   // Front looks along -Z, so screen-right is -X, matching the perspective camera.
   // Left looks along +X (180° from the old right view), so screen-right is -Z.
+  // opts.mirror() flips the horizontal axis (left view becomes the right view).
   #sign() {
-    return -1;
+    return this.opts.mirror?.() ? 1 : -1;
   }
 
   #toScreen(v) {
@@ -188,6 +189,50 @@ export class StickOrtho {
     this.opts.onZoom?.(e.deltaY > 0 ? 1.1 : 1 / 1.1);
   }
 
+  /** 1-unit grid in vertex coordinates; major lines every 8 and 32. Origin axes are brighter. */
+  #drawGrid(o) {
+    const ctx = this.ctx;
+    const w = this.cssW;
+    const h = this.cssH;
+    const px = this.px;
+    // Coarsen by powers of two until cells are at least ~5 px.
+    let step = 1;
+    while (step * px < 5 && step < 64) step *= 2;
+    const line = (pos, vertical, style) => {
+      ctx.strokeStyle = style;
+      ctx.beginPath();
+      if (vertical) {
+        const x = Math.round(pos) + 0.5;
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, h);
+      } else {
+        const y = Math.round(pos) + 0.5;
+        ctx.moveTo(0, y);
+        ctx.lineTo(w, y);
+      }
+      ctx.stroke();
+    };
+    const style = (n) => {
+      if (n === 0) return "rgba(120,150,190,0.55)";
+      if (n % 32 === 0) return "rgba(120,150,190,0.30)";
+      if (n % 8 === 0) return "rgba(120,150,190,0.18)";
+      return "rgba(120,150,190,0.07)";
+    };
+    ctx.save();
+    ctx.lineWidth = 1;
+    // Screen x = o.x + sign*n*px; screen y = o.y - n*px.
+    const s = this.#sign();
+    const nA = ((0 - o.x) / px) * s;
+    const nB = ((w - o.x) / px) * s;
+    const nxMin = Math.ceil(Math.min(nA, nB) / step) * step;
+    const nxMax = Math.floor(Math.max(nA, nB) / step) * step;
+    for (let n = nxMin; n <= nxMax; n += step) line(o.x + s * n * px, true, style(n));
+    const nyMin = Math.ceil((o.y - h) / px / step) * step;
+    const nyMax = Math.floor(o.y / px / step) * step;
+    for (let n = nyMin; n <= nyMax; n += step) line(o.y - n * px, false, style(n));
+    ctx.restore();
+  }
+
   draw() {
     if (!this.enabled) return;
     const ctx = this.ctx;
@@ -199,6 +244,7 @@ export class StickOrtho {
     const e = this.#enemy();
     const verts = this.#verts();
     const o = this.#origin();
+    this.#drawGrid(o);
     const sprite = this.opts.getSprite?.();
     const scale = this.opts.spriteScale?.() ?? 1;
     if (sprite?.canvas) {

@@ -288,7 +288,7 @@ ENEMY_DATA_BASE	= $0701			; boot-loaded enemy_data_blob.asm
 }
 ; Pose prefix copied into one of two resident rows. Offsets match genenemies.py.
 META_STAND_START	= 0
-META_ROW		= 34
+META_ROW		= 50
 AI_ENTRY_LO	= $0850			; streamed AI entry pointer per enemy type
 AI_ENTRY_HI	= AI_ENTRY_LO + ENEMY_PTR_N
 ENEMY_DATA_LIMIT	= AI_ENTRY_LO
@@ -809,7 +809,8 @@ TH_GRAB_R		= 3			; Chebyshev pad outside that footprint
 TH_MAX			= 128		; MAP_NTHINGS ≤ this; keep in sync with tools/genmap.py
 
 combat_armor	= $CD01 + A8_OFF			; 1 = blue (saves 1/2); 0 = green
-; $CD04-$CD23 free (was th_taken while TH_MAX was 32).
+; $CD04-$CD1B: en_stand. $CD1C-$CD23 free (was th_taken while TH_MAX was 32).
+en_stand	= $CD04 + A8_OFF			; ENEMY_MAX: stand variant 0..SV_MAX-1 (0 = plain), set by init_enemies
 th_taken	= play_bss_free				; MAP_NTHINGS (≤ TH_MAX), main RAM below the bank window
 !if  th_taken + TH_MAX > a8_pal_hue {
 	!error "th_taken overlaps the PAL hue table: end=", th_taken + TH_MAX

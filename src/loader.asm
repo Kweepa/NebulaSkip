@@ -772,6 +772,17 @@ copy_meta_row
 	iny
 	lda (src_ptr),y
 	sta enemy_block_r,x
+	iny
+	lda #<enemy_sv_start
+	sta dst_ptr
+	lda #>enemy_sv_start
+	sta dst_ptr+1
+	jsr .cmr_oct
+	lda #<enemy_sv_len
+	sta dst_ptr
+	lda #>enemy_sv_len
+	sta dst_ptr+1
+	jsr .cmr_oct
 	clc
 	lda load_dest
 	adc #META_ROW
@@ -798,6 +809,27 @@ copy_meta_row
 	iny
 	dex
 	bne .cmr_q
+	rts
+
+; Y = first of SV_MAX row bytes (advanced by SV_MAX). dst_ptr = dest table. Slot in meta_scratch.
+; (cube.asm sv_var_off asserts SV_MAX = 8; SV_MAX is not defined yet at this point.)
+.cmr_oct
+	lda meta_scratch
+	asl
+	asl
+	asl
+	sta nlo
+	ldx #SV_MAX
+.cmr_o
+	lda (src_ptr),y
+	sty nhi
+	ldy nlo
+	sta (dst_ptr),y
+	inc nlo
+	ldy nhi
+	iny
+	dex
+	bne .cmr_o
 	rts
 
 ; dest in load_dest; type in load_type. Meta row already consumed.

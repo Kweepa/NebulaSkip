@@ -936,6 +936,14 @@ export const ITEM_WORLD_BIAS = 1;
 export const ITEM_MAX_VERTS = 16;
 export const ITEM_MAX_LINES = 16;
 export const ITEM_MAX_UNIQUE = 6;
+/** Item spheres: up to two screen circles per item type (origin + radius), drawn by item_spheres in the game. */
+export const ITEM_MAX_SPHERES = 2;
+/** Radius in units, quarter-unit steps, packed byte round(r*4) in 1..127. */
+export const ITEM_SPHERE_R_MIN = 1 / ITEM_POS_Q;
+export const ITEM_SPHERE_R_MAX = 127 / ITEM_POS_Q;
+/** Game camera focal length (mem.asm FOCAL) and the persp88 radius cap (PERSP_MAX), screen px in the 192x128 view. */
+export const SPHERE_FOCAL = 100;
+export const SPHERE_PERSP_MAX = 80;
 
 export const DOOR_LOCKS = ["unlocked", "yellow", "blue", "red", "remote"];
 export const DOOR_LOCK_LABELS = {
@@ -1400,7 +1408,30 @@ export function parseItemMesh(raw) {
     lineSeen.add(k);
     lines.push([lo, hi]);
   }
-  return { verts, lines };
+  const spheres = parseItemSpheres(raw.spheres);
+  return spheres.length ? { verts, lines, spheres } : { verts, lines };
+}
+
+export function clampItemSphereR(n) {
+  const q = Math.round(Number(n) * ITEM_POS_Q) / ITEM_POS_Q;
+  if (!Number.isFinite(q) || q < ITEM_SPHERE_R_MIN) return ITEM_SPHERE_R_MIN;
+  return Math.min(q, ITEM_SPHERE_R_MAX);
+}
+
+/** Up to ITEM_MAX_SPHERES {x,y,z,r}: origin on the vert grid, r in units (quarter steps). Mirror of parse_spheres in tools/genitems.py. */
+export function parseItemSpheres(raw) {
+  const out = [];
+  for (const s of Array.isArray(raw) ? raw : []) {
+    if (!s || typeof s !== "object" || out.length >= ITEM_MAX_SPHERES) continue;
+    if (!(Math.round(Number(s.r) * ITEM_POS_Q) > 0)) continue;
+    out.push({
+      x: clampItemCoord(Number(s.x) || 0),
+      y: clampItemCoord(Number(s.y) || 0),
+      z: clampItemCoord(Number(s.z) || 0),
+      r: clampItemSphereR(s.r),
+    });
+  }
+  return out;
 }
 
 export function parseItemMeshes(raw) {
@@ -1509,8 +1540,25 @@ export function itemUniqueXZ(verts) {
   return { nx: xs.size, nz: zs.size, xs, zs };
 }
 
+/**
+ * Mesh verts plus the vertices the cooker adds for sphere origins (tools/genitems.py cook):
+ * an origin that lands on an existing vert reuses it, otherwise it is appended with no edges.
+ */
+export function itemCookedVerts(mesh) {
+  const verts = [...(mesh?.verts || [])];
+  const key = (v) => `${Math.round(v.x * ITEM_POS_Q)},${Math.round(v.y * ITEM_POS_Q)},${Math.round(v.z * ITEM_POS_Q)}`;
+  const have = new Set(verts.map(key));
+  for (const s of mesh?.spheres || []) {
+    if (!have.has(key(s))) {
+      have.add(key(s));
+      verts.push({ x: s.x, y: s.y, z: s.z });
+    }
+  }
+  return verts;
+}
+
 export function itemMeshStats(mesh) {
-  const verts = mesh?.verts || [];
+  const verts = itemCookedVerts(mesh);
   const lines = mesh?.lines || [];
   const { nx, nz } = itemUniqueXZ(verts);
   const nv = verts.length;
@@ -1520,6 +1568,7 @@ export function itemMeshStats(mesh) {
     ne,
     nx,
     nz,
+    nsph: mesh?.spheres?.length || 0,
     bytes: nx + nz + nv * 4 + ne * 2,
     over: nx > ITEM_MAX_UNIQUE || nz > ITEM_MAX_UNIQUE || nv > ITEM_MAX_VERTS || ne > ITEM_MAX_LINES,
   };
@@ -1609,6 +1658,10 @@ export function itemScaleFits(mesh, scale) {
     if (Math.hypot(Number(v.x), Number(v.z)) > max) return false;
     if (Math.abs(Number(v.y)) > max) return false;
   }
+  for (const s of mesh?.spheres || []) {
+    if (Math.hypot(Number(s.x), Number(s.z)) > max || Math.abs(Number(s.y)) > max) return false;
+    if (Number(s.r) * clampItemScale(scale) > 127) return false; // radius << shift must stay below the 16-bit sign
+  }
   return true;
 }
 
@@ -1639,6 +1692,57 @@ export function itemMeshWorldSegs(obj, mesh, yaw = 0) {
     if (verts[a] && verts[b]) segs.push({ a: verts[a], b: verts[b] });
   }
   return segs;
+}
+
+/**
+ * World-space sphere for a placed item, same transform as itemMeshWorldSegs (scale, yaw, +ITEM_WORLD_BIAS).
+ * r is scaled with the item, like the game's `r << item_scale_shl`.
+ * @returns {{x:number,y:number,z:number,r:number}[]}
+ */
+export function itemSphereWorld(obj, mesh, yaw = 0) {
+  const c = Math.cos(yaw);
+  const s = Math.sin(yaw);
+  const k = clampItemScale(obj.scale ?? (obj.big ? 8 : 1));
+  return (mesh?.spheres || []).map((sp) => {
+    const lx = Number(sp.x) * k;
+    const lz = Number(sp.z) * k;
+    return {
+      x: obj.x + (lx * c + lz * s) + ITEM_WORLD_BIAS,
+      y: obj.y + Number(sp.y) * k,
+      z: obj.z + (-lx * s + lz * c) + ITEM_WORLD_BIAS,
+      r: Number(sp.r) * k,
+    };
+  });
+}
+
+/** Screen radius in px (192x128 view) of a world radius at eye depth z: persp88, r * FOCAL / z, capped at PERSP_MAX. */
+export function sphereScreenRadius(r, z) {
+  if (!(z > 0)) return 0;
+  return Math.min(SPHERE_PERSP_MAX, Math.round((r * SPHERE_FOCAL) / z));
+}
+
+/**
+ * Bresenham / midpoint circle, the same integer steps as sph_bres in src/item_xf.asm:
+ *   x = R, y = 0, d = 1 - R; while x >= y: emit 8 mirrors; y++; d < 0 ? d += 2y+1 : (x--, d += 2(y-x)+1).
+ * @param {number} R integer screen radius in px (>= 1)
+ * @returns {[number, number][]} integer offsets (dx, dy) from the centre, duplicates included
+ */
+export function sphereCircle(R) {
+  R = Math.max(1, Math.min(SPHERE_PERSP_MAX, Math.round(R)));
+  let x = R;
+  let y = 0;
+  let d = 1 - R;
+  const pts = [];
+  while (x >= y) {
+    pts.push([x, y], [-x, y], [x, -y], [-x, -y], [y, x], [-y, x], [y, -x], [-y, -x]);
+    y++;
+    if (d < 0) d += 2 * y + 1;
+    else {
+      x--;
+      d += 2 * (y - x) + 1;
+    }
+  }
+  return pts;
 }
 
 /** Fixed equilateral tetra: height 1.5, base side = height/φ. */
@@ -2273,6 +2377,9 @@ export function clampObject(obj) {
     const bnm = clampBountyName(obj.bountyName);
     if (bnm) obj.bountyName = bnm;
     else delete obj.bountyName;
+    const stand = clampStandVarName(obj.stand);
+    if (stand) obj.stand = stand;
+    else delete obj.stand;
   }
   if (obj.kind === "trigger") {
     obj.purpose = clampTriggerPurpose(obj.purpose);
@@ -2394,6 +2501,8 @@ export function createObject(kind, x, y, z, extra = {}) {
     if (bty) obj.bounty = bty;
     const bnm = clampBountyName(extra.bountyName);
     if (bnm) obj.bountyName = bnm;
+    const stand = clampStandVarName(extra.stand);
+    if (stand) obj.stand = stand;
   }
   if (kind === "trigger") {
     obj.purpose = clampTriggerPurpose(extra.purpose);
@@ -2481,6 +2590,17 @@ export function clampBountyName(s) {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, MAX_BOUNTY_NAME_LEN);
+}
+
+/** Stand-variant clip name: printable ASCII, single spaces, trimmed. */
+export const STAND_VAR_NAME_MAX = 16;
+export const STAND_VAR_MAX = 7; // keep in sync with tools/genenemies.py SV_MAX - 1
+export function clampStandVarName(s) {
+  return String(s ?? "")
+    .replace(/[^\x20-\x7e]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, STAND_VAR_NAME_MAX);
 }
 
 /** Bits paid for a bounty: 0 (none) or the nearest 4n-1 in 3..1019. */
@@ -2605,14 +2725,31 @@ function roleCycleFrame(template, now, roleName) {
   return frames[fi];
 }
 
-/** World-space stick verts (1/4 scale, feet on floor center). Enemies loop walk, player spawns loop stand. */
-export function enemyPlacementWorldVerts(obj, template, now = performance.now()) {
+/** Frame of the named stand-variant clip at the game step clock, or null if it isn't a shipped variant. */
+function standVarCycleFrame(template, now, name) {
+  if (!template?.frames?.length || !standVarIndex(template, name)) return null;
+  const clip = template.clips.find((c) => c.name === name);
+  const len = clip.len | 0;
+  const fi = (clip.start | 0) + (len > 0 ? Math.floor(now / walkStepMs(template.name)) % len : 0);
+  return template.frames[fi] || null;
+}
+
+/**
+ * World-space stick verts (1/4 scale, feet on floor center). Enemies loop walk, player spawns loop
+ * stand. With `doc`, an enemy in a no-combat room loops its chosen stand variant instead.
+ */
+export function enemyPlacementWorldVerts(obj, template, now = performance.now(), doc = null) {
+  let standFrame = null;
+  if (doc && obj?.kind === "enemy" && obj.stand) {
+    if (roomUnderObject(doc, obj)?.noCombat) standFrame = standVarCycleFrame(template, now, obj.stand);
+  }
   const frame =
-    obj?.kind === "enemy"
+    standFrame ||
+    (obj?.kind === "enemy"
       ? roleCycleFrame(template, now, "run")
       : obj?.kind === "spawn"
         ? roleCycleFrame(template, now, "stand")
-        : enemyPreviewFrame(template);
+        : enemyPreviewFrame(template));
   if (!frame) return [];
   const ox = obj.x + obj.sx / 2;
   const oy = obj.y;
@@ -2862,6 +2999,90 @@ export function clipIsAttackRole(enemyName, clipName) {
   const names = ROLE_CLIPS[enemyName]?.attack || [];
   const key = poseClipKey(clipName);
   return names.some((n) => poseClipKey(n) === key);
+}
+
+const STAND_VAR_RESERVED = new Set(["stand", "alert", "run", "walk", "hover"]);
+
+function clipExported(enemy, name) {
+  return !Array.isArray(enemy?.exportClips) || enemy.exportClips.includes(name);
+}
+
+/**
+ * Stand variants that ship, in clip order (index i here is game variant i + 1; 0 is the plain
+ * stand clip). Capped at STAND_VAR_MAX. Keep in sync with tools/genenemies.py stand_variants.
+ */
+export function standVariantClips(enemy) {
+  return (enemy?.clips || [])
+    .filter((c) => c.standVar && clipExported(enemy, c.name))
+    .slice(0, STAND_VAR_MAX);
+}
+
+/** 0 = plain stand clip, else 1-based index into standVariantClips. */
+export function standVarIndex(enemy, name) {
+  if (!name) return 0;
+  const i = standVariantClips(enemy).findIndex((c) => c.name === name);
+  return i + 1;
+}
+
+/** Why `name` can't be a stand-variant name for this enemy ("" if fine). `self` is the clip being renamed. */
+export function standVarNameProblem(enemy, name, self = null) {
+  if (!name) return "Name can't be empty";
+  const key = poseClipKey(name);
+  if (STAND_VAR_RESERVED.has(key) || /^pain[a-z]?$/.test(key) || /^(bdeath|death[a-z]?)$/.test(key)) {
+    return `"${name}" is reserved for a built-in clip role`;
+  }
+  const roleNames = Object.values(ROLE_CLIPS[enemy?.name] || {}).flat();
+  if (roleNames.some((n) => poseClipKey(n) === key)) {
+    return `"${name}" is a built-in clip name`;
+  }
+  for (const c of enemy?.clips || []) {
+    if (c !== self && poseClipKey(c.name) === key) return `"${name}" is already a clip`;
+  }
+  return "";
+}
+
+/**
+ * Append a stand-variant clip: one frame copied from the plain stand clip's first frame (and
+ * sprite letter), exported by default. Returns the clip, or null when full / no stand clip.
+ */
+export function addStandVariantClip(enemy) {
+  const clips = enemy.clips || (enemy.clips = []);
+  if (clips.filter((c) => c.standVar).length >= STAND_VAR_MAX) return null;
+  const base = findPoseClip(clips, "stand");
+  const stand = base ? clips.find((c) => (c.start | 0) === base[0]) : null;
+  const src = enemy.frames?.[stand ? stand.start | 0 : 0];
+  if (!src) return null;
+  let name = "stand 2";
+  for (let n = 3; standVarNameProblem(enemy, name); n++) name = `stand ${n}`;
+  const start = enemy.frames.length;
+  enemy.frames.push(src.map((v) => ({ x: v.x, y: v.y, z: v.z })));
+  const clip = { name, start, len: 1, standVar: true };
+  if (Array.isArray(stand?.sprites)) clip.sprites = [stand.sprites[0] || "A"];
+  clips.push(clip);
+  if (Array.isArray(enemy.exportClips)) enemy.exportClips.push(name);
+  return clip;
+}
+
+/**
+ * Rename a stand variant everywhere it is referenced: the clip, exportClips, and every placed
+ * enemy's `stand` in doc.maps. Returns the problem string, or "" when applied.
+ */
+export function renameStandVariant(doc, enemy, clip, raw) {
+  const name = clampStandVarName(raw);
+  if (name === clip.name) return "";
+  const bad = standVarNameProblem(enemy, name, clip);
+  if (bad) return bad;
+  const old = clip.name;
+  clip.name = name;
+  if (Array.isArray(enemy.exportClips)) {
+    enemy.exportClips = enemy.exportClips.map((n) => (n === old ? name : n));
+  }
+  for (const m of Object.values(doc.maps || {})) {
+    for (const o of m.objects || []) {
+      if (o.kind === "enemy" && o.enemy === enemy.name && o.stand === old) o.stand = name;
+    }
+  }
+  return "";
 }
 
 function poseClipByName(clips, name) {
@@ -3823,6 +4044,7 @@ function parseClipMeta(raw) {
     seen.add(name);
     const clip = { name, start: c?.start | 0, len: Math.max(1, c?.len | 0) };
     if (Array.isArray(c?.sprites)) clip.sprites = c.sprites.map((s) => String(s || "A").slice(0, 1));
+    if (c?.standVar) clip.standVar = true;
     const sound = parseClipSound(c?.sound);
     if (sound) {
       clip.sound = sound;
@@ -3842,6 +4064,7 @@ function persistClip(c) {
     out.len = c.len | 0;
     out.sprites = c.sprites.map((s) => String(s || "A").slice(0, 1));
   }
+  if (c.standVar) out.standVar = true;
   if (c.sound) {
     out.sound = c.sound;
     out.soundFrame = c.soundFrame | 0;
@@ -4080,6 +4303,7 @@ function parseObjects(list) {
       tag: o.tag,
       bounty: o.bounty,
       bountyName: o.bountyName,
+      stand: o.stand,
       enableTag: o.enableTag,
       lockKey: o.lockKey,
       doorType: o.doorType,

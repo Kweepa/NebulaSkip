@@ -31,6 +31,7 @@ import {
   objectModelVerts,
   itemMeshFor,
   itemMeshWorldSegs,
+  itemSphereWorld,
   itemYawFor,
   layoutSearchTerms,
   objectMatchesLayoutSearch,
@@ -1233,7 +1234,7 @@ export class LayoutView {
     }
     if (isFigureObject(obj)) {
       const tmpl = findEnemyTemplate(doc, figureTemplateName(obj));
-      const verts = enemyPlacementWorldVerts(obj, tmpl);
+      const verts = enemyPlacementWorldVerts(obj, tmpl, undefined, doc);
       if (tmpl && verts.length) {
         for (const [i, j] of tmpl.lines) {
           if (verts[i] && verts[j]) segs.push({ a: verts[i], b: verts[j] });
@@ -1836,6 +1837,17 @@ export class LayoutView {
     ctx.stroke();
   }
 
+  /** Item sphere: a camera-facing circle, r * focal / z in px (the game draws it as a screen circle). */
+  #sphere3(ctx, s, cam, w, h) {
+    const pr = projectPoint(s, cam, w, h);
+    if (!pr.ok) return;
+    const rad = (s.r * Math.min(w, h) * 0.9) / pr.z;
+    if (!(rad >= 0.5) || rad > 4 * Math.max(w, h)) return;
+    ctx.beginPath();
+    ctx.arc(pr.sx, pr.sy, rad, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
   /** Downward marker above each Maps-panel search hit. Ignores Local / Rooms Only. */
   #drawSearchArrows(ctx, doc, cam, w, h) {
     const terms = layoutSearchTerms(this.opts.getLayoutSearch?.() || "");
@@ -1878,7 +1890,7 @@ export class LayoutView {
       }
       ctx.globalAlpha = 1;
       const tmpl = findEnemyTemplate(doc, figureTemplateName(obj));
-      const verts = enemyPlacementWorldVerts(obj, tmpl);
+      const verts = enemyPlacementWorldVerts(obj, tmpl, undefined, doc);
       if (tmpl && verts.length) {
         ctx.lineWidth = selected ? 2 : 1.5;
         for (const [i, j] of tmpl.lines) {
@@ -1888,9 +1900,11 @@ export class LayoutView {
       if (obj.kind === "spawn" && obj.showJump) this.#drawJumpArc(ctx, doc, obj, cam, w, h);
     } else if (obj.kind === "pickup") {
       const mesh = itemMeshFor(doc, obj.pickup);
-      for (const seg of itemMeshWorldSegs(obj, mesh, itemYawFor(doc, obj.pickup, obj.rot))) {
+      const yaw = itemYawFor(doc, obj.pickup, obj.rot);
+      for (const seg of itemMeshWorldSegs(obj, mesh, yaw)) {
         this.#line3(ctx, seg.a, seg.b, cam, w, h);
       }
+      for (const s of itemSphereWorld(obj, mesh, yaw)) this.#sphere3(ctx, s, cam, w, h);
     } else if (obj.kind === "room") {
       const g = roomGeometry(obj);
       this.#drawRoomWalls(ctx, obj, g, cam, w, h);
@@ -1975,9 +1989,11 @@ export class LayoutView {
           const tmpl = obj.kind === "pickup" ? null : findEnemyTemplate(doc, figureTemplateName(obj));
           if (obj.kind === "pickup") {
             const mesh = itemMeshFor(doc, obj.pickup);
-            for (const seg of itemMeshWorldSegs(obj, mesh, itemYawFor(doc, obj.pickup, obj.rot))) {
+            const yaw = itemYawFor(doc, obj.pickup, obj.rot);
+            for (const seg of itemMeshWorldSegs(obj, mesh, yaw)) {
               this.#line3(ctx, seg.a, seg.b, cam, w, h);
             }
+            for (const s of itemSphereWorld(obj, mesh, yaw)) this.#sphere3(ctx, s, cam, w, h);
           } else if (tmpl) {
             for (const [i, j] of tmpl.lines) {
               if (verts[i] && verts[j]) this.#line3(ctx, verts[i], verts[j], cam, w, h);

@@ -124,6 +124,7 @@ def main() -> None:
         <ul id="enemy-list" class="object-list"></ul>
         <div class="toolbar-actions mdl-overlay-row">
           <button type="button" id="btn-mdl-overlay" class="toggle active">Ref sprite</button>
+          <button type="button" id="btn-side-right" class="toggle active" title="Side view: on = right view, off = left view (mirrors the axis and the sprite)">Right view</button>
           <button type="button" id="btn-collision-overlay" class="toggle active" title="Player-vs-enemy block volume (ENEMY_BLOCK_R x ENEMY_CULL_H)">Collision</button>
         </div>
         <div class="btn-row">
@@ -156,7 +157,7 @@ def main() -> None:
       <div class="map-stage" id="map-stage">
         <div class="stick-pane" id="stick-left" hidden>
           <canvas id="stick-left-canvas"></canvas>
-          <span class="stick-label">Left</span>
+          <span class="stick-label" id="stick-side-label">Right</span>
         </div>
         <div class="stick-pane" id="stick-front" hidden>
           <canvas id="stick-front-canvas"></canvas>

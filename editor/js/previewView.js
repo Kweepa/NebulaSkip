@@ -16,8 +16,10 @@ import {
   isGhostKind,
   itemMeshFor,
   itemMeshWorldSegs,
+  itemSphereWorld,
   itemYawFor,
   localVisibleIds,
+  SPHERE_PERSP_MAX,
   pointInRoom,
   roomFloorY,
   roomGeometry,
@@ -414,6 +416,25 @@ export class PreviewView {
     ctx.stroke();
   }
 
+  /**
+   * Item sphere as a smooth stroked ellipse, same projection and stroke as the mesh lines. Radius is
+   * r * FOCAL / z game px (ZCLIP and the PERSP_MAX cap kept), scaled by the preview's pixel aspect.
+   * The game's Bresenham pixel circle is not reproduced here.
+   */
+  #sphere(ctx, cam, s, color) {
+    const c = worldToCamera(s, cam);
+    if (c.z < 1) return; // ZCLIP
+    const R = Math.min(SPHERE_PERSP_MAX, (s.r * GAME_FOCAL) / c.z);
+    if (R < 0.5) return;
+    const p = pvProjectCam(c);
+    if (p.sx < -PREVIEW_W || p.sx > 2 * PREVIEW_W || p.sy < -PREVIEW_H || p.sy > 2 * PREVIEW_H) return;
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.ellipse(p.sx + 0.5, p.sy + 0.5, R * PREVIEW_SX, R * PREVIEW_SY, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
   #drawObject(ctx, doc, obj, cam, color, room) {
     if (obj.kind === "doorway") {
       const mesh = itemMeshFor(doc, obj.doorType);
@@ -438,9 +459,11 @@ export class PreviewView {
     }
     if (obj.kind === "pickup") {
       const mesh = itemMeshFor(doc, obj.pickup);
-      for (const seg of itemMeshWorldSegs(obj, mesh, itemYawFor(doc, obj.pickup, obj.rot))) {
+      const yaw = itemYawFor(doc, obj.pickup, obj.rot);
+      for (const seg of itemMeshWorldSegs(obj, mesh, yaw)) {
         this.#stroke(ctx, cam, seg.a, seg.b, color);
       }
+      for (const s of itemSphereWorld(obj, mesh, yaw)) this.#sphere(ctx, cam, s, color);
       return;
     }
     if (obj.kind === "slope") {
@@ -451,7 +474,7 @@ export class PreviewView {
     }
     if (isFigureObject(obj)) {
       const tmpl = findEnemyTemplate(doc, figureTemplateName(obj));
-      const verts = enemyPlacementWorldVerts(obj, tmpl);
+      const verts = enemyPlacementWorldVerts(obj, tmpl, undefined, doc);
       if (tmpl && verts.length) {
         for (const [i, j] of tmpl.lines) {
           if (verts[i] && verts[j]) this.#stroke(ctx, cam, verts[i], verts[j], color);

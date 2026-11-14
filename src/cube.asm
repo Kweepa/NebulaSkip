@@ -194,6 +194,21 @@ pain_var_off
 	lda rot0
 	rts
 
+; X = enemy. Y = slot * SV_MAX + en_stand (stand variant row). A destroyed, X preserved.
+!if SV_MAX != 8 {
+	!error "sv_var_off assumes SV_MAX=8"
+}
+sv_var_off
+	jsr ldy_slot
+	tya
+	asl
+	asl
+	asl
+	clc
+	adc en_stand,x
+	tay
+	rts
+
 ; X = enemy. A = enemy_class[slot]. Y = type. X preserved.
 enemy_get_class
 	+ldy_mx en_type
@@ -214,6 +229,14 @@ enemy_get_class
 ; slot, or per slot * PAIN_MAX + variant for pain / death. ident_col,y is Y.
 enemy_logical_frame
 	ldy en_state,x
+	bne .elf_busy
+	jsr sv_var_off			; idle: stand clip, or this placement's stand variant
+	lda en_frame,x
+	clc
+	adc enemy_sv_start,y
+	tay
+	rts
+.elf_busy
 	lda elf_off,y
 	pha
 	cpy #EN_PAIN
