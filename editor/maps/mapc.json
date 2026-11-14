@@ -276,7 +276,7 @@
       "axis": "z",
       "dir": 1,
       "rot": 4,
-      "enemy": "Possessed",
+      "enemy": "Human",
       "bounty": 27,
       "bountyName": "Moses White",
       "roomId": "b98937df-ef04-4066-ade2-88f12fcb9940"
@@ -294,7 +294,7 @@
       "axis": "z",
       "dir": 1,
       "rot": 4,
-      "enemy": "Possessed",
+      "enemy": "Human",
       "bounty": 31,
       "bountyName": "Ilsa Venn",
       "roomId": "b98937df-ef04-4066-ade2-88f12fcb9940"
@@ -422,7 +422,7 @@
       "axis": "z",
       "dir": 1,
       "rot": 4,
-      "enemy": "Possessed",
+      "enemy": "Human",
       "bounty": 35,
       "bountyName": "Dag Orrin",
       "roomId": "64b5e3f8-1a29-4b3b-936c-78ab3537a844"
@@ -523,7 +523,7 @@
       "axis": "z",
       "dir": 1,
       "rot": 4,
-      "enemy": "Possessed",
+      "enemy": "Human",
       "bounty": 39,
       "bountyName": "Tib Kirk",
       "roomId": "d08e7565-d487-4342-9c72-0603ec8602d9"
@@ -541,7 +541,7 @@
       "axis": "z",
       "dir": 1,
       "rot": 5,
-      "enemy": "Possessed",
+      "enemy": "Human",
       "bounty": 43,
       "bountyName": "Wen Pell",
       "roomId": "d08e7565-d487-4342-9c72-0603ec8602d9"
@@ -711,7 +711,7 @@
       "axis": "z",
       "dir": 1,
       "rot": 6,
-      "enemy": "Possessed",
+      "enemy": "Human",
       "bounty": 79,
       "bountyName": "Krail",
       "roomId": "ff5e243c-496a-490b-b487-81c961ef7dfc"
@@ -827,7 +827,7 @@
       "axis": "z",
       "dir": 1,
       "rot": 6,
-      "enemy": "Possessed",
+      "enemy": "Human",
       "bounty": 47,
       "bountyName": "Sal Dray",
       "roomId": "504516f2-1060-45b5-bb65-e62582414d3f"
@@ -845,7 +845,7 @@
       "axis": "z",
       "dir": 1,
       "rot": 5,
-      "enemy": "Possessed",
+      "enemy": "Human",
       "bounty": 51,
       "bountyName": "Hobb",
       "roomId": "504516f2-1060-45b5-bb65-e62582414d3f"
@@ -1279,7 +1279,7 @@
       "axis": "z",
       "dir": 1,
       "rot": 5,
-      "enemy": "Possessed",
+      "enemy": "Human",
       "bounty": 55,
       "bountyName": "Una Reik",
       "roomId": "7c8f5a44-b03c-4008-8102-87a90cffae31"
@@ -1410,7 +1410,7 @@
       "axis": "z",
       "dir": 1,
       "rot": 2,
-      "enemy": "Possessed",
+      "enemy": "Human",
       "bounty": 59,
       "bountyName": "Cutter",
       "roomId": "343c5382-621d-423a-a5fb-c6d02bd667d6"
@@ -1630,7 +1630,7 @@
       "axis": "z",
       "dir": 1,
       "rot": 3,
-      "enemy": "Possessed",
+      "enemy": "Human",
       "bounty": 63,
       "bountyName": "Bo Tamm",
       "roomId": "4ac05557-bdca-443f-a7d7-3426f0aee715"
@@ -1648,7 +1648,7 @@
       "axis": "z",
       "dir": 1,
       "rot": 2,
-      "enemy": "Possessed",
+      "enemy": "Human",
       "bounty": 67,
       "bountyName": "Lew Varn",
       "roomId": "4ac05557-bdca-443f-a7d7-3426f0aee715"
@@ -1770,7 +1770,7 @@
       "axis": "z",
       "dir": 1,
       "rot": 3,
-      "enemy": "Possessed",
+      "enemy": "Human",
       "bounty": 71,
       "bountyName": "Gritt",
       "roomId": "2e778e78-671e-4a35-8e89-36d8133fee34"
@@ -1788,7 +1788,7 @@
       "axis": "z",
       "dir": 1,
       "rot": 5,
-      "enemy": "Possessed",
+      "enemy": "Human",
       "bounty": 75,
       "bountyName": "Moll Ash",
       "roomId": "2e778e78-671e-4a35-8e89-36d8133fee34"
@@ -2181,7 +2181,7 @@
       "axis": "z",
       "dir": 1,
       "rot": 6,
-      "enemy": "Possessed",
+      "enemy": "Human",
       "bounty": 159,
       "bountyName": "Yan Koss",
       "roomId": "31546df3-7cf4-4beb-9765-dee27d9f4de0"
@@ -2316,7 +2316,7 @@
       "axis": "z",
       "dir": 1,
       "rot": 6,
-      "enemy": "Possessed",
+      "enemy": "Human",
       "bounty": 83,
       "bountyName": "Deke",
       "roomId": "23c47939-1f63-45bb-b437-842a423fdaf1"
@@ -2334,7 +2334,7 @@
       "axis": "z",
       "dir": 1,
       "rot": 5,
-      "enemy": "Possessed",
+      "enemy": "Human",
       "bounty": 87,
       "bountyName": "Ansa Brun",
       "roomId": "23c47939-1f63-45bb-b437-842a423fdaf1"
@@ -2742,7 +2742,7 @@
       "axis": "z",
       "dir": 1,
       "rot": 0,
-      "enemy": "Possessed",
+      "enemy": "Human",
       "bounty": 91,
       "bountyName": "Rook",
       "roomId": "019a7a73-cb20-4d95-a811-e7a0b5df8375"
@@ -2983,7 +2983,7 @@
       "axis": "z",
       "dir": 1,
       "rot": 7,
-      "enemy": "Possessed",
+      "enemy": "Human",
       "bounty": 95,
       "bountyName": "Jory",
       "roomId": "480666cc-4c47-407c-8c74-14f797360345"
@@ -3001,7 +3001,7 @@
       "axis": "z",
       "dir": 1,
       "rot": 2,
-      "enemy": "Possessed",
+      "enemy": "Human",
       "bounty": 119,
       "bountyName": "Nan Okoro",
       "roomId": "480666cc-4c47-407c-8c74-14f797360345"
@@ -3019,7 +3019,7 @@
       "axis": "z",
       "dir": 1,
       "rot": 1,
-      "enemy": "Possessed",
+      "enemy": "Human",
       "bounty": 199,
       "bountyName": "Old Brakk",
       "roomId": "480666cc-4c47-407c-8c74-14f797360345"

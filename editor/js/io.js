@@ -135,7 +135,7 @@ async function writeProjectDoc(doc) {
   return "file";
 }
 
-const ENEMY_FILE_DOS = ["poss", "baron", "pinky", "imp"];
+const ENEMY_FILE_DOS = ["human", "baron", "pinky", "imp"];
 
 async function enemyDir(create) {
   if (!projectDirHandle) return null;

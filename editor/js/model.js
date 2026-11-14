@@ -84,13 +84,13 @@ export const SKEL_MAX_LINES = 32;
 export const SPRITE_MAX_VERTS = 16;
 export const SPRITE_MAX_LINES = 32;
 export const ENEMY_DOS = {
-  Possessed: "poss",
+  Human: "human",
   Baron: "baron",
   Pinky: "pinky",
   Imp: "imp",
 };
 export const DOOM_SPRITE_PREFIX = {
-  Possessed: "POSS",
+  Human: "POSS",
   Imp: "TROO",
   Pinky: "SARG",
   Baron: "BOSS",
@@ -386,7 +386,7 @@ export function doorUsesTag(lockKey) {
   return clampDoorLock(lockKey) === "remote";
 }
 
-/** Layout placements draw the first stick frame at this fraction of anim units (Possessed ~4 world high). */
+/** Layout placements draw the first stick frame at this fraction of anim units (Human ~4 world high). */
 export const LAYOUT_ENEMY_SCALE = 1 / 4;
 /** mem.asm ENEMY_BLOCK_R: player cell vs enemy cell, Chebyshev (cells). */
 export const GAME_ENEMY_BLOCK_R = 1;
@@ -1762,7 +1762,7 @@ export function normalizeClips(raw, frameCount) {
  * enemy record; lists sort by that.
  */
 export const ENEMY_TYPES = [
-  { name: "Possessed", hp: 4, scale: [1, 1, 1], rest: { 12: [0, 1, 8] } },
+  { name: "Human", hp: 4, scale: [1, 1, 1], rest: { 12: [0, 1, 8] } },
   {
     name: "Baron",
     hp: 200,
@@ -2387,8 +2387,7 @@ export function createObject(kind, x, y, z, extra = {}) {
     if (extra.showJump) obj.showJump = true;
   }
   if (kind === "enemy") {
-    const name = extra.enemy || "Possessed";
-    obj.enemy = ENEMY_TYPES.some((t) => t.name === name) ? name : "Possessed";
+    obj.enemy = extra.enemy || "Human";
     const et = clampTag(extra.tag);
     if (et) obj.tag = et;
     const bty = clampBounty(extra.bounty);
@@ -2569,7 +2568,7 @@ export function mapMatchesLayoutSearch(map, terms) {
 }
 
 export function figureTemplateName(obj) {
-  return obj.kind === "spawn" ? "Possessed" : obj.enemy || "Possessed";
+  return obj.kind === "spawn" ? "Human" : obj.enemy || "Human";
 }
 
 /** Rest pose. Palette icons and the spawn marker stay here. */
@@ -2587,7 +2586,7 @@ export function enemyPreviewFrame(template) {
 
 /** src/mem.asm ANIM_MS. Doom types in enemy.asm advance every other tick. */
 const ANIM_MS = 100;
-const DOOM_SLOW_WALK = new Set(["Possessed", "Baron", "Pinky", "Imp"]);
+const DOOM_SLOW_WALK = new Set(["Human", "Baron", "Pinky", "Imp"]);
 
 function walkStepMs(name) {
   return DOOM_SLOW_WALK.has(name) ? ANIM_MS * 2 : ANIM_MS;
@@ -2831,7 +2830,7 @@ export const MAP_HDR_BYTES = 23;
 // Keep in sync with tools/genenemies.py (role names).
 const PAIN_MAX = 4;
 const ROLE_CLIPS = {
-  Possessed: { stand: ["stand"], alert: ["stand"], run: ["walk"], walk: ["walk"], attack: ["missile"] },
+  Human: { stand: ["stand"], alert: ["stand"], run: ["walk"], walk: ["walk"], attack: ["missile"] },
   Baron: {
     stand: ["stand"],
     alert: ["stand"],
@@ -3031,7 +3030,7 @@ function poseUncoveredRuns(covered) {
  * frames: stick verts for those logical indices, or null → cadence + fire pin only.
  */
 export function packedPoseBytes(enemy, clips, frames) {
-  const name = enemy?.name || "Possessed";
+  const name = enemy?.name || "Human";
   if (clips === undefined) {
     const pose = exportPoseData(enemy);
     clips = pose.clips;
@@ -3123,7 +3122,7 @@ export function packedPoseBytes(enemy, clips, frames) {
   return { bytes, nLogical, nStored };
 }
 
-/** Unique enemy type names in one room (unknown names count as Possessed). */
+/** Unique enemy type names in one room. */
 export function roomEnemyTypeNames(map, roomId) {
   const names = [];
   if (roomId == null) return names;
@@ -3131,20 +3130,18 @@ export function roomEnemyTypeNames(map, roomId) {
   for (const obj of map?.objects || []) {
     if (obj.kind !== "enemy") continue;
     if (String(obj.roomId) !== rid) continue;
-    const raw = obj.enemy || "Possessed";
-    const name = ENEMY_TYPES.some((t) => t.name === raw) ? raw : "Possessed";
+    const name = obj.enemy || "Human";
     if (!names.includes(name)) names.push(name);
   }
   return names;
 }
 
-/** Unique enemy type names placed on a map (unknown names count as Possessed). */
+/** Unique enemy type names placed on a map. */
 export function mapEnemyTypeNames(map) {
   const names = [];
   for (const obj of map?.objects || []) {
     if (obj.kind !== "enemy") continue;
-    const raw = obj.enemy || "Possessed";
-    const name = ENEMY_TYPES.some((t) => t.name === raw) ? raw : "Possessed";
+    const name = obj.enemy || "Human";
     if (!names.includes(name)) names.push(name);
   }
   return names;
@@ -3153,8 +3150,7 @@ export function mapEnemyTypeNames(map) {
 /** True if placing/changing to typeName in roomId stays within ROOM_MAX_TYPES. */
 export function canAddEnemyType(map, typeName, roomId) {
   const names = roomEnemyTypeNames(map, roomId);
-  const raw = typeName || "Possessed";
-  const name = ENEMY_TYPES.some((t) => t.name === raw) ? raw : "Possessed";
+  const name = typeName || "Human";
   if (names.includes(name)) return true;
   return names.length < ROOM_MAX_TYPES;
 }
@@ -3237,8 +3233,7 @@ export function mapStats(doc) {
   for (const obj of map.objects) {
     if (obj.kind !== "enemy") continue;
     const rid = obj.roomId != null ? String(obj.roomId) : "";
-    const raw = obj.enemy || "Possessed";
-    const name = ENEMY_TYPES.some((t) => t.name === raw) ? raw : "Possessed";
+    const name = obj.enemy || "Human";
     let set = roomTypeCounts.get(rid);
     if (!set) {
       set = new Set();
@@ -4012,7 +4007,7 @@ export function restPoseFrame(name, nv) {
   return frame;
 }
 
-export function createEnemy(name = "Possessed") {
+export function createEnemy(name = "Human") {
   return {
     id: uid(),
     name,
@@ -4227,7 +4222,7 @@ export function defaultEditorState() {
     neighbourDraw: false,
     roomsOnlyDraw: false,
     selectedIds: [],
-    enemy: "Possessed",
+    enemy: "Human",
     frameIndex: 0,
     clipIndex: 0,
     frameLocal: 0,

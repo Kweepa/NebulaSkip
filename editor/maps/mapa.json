@@ -239,7 +239,7 @@
       "axis": "z",
       "dir": 1,
       "rot": 4,
-      "enemy": "Possessed",
+      "enemy": "Human",
       "roomId": "db241be9-929a-4455-ba75-6b573e52cd96"
     },
     {
@@ -292,7 +292,7 @@
       "axis": "z",
       "dir": 1,
       "rot": 4,
-      "enemy": "Possessed",
+      "enemy": "Human",
       "roomId": "a332164c-ce1a-4e8d-9cbe-e03e03ff0541"
     },
     {
@@ -624,7 +624,7 @@
       "axis": "z",
       "dir": 1,
       "rot": 1,
-      "enemy": "Possessed",
+      "enemy": "Human",
       "bounty": 51,
       "bountyName": "Dyl Pykkell",
       "roomId": "7407f21f-a939-43e3-ab5f-330e826c6c09"
@@ -642,7 +642,7 @@
       "axis": "z",
       "dir": 1,
       "rot": 0,
-      "enemy": "Possessed",
+      "enemy": "Human",
       "bounty": 43,
       "bountyName": "Zefron Lala",
       "roomId": "2f0f1464-eae2-4e87-915e-b9345cca5b08"
@@ -1003,7 +1003,7 @@
       "axis": "z",
       "dir": 1,
       "rot": 3,
-      "enemy": "Possessed",
+      "enemy": "Human",
       "bounty": 59,
       "bountyName": "Jon Edwood",
       "roomId": "6bda5153-deda-4aeb-bfc5-d8df97c6680d"
@@ -1021,7 +1021,7 @@
       "axis": "z",
       "dir": 1,
       "rot": 1,
-      "enemy": "Possessed",
+      "enemy": "Human",
       "bounty": 55,
       "bountyName": "Oren Pol",
       "roomId": "6bda5153-deda-4aeb-bfc5-d8df97c6680d"
@@ -1039,7 +1039,7 @@
       "axis": "z",
       "dir": 1,
       "rot": 2,
-      "enemy": "Possessed",
+      "enemy": "Human",
       "bounty": 31,
       "bountyName": "Lek Elkux",
       "roomId": "6bda5153-deda-4aeb-bfc5-d8df97c6680d"
@@ -1141,7 +1141,7 @@
       "axis": "z",
       "dir": 1,
       "rot": 3,
-      "enemy": "Possessed",
+      "enemy": "Human",
       "bounty": 95,
       "bountyName": "Ray Batty",
       "roomId": "f4623972-5db5-4f05-84d2-2e27967d5093"
@@ -1315,8 +1315,8 @@
       "face": "+z",
       "axis": "z",
       "dir": 1,
-      "roomId": "db241be9-929a-4455-ba75-6b573e52cd96",
-      "playerOnly": true
+      "playerOnly": true,
+      "roomId": "db241be9-929a-4455-ba75-6b573e52cd96"
     }
   ]
 }

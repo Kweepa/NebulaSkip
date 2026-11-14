@@ -31,7 +31,7 @@ ENEMIES = ROOT / "enemies"
 MAPS = ROOT / "maps"
 STAMPS = ROOT / "build" / "stamps"
 
-DOS = ["poss", "baron", "pinky", "imp"]
+DOS = ["human", "baron", "pinky", "imp"]
 
 SOURCE_RE = re.compile(
     r'(?m)^[ \t]*!(?:source|src|binary|bin)\s+"([^"]+)"'
@@ -324,7 +324,6 @@ def steps(exe: str) -> list[Step]:
             "genenemies",
             lambda: [
                 TOOLS / "genenemies.py",
-                TOOLS / "enemymdl.py",
                 doc,
                 *enemy_json(),
                 ENEMIES / "sound_ids.json",
@@ -462,7 +461,7 @@ def steps(exe: str) -> list[Step]:
                 ),
             )
             for asm, stem in (
-                ("ai_poss.asm", "ai_poss"),
+                ("ai_human.asm", "ai_human"),
                 ("ai_pinky.asm", "ai_pinky"),
                 ("ai_baron.asm", "ai_baron"),
                 ("ai_imp.asm", "ai_imp"),

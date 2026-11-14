@@ -40,7 +40,7 @@ FILES = [
     ("BANK0", None, None),
     ("MENU", ROOT / "menu.prg", None),
 ] + [(mapnames.key(l), mapnames.prg_path(l), None) for l in mapnames.map_letters()] + [
-    ("POSS", ROOT / "enemies" / "poss.prg", None),
+    ("HUMAN", ROOT / "enemies" / "human.prg", None),
     ("BARON", ROOT / "enemies" / "baron.prg", None),
     ("PINKY", ROOT / "enemies" / "pinky.prg", None),
     ("IMP", ROOT / "enemies" / "imp.prg", None),

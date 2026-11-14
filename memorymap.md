@@ -168,7 +168,7 @@ map plus the worst room's banks; load peak is packed map plus `LEVEL_PREFIX`.
 `MAP_MAX_BYTES` 4096 is a packed-map cap; prefix is extra.
 
 Enemy bank bytes (from `enemy_sizes.asm`, including QAI1 header, optional
-relocatable behavior code, pose data, SFX, and clip events): poss 1130,
+relocatable behavior code, pose data, SFX, and clip events): human 1130,
 baron 1800, pinky 1482, imp 1965.
 
 Current gate (`build-report.json`, avail 6975, `LEVEL_PREFIX` 2239):

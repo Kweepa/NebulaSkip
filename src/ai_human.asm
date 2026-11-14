@@ -1,6 +1,6 @@
-; Streamed Possessed approach / reattack / hitscan. Linked at AI_LINK_BASE.
+; Streamed Human approach / reattack / hitscan. Linked at AI_LINK_BASE.
 !cpu 6502
-!to "../enemies/ai_poss.bin", plain
+!to "../enemies/ai_human.bin", plain
 !source "mem.asm"
 !source "zp.asm"
 !source "map_counts.asm"
@@ -10,7 +10,7 @@
 !source "ai_game_syms.asm"
 
 *= AI_LINK_BASE
-ai_poss_entry
+ai_human_entry
 	cmp #AI_CMD_FIRE
 	beq .fire
 	cmp #AI_CMD_ATTACK_END

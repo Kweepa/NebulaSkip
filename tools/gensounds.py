@@ -50,7 +50,7 @@ EFFECTS = [
 
 # Cue idents for the four shipped types. melee/shoot are what a clip sound frame plays.
 ENEMY_CUES = {
-    "Possessed": {"sight": "POSIT1", "wince": "POPAIN", "shoot": "PISTOL_E", "death": "PODTH1"},
+    "Human": {"sight": "POSIT1", "wince": "POPAIN", "shoot": "PISTOL_E", "death": "PODTH1"},
     "Imp": {"sight": "BGSIT1", "wince": "POPAIN", "shoot": "CLAW", "death": "BGDTH1"},
     "Pinky": {"sight": "SGTSIT", "wince": "DMPAIN", "melee": "SGTATK", "death": "SGTDTH"},
     "Baron": {"sight": "BRSSIT", "wince": "DMPAIN", "melee": "CLAW", "death": "BRSDTH"},

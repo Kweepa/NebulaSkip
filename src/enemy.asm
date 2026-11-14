@@ -248,7 +248,7 @@ enemy_anim_step
 +
 .eas_step
 	+lda_mx en_type
-	cmp #ENT_POSS
+	cmp #ENT_HUMAN
 	beq .eas_slow
 	cmp #ENT_BARON
 	beq .eas_slow
@@ -680,7 +680,7 @@ enemy_face_player
 	rts
 
 ; Sight bark, then chase. The alert clip is the stand pose, so EN_ALERT
-; looks like idle for the whole clip (possessed ~2 s).
+; looks like idle for the whole clip (human ~2 s).
 enemy_enter_alert
 	ldx enemy_idx
 	lda #CUE_SIGHT

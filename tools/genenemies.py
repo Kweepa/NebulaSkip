@@ -4,13 +4,18 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 import struct
 from copy import deepcopy
 from pathlib import Path
 
-from enemymdl import js_round
 from gensounds import ENEMY_CUES
+
+def js_round(n: float) -> int:
+    """Math.round: halves go toward +inf."""
+    return math.floor(n + 0.5)
+
 
 ROOT = Path(__file__).resolve().parents[1]
 DOC = ROOT / "editor" / "nebula.json"
@@ -21,8 +26,8 @@ ENEMY_DIR = ROOT / "enemies"
 
 MESH_BATCH_VERTS = 16  # mesh.asm MESH_MAX_VERTS
 MESH_BATCH_EDGES = 32
-TYPES = ["Possessed", "Baron", "Pinky", "Imp"]
-DOS_NAME = ["poss", "baron", "pinky", "imp"]
+TYPES = ["Human", "Baron", "Pinky", "Imp"]
+DOS_NAME = ["human", "baron", "pinky", "imp"]
 ENEMY_POSE_MAX = 7680
 ENEMY_DATA_BASE = 0x0701  # mem.asm asserts its ENEMY_DATA_BASE == $0701
 META_ROW = 34  # mem.asm META_ROW; prepended to every .pose
@@ -34,7 +39,7 @@ DEFAULT_ATTACK_FRAME = 1
 
 # Game byte (Doom health / 5). editor/nebula.json "hp" overrides this.
 DEFAULT_HP = {
-    "Possessed": 4,
+    "Human": 4,
     "Baron": 200,
     "Pinky": 30,
     "Imp": 12,
@@ -42,7 +47,7 @@ DEFAULT_HP = {
 
 # Resident only while the type's bank is loaded. Two slots, not N columns.
 RANGE = {
-    "Possessed": 30,
+    "Human": 30,
     "Baron": 12,
     "Pinky": 4,
     "Imp": 32,
@@ -58,7 +63,7 @@ BLOCK_R_MAX = 3
 # Single roles: (clip_name, len_override|None). Attack: first matching clip name.
 # Imp and Baron share that one clip between claw and fireball.
 ROLE_CLIPS = {
-    "Possessed": {
+    "Human": {
         "stand": ("stand", None),
         "alert": ("stand", None),
         "run": ("walk", None),

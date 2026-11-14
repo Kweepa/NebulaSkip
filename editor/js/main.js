@@ -794,7 +794,7 @@ function collectEditorState() {
     neighbourDraw,
     roomsOnlyDraw,
     selectedIds: [...selectedIds],
-    enemy: enemy?.name || "Possessed",
+    enemy: enemy?.name || "Human",
     frameIndex,
     clipIndex,
     frameLocal,

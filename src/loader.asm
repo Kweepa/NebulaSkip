@@ -14,7 +14,7 @@ en_name_lo
 	!byte <en_n0, <en_n1, <en_n2, <en_n3
 en_name_hi
 	!byte >en_n0, >en_n1, >en_n2, >en_n3
-en_n0	!text "POSS"
+en_n0	!text "HUMAN"
 	!byte 0
 en_n1	!text "BARON"
 	!byte 0

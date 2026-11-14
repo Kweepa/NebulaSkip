@@ -35,7 +35,7 @@ ENEMY_DIR = ROOT / "enemies"
 ENEMY_SIZES = ROOT / "src" / "enemy_sizes.asm"
 PREFIX_ASM = ROOT / "src" / "level_prefix.asm"
 
-DOS_NAME = ["poss", "baron", "pinky", "imp"]
+DOS_NAME = ["human", "baron", "pinky", "imp"]
 ENEMY_NTYPES = len(DOS_NAME)
 
 

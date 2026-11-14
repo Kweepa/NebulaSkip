@@ -159,7 +159,7 @@ ai_baron_entry
 	clc
 	rts
 
-; 0–1023 ms attack hold, same roll as Possessed. enemy_enter_approach adds 0–255.
+; 0–1023 ms attack hold, same roll as Human. enemy_enter_approach adds 0–255.
 .approach_enter
 	ldx enemy_idx
 	jsr rnd8

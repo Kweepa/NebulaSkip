@@ -20,7 +20,7 @@ SIZES_OUT = ROOT / "src" / "map_sizes.asm"
 ITEM_DOC = ROOT / "editor" / "nebula.json"
 
 ENEMY_TYPE = {
-    "Possessed": 0,
+    "Human": 0,
     "Baron": 1,
     "Pinky": 2,
     "Imp": 3,
@@ -1024,7 +1024,7 @@ def cook_one(level: dict, map_key: str) -> bytes:
             en_tag_ids[etag] = len(en_tag_ids) + 1
     for e in enemies:
         ri = room_index(rooms, e, "enemy")
-        name = e.get("enemy") or "Possessed"
+        name = e.get("enemy") or "Human"
         if name not in ENEMY_TYPE:
             raise SystemExit(f"unknown enemy type {name}")
         # Center of placement box (feet on y)
@@ -1503,7 +1503,7 @@ DOOR_TRI	= 2
 DOOR_CRACK	= 3
 DOOR_NTYPES	= 4
 DOOR_HIDDEN	= $80
-ENT_POSS	= 0
+ENT_HUMAN	= 0
 ENT_BARON	= 1
 ENT_PINKY	= 2
 ENT_IMP	= 3
