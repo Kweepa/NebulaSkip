@@ -24,7 +24,8 @@ QSAVE_N = 5
 QSAVE_SEC = SECTORS - QSAVE_N + 1
 
 # GAME is one ACME image with gaps (game.prg); it is cut into the four code
-# segments by the labels nebula.asm emits. BANK0 is the image boot writes
+# segments by the labels nebula.asm emits. GAMEE is segment E (sege.asm, main
+# RAM $6000 under the bank window), assembled on its own. BANK0 is the image boot writes
 # through the $4000 window into bank 0: the code zone at CODE0_BASE, the static
 # data slice at STATIC_BASE, the QSAVE overlay at QS_OVL. BANK1 is the tab LUT
 # source at TAB_STAGE (bank 1).
@@ -34,6 +35,7 @@ FILES = [
     ("GAMEB", None, None),
     ("GAMEC", None, None),
     ("GAMED", None, None),
+    ("GAMEE", ROOT / "gamee.prg", None),
     ("SQT", ROOT / "sqt.prg", None),
     ("FNT", ROOT / "fnt.prg", 2 + 1024),
     ("BANK1", None, None),

@@ -1,14 +1,12 @@
 ; Mode-E stroke. Callers pass hires x 0..191. draw_line halves both ends,
 ; then an unrolled body walks colour-clock pixels (0..95). y stays 0..127.
-; dx = 0 (after the halve) is a column: one mask, ±32 on colptr.
+; dx = 0 (after the halve) is a column: one mask, ±32 on colptr (a8_addr, Y = 0).
+; The bodies keep the row in Y instead (a8_addr_y).
 ; plot_pixel is the particle dots. The muzzle stores mode-E bytes.
 !zone line
 
 BMP_STRIDE	= 32
 BMP_MARGIN	= 4
-
-line_tab_init
-	rts
 
 ; Screen leaves. The bitmaps are main RAM under the bank window, so the
 ; window is switched to main RAM for the stroke and back to portb_cur after.
@@ -75,6 +73,30 @@ a8_addr
 	lsr
 	ora bmp_hi
 	sta colptr+1
+	rts
+
+; Line bodies: colptr = page + column byte, Y = (y0 & 7) << 5 (row inside the
+; page). The column byte is 4..27, so stepping it never carries. Uses x0,y0.
+a8_addr_y
+	lda x0
+	lsr
+	lsr
+	clc
+	adc #BMP_MARGIN
+	sta colptr
+	lda y0
+	lsr
+	lsr
+	lsr
+	ora bmp_hi
+	sta colptr+1
+	lda y0
+	asl
+	asl
+	asl
+	asl
+	asl
+	tay
 	rts
 
 draw_line_raw
@@ -156,8 +178,7 @@ draw_line_raw
 .vdone
 	rts
 .draw
-	jsr a8_addr
-	ldy #0
+	jsr a8_addr_y			; colptr = page + column, Y = row offset
 	lda x0
 	and #3
 	tax

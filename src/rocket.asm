@@ -860,19 +860,14 @@ barrel_bit
 draw_rockets
 	jsr draw_rockets_red
 	ldx #0
-	stx pv0
 .dgr
 	cpx #RKT_MAX
 	bcs .dgr_rts
 	lda gr_on,x
 	beq .dgr_n
-	lda pv0
-	bne .dgr_go
-	inc pv0
-	stx obj_i
+	stx obj_i				; per rocket: the previous one's clip (lerp16) clobbered set B
 	jsr load_view_trig
 	ldx obj_i
-.dgr_go
 	jsr rkt_draw_one
 	jmp .dgr_ld
 .dgr_ld

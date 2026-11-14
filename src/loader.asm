@@ -1043,8 +1043,6 @@ play_up1
 	sta $d301
 
 	jsr game_zp_init
-	jsr line_tab_init
-	jsr fill_colour
 	jsr init_vic
 	jsr init_irq
 	jsr prof_init

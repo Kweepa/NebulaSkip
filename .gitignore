@@ -21,6 +21,7 @@ enemies/ai_*.bin
 enemies/ai_*.rel
 src/ai_game_syms.asm
 src/qsyms.asm
+src/esyms.asm
 __pycache__/
 *.pyc
 

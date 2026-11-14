@@ -183,7 +183,12 @@ en_sfx_armed	= en_sfx_n + 1			; 1 = frame changed this anim step
 enter_wait_l	= en_sfx_armed + 1		; enter card hold ms
 enter_wait_h	= enter_wait_l + 1
 portb_cur	= enter_wait_h + 1		; PORTB value play wants outside a screen leaf
-stamp_rowbuf	= portb_cur + 1			; STAMP_ROW_MAX: one blitted row, copied out of the bank
+; 40 bytes that were the stamp row buffer. The first 25 are rig_poll's hand-over
+; to the scan screen in segment E (which cannot read the map).
+rig_name	= portb_cur + 1			; RIG_NAME_MAX + 1: bounty name, NUL terminated
+RIG_NAME_MAX	= 23				; columns 9..31 of the "target:" row
+rig_bty		= rig_name + RIG_NAME_MAX + 1	; en_bty of that corpse (bits = 4n - 1)
+stamp_rowbuf	= portb_cur + 1			; layout anchor for term_row
 STAMP_ROW_MAX	= 40
 ; DNA terminal (terminal.asm) state. All of it is initialised in term_init (start).
 BITS_MAX	= 9999			; 4 HUD digits; tools/genterminal.py caps prices the same
@@ -389,6 +394,17 @@ PORTB_MAIN	= $fe			; window shows main RAM (bitmaps)
 PORTB_PLAY	= $e2			; window shows bank 0 (heap, code zone, static data)
 PORTB_BANK1	= $e6			; window shows bank 1 (tab LUT source only)
 PORTB_OS	= $ff			; OS ROM on (SIOV only)
+; Segment E: main RAM under the bank window, above the two bitmaps. Visible only
+; with PORTB_MAIN, so the bitmaps are visible with it. Separate assemble
+; (sege.asm -> GAMEE, loaded by load_game_segments); GAME reaches it through the
+; jmp table at SEG_E_BASE with portb_cur = PORTB_MAIN (e_call in a8stamp.asm).
+; Rules: no map accessors (_mx/_my patch sites) in E, no calls from E into the
+; bank-0 code zone, never from NMI.
+SEG_E_BASE	= $6000
+SEG_E_LIMIT	= $8000
+E_STAMP_VIEW	= SEG_E_BASE		; A = 1 when the tracked splat is on screen
+E_TERMINAL	= SEG_E_BASE + 3	; terminal_run (terminal / ship chart / rig scan)
+E_ITEM_SLOT	= SEG_E_BASE + 6	; fill_item_slot (item / door mesh tables)
 ; Bank 0 layout (CPU addresses with PORTB_PLAY).
 DYN_BASE	= $4000			; heap floor
 HEAP_LIM	= $5e00			; heap ceiling = CODE0_BASE (heap 7680 B)
@@ -396,7 +412,7 @@ HEAP_LIM	= $5e00			; heap ceiling = CODE0_BASE (heap 7680 B)
 ; process, elevator, cheats_apply). Loaded once at boot with BANK0. Not
 ; callable from NMI/DLI, with the OS on, inside a screen leaf, or before boot.
 CODE0_BASE	= $5e00
-STATIC_BASE	= $6b40			; weapon_spr, splat, muzzle (item_mesh lives in segment A)
+STATIC_BASE	= $6b40			; terminal tables and text (sprites live in segment E)
 CODE0_END	= STATIC_BASE
 STATIC_END	= $7900
 !if QS_OVL != STATIC_END {

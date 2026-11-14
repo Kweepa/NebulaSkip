@@ -78,6 +78,16 @@ box_vbit
 ; A = 0: cull. A nonzero: stroke all 12 edges (crate_flags).
 ; ------------------------------------------------------------------
 draw_box
+	jsr box_setup
+	lda mesh_ne
+	bne +
+	rts
++
+	jmp stroke_mesh
+
+; Same arguments. Edge list, vertex mask and CAM[] for the box, nothing drawn.
+; mesh_ne = 0 when every face is culled (CAM[] is then not filled).
+box_setup
 	beq .db_cull
 	jsr load_view_trig
 	lda #$ff
@@ -114,7 +124,7 @@ draw_box
 	jsr box_fill_verts
 	lda #BOX_NVERTS
 	sta mesh_nv
-	jmp stroke_mesh
+	rts
 
 stroke_mesh
 !if PROFILE = 1 {
@@ -126,6 +136,8 @@ stroke_mesh
 	ldy #PROF_PROJ
 	jsr prof_add_bucket
 }
+; Projected mesh (mesh_project done, edge pointers / mesh_ne still set) -> strokes.
+stroke_clip
 	jsr mesh_clip			; strokes each edge as it accepts it
 !if PROFILE = 1 {
 	ldy #PROF_CLIP
@@ -535,8 +547,9 @@ door_face_rot
 
 draw_door_mesh
 	jsr load_view_trig
-	jsr fill_door_type_verts
-	jmp stroke_mesh
+	jsr fill_door_type_verts		; returns inside e_enter
+	jsr stroke_mesh
+	jmp e_leave
 
 stroke_tri
 	lda #3
@@ -613,10 +626,12 @@ draw_pickup_mesh
 	pha
 	jsr load_view_trig
 	pla
+	jsr e_enter			; mesh blobs are in segment E; no map reads until e_leave
 	jsr fill_item_verts
 	lda #0
 	sta th_draw_fl
-	jmp stroke_mesh
+	jsr stroke_mesh
+	jmp e_leave
 
 fill_item_verts
 	cmp #ITEM_DOOR_BASE		; every item slot, incl. editor-defined props (TH 13..)
@@ -630,7 +645,7 @@ fill_item_verts
 +
 	lda #0
 	sta rot1				; no door scale
-	jsr fill_item_slot
+	jsr E_ITEM_SLOT
 	; item_rot (editor Rotating flag): 1 yaw-spins about box+ITEM_BIAS, 0 holds the placed
 	; facing (th_draw_fl bits 0-2, x32 = 45 deg steps in 256-unit yaw).
 	ldy rot0
@@ -639,118 +654,15 @@ fill_item_verts
 	jmp xform_item_spin
 
 ; Y = door type. rot1 = scale (0 ×1, 1 ×3/2, 2 ×2). Door meshes follow the TH_* slots.
+; fill_item_slot and the mesh blobs are in segment E (e_item.asm): the caller is
+; between e_enter and e_leave, and stays there until the mesh is stroked, because
+; xid/zid/col/edge pointers point into E.
 fill_door_slot
 	tya
 	clc
 	adc #ITEM_DOOR_BASE
 	tay
-; Y = slot. rot1 = U/VY scale (0 for items). Fills mesh tables, rot0 = slot.
-; Blobs are paged (item_pg): X = page selects the pg_*_lo/hi base, offsets are page-relative.
-; X is reloaded at the start of each section (scale_door_u clobbers it).
-fill_item_slot
-	lda item_nv,y
-	sta mesh_nv
-	lda item_ne,y
-	sta mesh_ne
-	lda item_nx,y
-	sta mesh_nx
-	lda item_nz,y
-	sta mesh_nz
-	sty rot0
-	; UX/UZ stay local (editor 0 = spin centre). World centre is box+ITEM_BIAS.
-	ldx item_pg,y
-	clc
-	lda pg_ux_lo,x
-	adc item_uo,y
-	sta src_ptr
-	lda pg_ux_hi,x
-	adc #0
-	sta src_ptr+1
-	ldy #0
-.fi_ux
-	cpy mesh_nx
-	bcs .fi_uz
-	lda (src_ptr),y
-	jsr scale_door_u
-	sta UX,y
-	iny
-	bne .fi_ux
-.fi_uz
-	ldy rot0
-	ldx item_pg,y
-	clc
-	lda pg_uz_lo,x
-	adc item_zo,y
-	sta src_ptr
-	lda pg_uz_hi,x
-	adc #0
-	sta src_ptr+1
-	ldy #0
-.fi_uzl
-	cpy mesh_nz
-	bcs .fi_vy
-	lda (src_ptr),y
-	sta UZ,y
-	iny
-	bne .fi_uzl
-.fi_vy
-	ldy rot0
-	ldx item_pg,y
-	clc
-	lda pg_vy_lo,x
-	adc item_vo,y
-	sta src_ptr
-	lda pg_vy_hi,x
-	adc #0
-	sta src_ptr+1
-	ldy #0
-.fi_vyl
-	cpy mesh_nv
-	bcs .fi_ptr
-	lda (src_ptr),y
-	jsr scale_door_u
-	sta VY,y
-	iny
-	bne .fi_vyl
-.fi_ptr
-	ldy rot0
-	ldx item_pg,y
-	clc
-	lda pg_xid_lo,x
-	adc item_vo,y
-	sta xid_ptr
-	lda pg_xid_hi,x
-	adc #0
-	sta xid_ptr+1
-	clc
-	lda pg_zid_lo,x
-	adc item_vo,y
-	sta zid_ptr
-	lda pg_zid_hi,x
-	adc #0
-	sta zid_ptr+1
-	clc
-	lda pg_col_lo,x
-	adc item_vo,y
-	sta col_ptr
-	lda pg_col_hi,x
-	adc #0
-	sta col_ptr+1
-	clc
-	lda pg_ea_lo,x
-	adc item_eo,y
-	sta edge_ptr
-	lda pg_ea_hi,x
-	adc #0
-	sta edge_ptr+1
-	clc
-	lda pg_eb_lo,x
-	adc item_eo,y
-	sta edge_b
-	lda pg_eb_hi,x
-	adc #0
-	sta edge_b+1
-	rts
+	jmp E_ITEM_SLOT
 
 ; Face width 4/6/8 → rot1 = ×1 / ×1.5 / ×2 (nearest bucket).
 door_mesh_scale
@@ -777,6 +689,7 @@ door_mesh_scale
 ; scale_door_u lives in item_xf.asm (segment A).
 
 ; Door type mesh: local X across, Y up, Z thickness. Origin = face bottom-centre.
+; Leaves the window on main RAM (e_enter): the caller strokes, then e_leave.
 fill_door_type_verts
 	ldx obj_i
 	+lda_mx door_type
@@ -791,8 +704,13 @@ fill_door_type_verts
 	ldy #ITEM_DOOR_BASE				; empty mesh -> Tech
 +
 	jsr door_mesh_scale				; clobbers A/X only
-	jsr fill_item_slot
-	jsr fill_door_origin
+	tya
+	pha
+	jsr fill_door_origin				; map reads first: bank 0 is hidden after e_enter
+	pla
+	tay
+	jsr e_enter
+	jsr E_ITEM_SLOT
 	jmp xform_item_at
 
 
@@ -866,9 +784,11 @@ draw_crack
 	lda #0
 	sta rot1
 	ldy #DOOR_CRACK
+	jsr e_enter
 	jsr fill_door_slot
 	jsr crack_xform
-	jmp stroke_mesh
+	jsr stroke_mesh
+	jmp e_leave
 .dc_rts
 	rts
 
@@ -1169,8 +1089,10 @@ fill_slope_verts
 ; The baked edge list strokes in place (room_e0/e1 + room_eo), no culling:
 ; the eye is always inside the outer box, so every edge would be kept.
 ; EDGE_VIS/CLIP_* are 32-wide (MESH_MAX_EDGES).
+; room_mesh_setup fills CAM[] and the edge pointers; draw_world_prep projects,
+; draw_world strokes.
 ; ------------------------------------------------------------------
-draw_room_mesh
+room_mesh_setup
 	jsr load_view_trig
 	lda #$ff
 	sta mesh_vmask
@@ -1267,16 +1189,22 @@ draw_room_mesh
 	ldx room_idx
 	+lda_mx room_ne
 	sta mesh_ne
-	jmp stroke_mesh
+	rts
 
 ; ------------------------------------------------------------------
-draw_world
+; draw_world_prep — the room hull through its projection. No bitmap writes, so
+; main runs it before wait_draw_free: the wait for the VBI to release the old
+; show buffer is then spent on this instead of idling. Leaves the projected
+; mesh (edge pointers, mesh_ne, VOC/VSX/PROJ) for draw_world; mesh_ne = 0 means
+; nothing to stroke. Nothing between here and draw_world may touch mesh state
+; (wait_draw_free and clear_draw do not).
+draw_world_prep
 	jsr update_frustum
 	ldx room_idx
 	+lda_mx room_nv
 	beq .dw_box
-	jsr draw_room_mesh
-	jmp .dw_items
+	jsr room_mesh_setup
+	jmp .dwp_proj
 .dw_box
 	; active room (inside cull) — not frustum-culled
 	ldx room_idx
@@ -1295,7 +1223,28 @@ draw_world
 	lda #1
 	sta box_inside
 	lda #0
-	jsr draw_box
+	jsr box_setup
+.dwp_proj
+	lda mesh_ne
+	beq .dwp_rts
+!if PROFILE = 1 {
+	ldy #PROF_ROT
+	jsr prof_add_bucket
+}
+	jsr mesh_project
+!if PROFILE = 1 {
+	ldy #PROF_PROJ
+	jsr prof_add_bucket
+}
+.dwp_rts
+	rts
+
+; The frame's strokes: the hull draw_world_prep projected, then everything else
+; in the room.
+draw_world
+	lda mesh_ne
+	beq .dw_items
+	jsr stroke_clip
 	; crates
 .dw_items
 	ldy room_idx

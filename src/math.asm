@@ -309,17 +309,45 @@ lerpdv
 	lda #0
 	rts
 
-; ASR n/d only until each fits signed 8-bit (keep y 16-bit)
+; ASR n/d only until each fits signed 8-bit (keep y 16-bit).
+; w = (|v| >> 7) for n and d, ORed: v fits when its w is 0 and each shift halves
+; w, so the shift count is bitlen(w) (0..8). Clobbers A, mul_a. X/Y kept.
 scale_nd
-	lda #8
+	lda nhi
+	bpl .sn_np
+	lda nlo
+	eor #$ff
+	asl
+	lda nhi
+	eor #$ff
+	rol
+	jmp .sn_n
+.sn_np
+	lda nlo
+	asl
+	lda nhi
+	rol
+.sn_n
 	sta mul_a
-.snd
-	jsr .nd_fitn
-	bcc .sdo
-	jsr .nd_fitd
-	bcc .sdo
-	rts
-.sdo
+	lda dhi
+	bpl .sn_dp
+	lda dlo
+	eor #$ff
+	asl
+	lda dhi
+	eor #$ff
+	rol
+	jmp .sn_d
+.sn_dp
+	lda dlo
+	asl
+	lda dhi
+	rol
+.sn_d
+	ora mul_a
+	beq .sn_rts
+	sta mul_a
+.sn_sh
 	lda nhi
 	cmp #$80
 	ror nhi
@@ -328,36 +356,15 @@ scale_nd
 	cmp #$80
 	ror dhi
 	ror dlo
-	dec mul_a
-	bne .snd
-	rts
-.nd_fitn
-	lda nhi
-	ldy nlo
-	jmp .nd_fit
-.nd_fitd
-	lda dhi
-	ldy dlo
-.nd_fit
-	tax
-	beq .nd_fz
-	cmp #$ff
-	bne .nd_fn
-	tya
-	bmi .nd_fy
-.nd_fn
-	clc
-	rts
-.nd_fz
-	tya
-	bmi .nd_fn
-.nd_fy
-	sec
+	lsr mul_a
+	bne .sn_sh
+.sn_rts
 	rts
 
 ; div_n0:div_n1 = (ylo:yhi * nlo) / dlo after scale_nd; A = div_n0.
 ; Needs |n| <= |d| (interpolation fraction in 0..1; larger n gives y*255/256).
-; Signed, no ±127 clamp. Does not touch rot*.
+; Signed, no ±127 clamp. Does not touch rot*. Clobbers X, Y and multiply set B
+; (pb_*): callers that rotate afterwards must re-prime it (load_view_trig).
 lerp16
 	lda #0
 	sta mul_sign
@@ -427,21 +434,34 @@ lerp16
 	bne .tm
 	dec div_n2
 .tm
-	lda ylo
-	ldy div_n2
-	jsr umul8j
-	lda prod_h
-	sta div_n0
-	lda yhi
-	ldy div_n2
-	jsr umul8j
+	lda div_n2			; set B = t: |y| * t >> 8 as two pointer products
+	sta pb_s1l
+	sta pb_s1h
+	eor #$ff
+	sta pb_s2l
+	sta pb_s2h
+	ldy ylo
+	sec
+	lda (pb_s1l),y
+	sbc (pb_s2l),y
+	lda (pb_s1h),y
+	sbc (pb_s2h),y
+	sta div_n0			; high byte of ylo * t
+	ldy yhi
+	sec
+	lda (pb_s1l),y
+	sbc (pb_s2l),y
+	tax
+	lda (pb_s1h),y
+	sbc (pb_s2h),y
+	sta div_n1
+	txa
 	clc
-	lda prod_l
 	adc div_n0
 	sta div_n0
-	lda prod_h
-	adc #0
-	sta div_n1
+	bcc +
+	inc div_n1
++
 	bit mul_sign
 	bpl .ok
 	sec

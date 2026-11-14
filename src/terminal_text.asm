@@ -1,5 +1,5 @@
-; DNA terminal read-only tables and text (raw ASCII). Bank 0 static: read only
-; with PORTB_PLAY, from the terminal code in segment B (never from NMI).
+; DNA terminal read-only tables and text (raw ASCII). Segment E, next to the
+; terminal screens that read them (never from NMI).
 !zone terminal_text
 t_bit
 	!byte $01,$02,$04,$08,$10,$20,$40,$80
@@ -45,8 +45,6 @@ t_s_rupl
 	!text "uploading",0
 t_s_rpaid
 	!text "bounty paid // press fire",0
-t_s_rprompt
-	!text "press fire to scan",0
 ; Ship chart (ship.asm)
 t_s_ship
 	!text "nebula chart",0

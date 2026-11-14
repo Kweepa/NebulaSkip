@@ -209,61 +209,48 @@ enemy_get_class
 
 ; X = enemy. Y = logical timeline frame (clip start + en_frame).
 ; Pose and clip SFX share this clock. rot0 via pain_var_off; src_ptr preserved.
+; The clip-start tables are consecutive in the enemy metadata (enemy_data.asm),
+; so a state picks its table by offset from enemy_stand_start: one row per meta
+; slot, or per slot * PAIN_MAX + variant for pain / death. ident_col,y is Y.
 enemy_logical_frame
-	lda en_state,x
-	cmp #EN_DYING
-	beq .elf_death
-	cmp #EN_DEAD
-	beq .elf_death
-	cmp #EN_PAIN
-	beq .elf_pain
-	cmp #EN_ATTACK
-	beq .elf_atk
-	cmp #EN_ALERT
-	beq .elf_alert
-	cmp #EN_APPROACH
-	beq .elf_run
-	lda en_frame,x
+	ldy en_state,x
+	lda elf_off,y
+	pha
+	cpy #EN_PAIN
+	bcc .elf_slot
+	cpy #EN_GONE
+	bcs .elf_slot
+	jsr pain_var_off		; pain / dying / dead: Y = slot * PAIN_MAX + variant
+	jmp .elf_add
+.elf_slot
 	jsr ldy_slot
+.elf_add
+	pla
+	clc
+	adc ident_col,y			; table offset + row
+	tay
+	lda en_frame,x
 	clc
 	adc enemy_stand_start,y
 	tay
 	rts
-.elf_run
-	lda en_frame,x
-	jsr ldy_slot
-	clc
-	adc enemy_run_start,y
-	tay
-	rts
-.elf_alert
-	lda en_frame,x
-	jsr ldy_slot
-	clc
-	adc enemy_alert_start,y
-	tay
-	rts
-.elf_atk
-	lda en_frame,x
-	jsr ldy_slot
-	clc
-	adc enemy_attack_start,y
-	tay
-	rts
-.elf_pain
-	lda en_frame,x
-	jsr pain_var_off
-	clc
-	adc enemy_pain_start,y
-	tay
-	rts
-.elf_death
-	lda en_frame,x
-	jsr pain_var_off
-	clc
-	adc enemy_death_start,y
-	tay
-	rts
+
+; Indexed by EN_*: idle, (1 reserved), alert, approach, attack, pain, dying, dead, gone.
+elf_off
+	!byte 0, 0
+	!byte enemy_alert_start - enemy_stand_start
+	!byte enemy_run_start - enemy_stand_start
+	!byte enemy_attack_start - enemy_stand_start
+	!byte enemy_pain_start - enemy_stand_start
+	!byte enemy_death_start - enemy_stand_start
+	!byte enemy_death_start - enemy_stand_start
+	!byte 0
+!if EN_ALERT != 2 OR EN_APPROACH != 3 OR EN_ATTACK != 4 OR EN_PAIN != 5 OR EN_DYING != 6 OR EN_DEAD != 7 OR EN_GONE != 8 {
+	!error "elf_off is indexed by EN_* state"
+}
+!if enemy_death_start - enemy_stand_start + 2 * PAIN_MAX > 256 {
+	!error "enemy clip-start tables do not fit one index byte from enemy_stand_start"
+}
 
 ; Point gx/gy/gz at the current pose for ent_type / obj_i.
 ent_set_pose
@@ -756,6 +743,9 @@ cube_clip
 !if MESH_MAX_VERTS > $10 {
 	!error ".near ORs $10 into a vertex index"
 }
+!if ZCLIP != $0100 {
+	!error ".near hard-codes inv_k / inv_h for ZCLIP = $0100"
+}
 
 ; One endpoint behind ZCLIP. Lerp it onto the plane and project it at
 ; ZCLIP; the front one keeps its PROJ and VOC. Both stay in their edge
@@ -800,11 +790,10 @@ cube_clip
 	sta nc_n
 	lda dlo
 	sta nc_d
-	lda #<ZCLIP
-	sta z_eye
-	lda #>ZCLIP
-	sta z_eye_h
-	jsr .invz
+	lda #1				; .invz at z = ZCLIP ($0100): one shift, mantissa index 0
+	sta inv_k
+	lda invzh
+	sta inv_h
 	ldx ei0
 	ldy ei1
 	jsr .nlerp

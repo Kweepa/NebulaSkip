@@ -14,34 +14,55 @@ Source of truth: `src/mem.asm`, `src/nebula.asm`, `tools/mkatr.py`.
 | `$FF` | OS ROM on. Only during SIOV. Hides `$C000-$CFFF` and `$D800-$FFFF`. |
 
 `portb_cur` (`$056A`) holds the value play wants outside a leaf. The screen
-leaves (`draw_line`, `plot_pixel`, `clear_draw`, `blit_scan`, `init_vic`,
-LoadPrg's context save) switch to `$FE` for the write and restore `portb_cur`.
+leaves (`draw_line`, `plot_pixel`, `clear_draw`, `init_vic`, LoadPrg's context
+save) switch to `$FE` for the write and restore `portb_cur`. Code that works in
+segment E holds `portb_cur` at `$FE` for its whole stretch (`e_enter` /
+`e_leave` in `a8stamp.asm`), so the leaves return to main RAM there.
 
 ### Main RAM
 
 | Range | Use |
 | :--- | :--- |
-| `$0900-$33EC` | GAME segment A (boot loads it as `GAME`; contains LoadPrg, so `start` can load B/C/D) |
+| `$0900-$358D` | GAME segment A (boot loads it as `GAME`; contains LoadPrg, so `start` can load B/C/D/E). Also the segment E gateway, item per-slot tables, fx |
 | `$4000-$4FFF`, `$5000-$5FFF` | Bitmaps A and B, 4K each (128 rows x 32 B). Under the bank window. |
-| `$8000-$B559` | GAME segment B (`GAMEB`): hud, world, enemy, cheats (NMI half), loader, tabs, reboot |
+| `$6000-$7984` | GAME segment E (`GAMEE`, `sege.asm`): stamps and their sprites, item / door mesh blobs, terminal / ship chart / rig scan screens and their text. Under the bank window, visible only with `$FE`. |
+| `$8000-$B479` | GAME segment B (`GAMEB`): hud, world, enemy, cheats (NMI half), loader, terminal (resident half), tabs, reboot |
 | `$BC00-$BDFF` | OS page 2/3 snapshot (`A8_OSPAGE`) |
 | `$BE00-$BFFF` | SIO sector/directory buffer, sprite buffers |
-| `$C000-$CFF2` | GAME segment C (`GAMEC`): cube, fx. Never runs with the OS on. |
+| `$C000-$CDA9` | GAME segment C (`GAMEC`): cube. Never runs with the OS on. |
 | `$D800-$DFFF` | Play BSS, `ALOGHI`, `LOGTAB` (RAM under the OS) |
-| `$E000-$EF1D` | GAME segment D (`GAMED`): door, mesh |
+| `$E000-$EE94` | GAME segment D (`GAMED`): door, mesh |
 | `$EF40-$EFD1` | `GAME_DL_STAGE`: the menu stages the game display list here |
 | `$F000-$FFFF` | `sqt` tables, UI charset, sin/invz/alog LUTs, line and sound tables |
 
-Segment A/B/C/D slack is printed by `build-report.json` (`game.segments`); ACME
-`!error`s in `nebula.asm` stop the build when a segment overflows.
+Segment A/B/C/D/E slack is printed by `build-report.json` (`game.segments`); ACME
+`!error`s in `nebula.asm` / `sege.asm` stop the build when a segment overflows.
+After the 2026-11-13 pass: A 2674 B spare, B 1926, C 598, D 171, E 1659, zone 903.
+
+### Segment E (`$6000-$7FFF`, main RAM under the window)
+
+Assembled on its own from `src/sege.asm` after GAME, like the QSAVE overlay
+(`tools/genesyms.py` exports every `game.lbl` symbol the E tree does not define
+into `esyms.asm`; labels land in `gamee.lbl`, so they do not collide with the
+bank-0 zone at the same addresses). `load_game_segments` loads it with B/C/D.
+GAME reaches it through the jmp table at `SEG_E_BASE` (`E_STAMP_VIEW`,
+`E_TERMINAL`, `E_ITEM_SLOT` in `mem.asm`) between `e_enter` and `e_leave`.
+
+**Rules:** no map accessors (`+lda_mx` ...) in E: their patch sites are
+rewritten at `PORTB_PLAY` and would land in bank 0, and the map is not visible
+from E anyway, so the caller reads map columns first (`rig_poll` copies the
+bounty name and value to `rig_name` / `rig_bty`; `fill_door_type_verts` calls
+`fill_door_origin` before `e_enter`). No calls from E into the bank-0 code
+zone. Never from NMI. Item and door meshes stay inside the bracket from
+`E_ITEM_SLOT` through `stroke_mesh`, because the mesh pointers point into E.
 
 ### Bank 0 (CPU view with `PORTB_PLAY`)
 
 | Range | Use |
 | :--- | :--- |
 | `$4000-$5DFF` | Heap (`DYN_BASE`..`HEAP_LIM`), 7680 B: packed map + prefix, then up to two fused enemy banks, relocated as before. Check `tools/checkheap.py` for the tightest map. |
-| `$5E00-$6A95` | Code zone (`CODE0_BASE`..`CODE0_END`=`STATIC_BASE`, 3392 B, 170 B spare): pistol, process, elevator, cheats_apply. Main-loop-only code: runs with `PORTB_PLAY`, no trampolines. |
-| `$6B40-$72F6` | `STATIC_BASE`: pistol sprite, splat, enemy muzzle (1546 B spare below `QS_OVL`). Item/door meshes moved to segment A (`item_mesh.asm`, 1503 B, paged by `tools/genitems.py`). |
+| `$5E00-$67B8` | Code zone (`CODE0_BASE`..`CODE0_END`=`STATIC_BASE`, 3392 B, 903 B spare): pistol, process, elevator, cheats_apply, rig_poll. Main-loop-only code: runs with `PORTB_PLAY`, no trampolines. |
+| `$6B40-$78FF` | `STATIC_BASE`: empty (3520 B). The sprites and terminal tables moved to segment E. |
 | `$7900-$7FB8` | `QS_OVL`: QSAVE overlay (code 1079 B + 640 B payload buffer), called in place |
 
 **Code-zone rules:** nothing in the zone may be called from the NMI/DLI/VBI path,
@@ -57,7 +78,7 @@ restore `portb_cur`). Data cells inside zone code persist across a reboot.
 
 Boot writes bank 1 (`BANK1`) and bank 0 (`BANK0`) once; the menu and a reboot
 do not touch banks, so they survive. Banks 2-3 are unused. Disk files: `GAME`
-(A), `GAMEB`, `GAMEC`, `GAMED`, `BANK1`, `BANK0`, `MENU`, maps, enemy banks.
+(A), `GAMEB`, `GAMEC`, `GAMED`, `GAMEE`, `BANK1`, `BANK0`, `MENU`, maps, enemy banks.
 
 ---
 

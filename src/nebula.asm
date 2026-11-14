@@ -11,6 +11,7 @@
 !source "zp.asm"
 !source "map_counts.asm"
 !source "mapacc.asm"
+!source "terminal_consts.asm"
 !if  ENEMY_PTR_N != ENEMY_NTYPES {
 	!error "mem.asm ENEMY_PTR_N must equal ENEMY_NTYPES"
 }
@@ -62,6 +63,7 @@ main
 	lda #$ff
 	sta mesh_vmask
 }
+	jsr draw_world_prep			; hull transform + projection while the old frame is still up
 	jsr wait_draw_free
 	jsr clear_draw
 !if  PROFILE = 1 {
@@ -150,17 +152,21 @@ mod_a8stamp
 mod_a8sio
 !source "a8sio.asm"
 
-; Item / door line meshes (tools/genitems.py). Pure data read at draw time from
-; main RAM, so it lives in A rather than the full bank-0 static block.
+; Item / door per-slot tables and pickup names (tools/genitems.py). The mesh
+; blobs themselves are in segment E (e_item.asm).
 mod_item_mesh
 !source "item_mesh.asm"
 mod_item_xf
 !source "item_xf.asm"
 
-; Ship chart (terminal screen 3) and bin16_dec5: main RAM, calls the terminal
-; helpers in B and reads the bank-0 static tables at PORTB_PLAY.
+; Ship: visited-map mask, travel after a chart pick, bin16_dec5. The chart
+; screen is in segment E.
 mod_ship
 !source "ship.asm"
+
+; Explosion particles. Was in segment C; A has the room since the item meshes left.
+mod_fx
+!source "fx.asm"
 
 seg_a_end = *
 !if seg_a_end > $4000 {
@@ -169,16 +175,7 @@ seg_a_end = *
 
 ; --- Bank 0 static data: loaded once at boot, read only with PORTB_PLAY.
 *= STATIC_BASE
-mod_weapon_spr
-!source "weapon_spr.asm"
-mod_splat_spr
-!source "splat_spr.asm"
-mod_enemy_muzzle
-!source "enemy_muzzle.asm"
-mod_terminal_data
-!source "terminal_data.asm"
-mod_terminal_text
-!source "terminal_text.asm"
+; (empty: the sprites and the terminal tables moved to segment E, sege.asm)
 static_end = *
 !if static_end > STATIC_END {
 	!error "static data runs into QS_OVL; end=$", static_end
@@ -220,8 +217,7 @@ mod_elevator
 !source "elevator.asm"
 mod_cheats_apply
 !source "cheats_apply.asm"
-; DNA rig scan (terminal screen 4). rig_poll runs from the main loop and the screen from the
-; terminal loop, both at PORTB_PLAY; t_blit's PORTB_MAIN switch only covers its own copy.
+; DNA rig: rig_poll (main loop). The scan screen is in segment E.
 mod_rig
 !source "rig.asm"
 code0_end = *
@@ -234,8 +230,6 @@ code0_end = *
 seg_c_start = *
 mod_cube
 !source "cube.asm"
-mod_fx
-!source "fx.asm"
 seg_c_end = *
 !if seg_c_end > $D000 {
 	!error "GAME segment C runs into I/O; end=$", seg_c_end

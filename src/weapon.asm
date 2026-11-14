@@ -11,13 +11,6 @@ PISTOL_RECOIL_N = 2			; −4 for 300 ms, then −6 for 160 ms
 WS_EMUZ		= 0
 WS_SPLAT	= 1
 
-; LOD 0..2 per slot (emuz then splat)
-ws_spr_lo
-	!byte <spr_emuz_0, <spr_emuz_1, <spr_emuz_2
-	!byte <spr_splat_0, <spr_splat_1, <spr_splat_2
-ws_spr_hi
-	!byte >spr_emuz_0, >spr_emuz_1, >spr_emuz_2
-	!byte >spr_splat_0, >spr_splat_1, >spr_splat_2
 ws_msb
 	!byte EMUZ_MSB, SPLAT_MSB
 ws_ms_l
@@ -148,16 +141,15 @@ setup_weapon
 	sta wpn_y
 	rts
 
-; A = src lo, Y = src hi. Both keep the mode-E pointer (no unpack).
+; A = rect index, slot * 3 + LOD (e_spr_lo/hi in e_stamp.asm: the rects are in
+; segment E and only the stamp code reads them).
 blit_world
 	ldx ws_slot
 	beq .bw_emuz
 	sta splat_src
-	sty splat_src+1
 	rts
 .bw_emuz
 	sta emuz_src
-	sty emuz_src+1
 	rts
 
 start_flash
@@ -521,10 +513,7 @@ start_world_spr
 	sta wpn_tmp0
 	txa
 	clc
-	adc wpn_tmp0			; + lod
-	tax
-	lda ws_spr_lo,x
-	ldy ws_spr_hi,x
+	adc wpn_tmp0			; + lod = rect index
 	jsr blit_world
 	ldx ws_slot
 	pla				; sy

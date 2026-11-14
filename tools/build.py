@@ -237,6 +237,12 @@ def ai_sources(name: str) -> list[Path]:
     return asm_inputs(SRC / name)
 
 
+def sege_sources() -> list[Path]:
+    """Segment E source tree without the generated esyms.asm (genesyms writes it)."""
+    esyms = (SRC / "esyms.asm").resolve()
+    return [path for path in asm_inputs(SRC / "sege.asm") if path != esyms]
+
+
 def map_prgs() -> list[Path]:
     return [mapnames.prg_path(l) for l in mapnames.map_letters()]
 
@@ -347,7 +353,7 @@ def steps(exe: str) -> list[Step]:
         Step(
             "genitems",
             lambda: [TOOLS / "genitems.py", doc],
-            lambda: [SRC / "item_mesh.asm"],
+            lambda: [SRC / "item_mesh.asm", SRC / "item_blob.asm"],
             lambda: tool("genitems.py"),
         ),
         Step(
@@ -387,7 +393,7 @@ def steps(exe: str) -> list[Step]:
                 SRC / "map_counts.asm",
                 *sorted((ROOT / "editor" / "maps").glob("map[a-z].json")),
             ],
-            lambda: [SRC / "terminal_data.asm"],
+            lambda: [SRC / "terminal_data.asm", SRC / "terminal_consts.asm"],
             lambda: tool("genterminal.py"),
         ),
         Step(
@@ -574,6 +580,27 @@ def steps(exe: str) -> list[Step]:
             ),
         ),
         Step(
+            "genesyms",
+            lambda: [
+                TOOLS / "genesyms.py",
+                TOOLS / "mkreloc.py",
+                ROOT / "game.lbl",
+                *sege_sources(),
+            ],
+            lambda: [SRC / "esyms.asm"],
+            lambda: tool("genesyms.py", "--labels", "game.lbl"),
+        ),
+        Step(
+            "acme sege.asm",
+            lambda: [*sege_sources(), SRC / "esyms.asm"],
+            lambda: [ROOT / "gamee.prg", ROOT / "gamee.lbl"],
+            lambda: acme(
+                exe,
+                ["-v3", "--vicelabels", str(ROOT / "gamee.lbl"), "sege.asm"],
+                ["gamee.prg"],
+            ),
+        ),
+        Step(
             "mkatr",
             lambda: [
                 TOOLS / "mkatr.py",
@@ -587,6 +614,7 @@ def steps(exe: str) -> list[Step]:
                 ROOT / "tab.prg",
                 ROOT / "menu.prg",
                 ROOT / "qsave.prg",
+                ROOT / "gamee.prg",
                 *map_prgs(),
                 *enemy_prgs(),
             ],
@@ -604,6 +632,7 @@ def steps(exe: str) -> list[Step]:
                 TOOLS / "mkreloc.py",
                 ROOT / "nebula.atr",
                 ROOT / "game.lbl",
+                ROOT / "gamee.prg",
                 *enemy_prgs(),
             ],
             lambda: [ROOT / "build-report.json"],

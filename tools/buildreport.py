@@ -108,8 +108,9 @@ def collect_variant(labels: str, *, symbols: bool = False) -> dict:
     # Code segments must stay out of $4000-$7FFF (bank window); limits match the
     # !error asserts in nebula.asm: A below the bitmaps, B below the OS page
     # snapshot, C below I/O, D below GAME_DL_STAGE.
-    # Z is the bank-0 code zone (CODE0_BASE..STATIC_BASE).
-    limits = {"A": 0x4000, "B": 0xBC00, "C": 0xD000, "D": 0xEF40, "Z": 0x6B40}
+    # Z is the bank-0 code zone (CODE0_BASE..STATIC_BASE). E is main RAM under
+    # the bank window (sege.asm, SEG_E_BASE..SEG_E_LIMIT).
+    limits = {"A": 0x4000, "B": 0xBC00, "C": 0xD000, "D": 0xEF40, "Z": 0x6B40, "E": 0x8000}
     segments = {
         k: {"start": lo, "end": hi, "limit": limits[k], "slack": limits[k] - hi}
         for k, (lo, hi) in game.get("segments", {}).items()

@@ -65,6 +65,7 @@ load_game_segments
 	+load_seg seg_name_b, $80
 	+load_seg seg_name_c, $c0
 	+load_seg seg_name_d, $e0
+	+load_seg seg_name_e, >SEG_E_BASE	; main RAM under the bank window (sege.asm)
 	lda #PORTB_PLAY
 	sta sio_pb
 	rts
@@ -78,6 +79,8 @@ seg_name_b	!text "GAMEB"
 seg_name_c	!text "GAMEC"
 	!byte 0
 seg_name_d	!text "GAMED"
+	!byte 0
+seg_name_e	!text "GAMEE"
 	!byte 0
 
 sio_sec_l	!byte 0

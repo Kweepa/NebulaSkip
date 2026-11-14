@@ -255,12 +255,6 @@ clear_b
 	bne .cb
 	rts
 
-clear_charsets
-fill_margin_glyph
-fill_colour
-fill_viewport_colour
-	rts
-
 ; room_idx → col_bg (Atari paper byte, made by the editor). The DLI publishes it.
 apply_room_palette
 	ldx room_idx

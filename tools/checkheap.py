@@ -112,6 +112,14 @@ def used_types(per_room: dict[int, set[int]]) -> list[int]:
     return sorted(out)
 
 
+def seg_e_span() -> list[int]:
+    """Segment E (sege.asm -> gamee.prg): main RAM under the bank window."""
+    base = parse_mem_const("SEG_E_BASE")
+    prg = ROOT / "gamee.prg"
+    size = max(prg.stat().st_size - 2, 0) if prg.is_file() else 0
+    return [base, base + size]
+
+
 def heap_report(labels_path: Path | str) -> tuple[dict, bool]:
     """Per-level heap manifest. (report, failed).
 
@@ -162,6 +170,7 @@ def heap_report(labels_path: Path | str) -> tuple[dict, bool]:
                 "C": [0xC000, labels["seg_c_end"]],
                 "D": [0xE000, labels["seg_d_end"]],
                 "Z": [parse_mem_const("CODE0_BASE"), labels["code0_end"]],
+                "E": seg_e_span(),
             },
         },
         "level_prefix": prefix,
