@@ -104,7 +104,8 @@
       "dir": 1,
       "roomId": "2c61275c-9e6b-4cf8-950e-87d7f5606615",
       "pickup": "rock",
-      "scale": 2
+      "scale": 2,
+      "collide": true
     },
     {
       "id": "57de8c05-1d4b-4ef2-8675-ce05588f882f",
@@ -121,7 +122,8 @@
       "roomId": "2c61275c-9e6b-4cf8-950e-87d7f5606615",
       "pickup": "rock",
       "rot": 4,
-      "scale": 4
+      "scale": 4,
+      "collide": true
     },
     {
       "id": "8860a847-2202-4e05-91dc-6f3fcb57d5d8",
@@ -373,7 +375,8 @@
       "dir": 1,
       "roomId": "64b5e3f8-1a29-4b3b-936c-78ab3537a844",
       "pickup": "rock",
-      "scale": 2
+      "scale": 2,
+      "collide": true
     },
     {
       "id": "fce79398-852e-4400-90b6-a46a7048daca",
@@ -1931,7 +1934,8 @@
       "dir": 1,
       "roomId": "9a1e2d7b-2425-4495-b1ee-d1a700b6ec29",
       "pickup": "rock",
-      "scale": 4
+      "scale": 4,
+      "collide": true
     },
     {
       "id": "7a5286e5-3a96-4735-8788-ae323e2a32d8",
@@ -1964,7 +1968,8 @@
       "dir": 1,
       "roomId": "9a1e2d7b-2425-4495-b1ee-d1a700b6ec29",
       "pickup": "rock",
-      "scale": 4
+      "scale": 4,
+      "collide": true
     },
     {
       "id": "f6db24bb-16f4-4afe-96ed-6af7e42c893a",

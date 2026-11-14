@@ -461,7 +461,8 @@ def th_names(meta: dict) -> str:
     return "\n".join(lines)
 
 
-def main() -> None:
+def load_item_meshes() -> tuple[dict, list[str], dict]:
+    """(meshes by key, custom item names, itemMeta) from editor/nebula.json over DEFAULT_MESHES."""
     items = dict(DEFAULT_MESHES)
     custom: list[str] = []
     meta: dict = {}
@@ -479,6 +480,11 @@ def main() -> None:
                 if key in DOOR_MESH_KEY and not mesh["verts"]:
                     continue
                 items[key] = mesh if mesh["verts"] else items.get(key, {"verts": [], "lines": []})
+    return items, custom, meta
+
+
+def main() -> None:
+    items, custom, meta = load_item_meshes()
 
     for name in custom:
         m = meta.get(name)

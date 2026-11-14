@@ -275,6 +275,7 @@ bind_tab
 	+bind_add th_room, map_nthings
 	+bind_add th_ori, map_nthings
 	+bind_set_n1
+	+bind_add room_crate_o, bind_n
 	+bind_add room_slope_o, bind_n
 	+bind_add room_plat_o, bind_n
 	+bind_add room_trig_o, bind_n

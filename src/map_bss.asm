@@ -94,7 +94,7 @@ crate_sx	= $0480
 crate_sy	= $0482
 crate_sz	= $0484
 crate_room	= $0486
-crate_flags	= $0488		; nonzero = stroke all 12 edges
+crate_flags	= $0488		; nonzero = stroke all 12 edges; 2 = hidden collider (solid prop)
 slope_x	= $048A
 slope_y	= $048C
 slope_z	= $048E
@@ -164,11 +164,12 @@ th_ori	= $050C		; things: bits 0-2 Y facing (x45 deg, static items), bits 6-7 = 
 en_bty	= $050E		; enemy bounty n (bits = 4n-1); 0 = not a bounty (DNA rig scan)
 en_bnm	= $0510		; enemy bounty name: byte offset into map_text (NUL-terminated)
 room_flags	= $0512		; per room: bit 0 = ROOM_OPEN_SKY (no ceiling collision). Packed after room_bg.
-!if (room_flags - room_x) & 1 {
+room_crate_o	= $0514		; per room: first crate index (nrooms+1 entries; last = map_ncrates)
+!if (room_crate_o - room_x) & 1 {
 	!error "map pointer table is not aligned words"
 }
-!if (room_flags - room_x) / 2 > 127 {
+!if (room_crate_o - room_x) / 2 > 127 {
 	!error "map pointer table exceeds 128 bind fields"
 }
-; MAP_BSS_END = $0514  size=276
-; $0514..$0523 is a gap; play BSS still starts at $0524.
+; MAP_BSS_END = $0516  size=278
+; $0516..$0523 is a gap; play BSS still starts at $0524.

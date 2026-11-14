@@ -18,12 +18,12 @@
       "dir": 1,
       "name": "LZ",
       "a8Bg": 244,
+      "noCombat": true,
       "shape": "box",
       "rx": 0,
       "ry": 0,
       "rz": 0,
-      "cuts": [],
-      "noCombat": true
+      "cuts": []
     },
     {
       "id": "e99d083e-9cf6-479d-bb12-ab04e7b38fe2",

@@ -2316,6 +2316,9 @@ export function clampObject(obj) {
     delete obj.big;
     if (scale > 1) obj.scale = scale;
     else delete obj.scale;
+    // Opt-in solid (placed props only; the cooker boxes the mesh verts). Barrels blow up, so never.
+    if (obj.collide === true && obj.pickup !== "barrel") obj.collide = true;
+    else delete obj.collide;
   }
   if (obj.kind === "switch") {
     if (obj.shootable) obj.shootable = true;
@@ -2341,6 +2344,8 @@ export function clampObject(obj) {
   if (obj.kind === "crate") {
     if (obj.allEdges) obj.allEdges = true;
     else delete obj.allEdges;
+    if (obj.playerOnly) obj.playerOnly = true;
+    else delete obj.playerOnly;
   }
   if (obj.kind === "spawn") {
     obj.enabled = !!obj.enabled;
@@ -2373,6 +2378,7 @@ export function createObject(kind, x, y, z, extra = {}) {
     obj.flags = extra.flags;
   }
   if (kind === "crate" && extra.allEdges) obj.allEdges = true;
+  if (kind === "crate" && extra.playerOnly) obj.playerOnly = true;
   if (kind === "spawn" || kind === "enemy") {
     obj.rot = clampEnemyRot(extra.rot ?? 0);
   }
@@ -2430,6 +2436,7 @@ export function createObject(kind, x, y, z, extra = {}) {
     if (extra.rot) obj.rot = clampEnemyRot(extra.rot);
     const scale = clampItemScale(extra.scale ?? (extra.big ? 8 : 1));
     if (scale > 1) obj.scale = scale;
+    if (extra.collide === true) obj.collide = true;
   }
   if (kind === "doorway") {
     obj.lockKey = clampDoorLock(extra.lockKey ?? (extra.locked ? "yellow" : "unlocked"));
@@ -3192,6 +3199,7 @@ export function mapStats(doc) {
       continue;
     }
     c64Bytes += C64_OBJECT_BYTES[kind] ?? 8;
+    if (kind === "pickup" && obj.collide === true) c64Bytes += C64_OBJECT_BYTES.crate; // cooked as a hidden crate
     if (kind === "doorway" && obj.otherRoomId) {
       c64Bytes += 11; // second baked instance for the far room
     }
@@ -4066,6 +4074,7 @@ function parseObjects(list) {
       dir: o.dir,
       flags: o.flags,
       allEdges: o.allEdges,
+      playerOnly: o.playerOnly,
       enemy: o.enemy,
       shootable: o.shootable,
       endLevel: o.endLevel,
@@ -4179,6 +4188,7 @@ function parseObjects(list) {
     }
     if (o.kind === "pickup" || o.kind === "backpack") {
       obj.pickup = clampPickupType(o.pickup || o.backpack);
+      if (o.collide === true) obj.collide = true;
     }
     if (o.kind === "doorway") {
       obj.lockKey = migrateDoorLock(o);

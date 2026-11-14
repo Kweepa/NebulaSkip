@@ -1298,13 +1298,14 @@ draw_world
 	jsr draw_box
 	; crates
 .dw_items
-	ldx #0
+	ldy room_idx
+	+slice_x room_crate_o
 .dw_c
-	cpx	map_ncrates
+	cpx sl_end
 	bcs .dw_d
-	+lda_mx crate_room
-	cmp room_idx
-	bne .dw_cn
+	+lda_mx crate_flags
+	cmp #2
+	beq .dw_cn			; 2 = solid prop collider (genmap), the item draws itself
 	stx obj_i
 	+lda_mx crate_x
 	sta box_x

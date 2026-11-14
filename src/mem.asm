@@ -161,7 +161,7 @@ MAP_SMC_BASE	= $0200
 }
 
 ; Play BSS: default VIC matrix / leftover boot. VIC matrix in play is $C000.
-; map_bss.asm occupies $0400–$0511 (play BSS starts $0524). $08F6 video_ms, $08F9–$08FF reboot stub + selectors.
+; map_bss.asm occupies $0400–$0515 (play BSS starts $0524). $08F6 video_ms, $08F9–$08FF reboot stub + selectors.
 ENEMY_PTR_N	= 4			; must == ENEMY_NTYPES (nebula.asm asserts)
 enemy_gx_lo	= $0524
 enemy_gx_hi	= enemy_gx_lo + ENEMY_PTR_N

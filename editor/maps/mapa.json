@@ -148,7 +148,8 @@
       "dir": 1,
       "roomId": "db241be9-929a-4455-ba75-6b573e52cd96",
       "pickup": "terminal",
-      "rot": 2
+      "rot": 2,
+      "collide": true
     },
     {
       "id": "9317b6f4-c0a3-4a4c-acfb-2511e884c646",
@@ -1301,6 +1302,21 @@
       "pickup": "greeble",
       "rot": 2,
       "scale": 8
+    },
+    {
+      "id": "a0f924f3-7810-4e34-b2e9-c597c826f2da",
+      "kind": "crate",
+      "x": 112,
+      "y": 64,
+      "z": 88,
+      "sx": 9,
+      "sy": 12,
+      "sz": 5,
+      "face": "+z",
+      "axis": "z",
+      "dir": 1,
+      "roomId": "db241be9-929a-4455-ba75-6b573e52cd96",
+      "playerOnly": true
     }
   ]
 }

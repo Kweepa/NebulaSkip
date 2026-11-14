@@ -534,13 +534,14 @@ line_solids_blocked			; C=1 on the first solid found (col_* / ln_best not neares
 	beq +
 	jmp .lsh_pub
 +
-	ldx #0
+	ldy proc_tmp5
+	+slice_x room_crate_o
 .lsh_crate
-	cpx map_ncrates
+	cpx sl_end
 	bcs .lsh_plats
-	+lda_mx crate_room
-	cmp proc_tmp5
-	bne .lsh_cn
+	+lda_mx crate_flags
+	cmp #2
+	beq .lsh_cn			; solid-prop collider: shots and sight pass
 	+lda_mx crate_sx
 	beq .lsh_cn
 	sta box_sx

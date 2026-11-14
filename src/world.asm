@@ -413,13 +413,11 @@ floor_below_y
 	lda #0
 	sta proc_tmp0
 .fb_surf
-	ldx #0
+	ldy col_room
+	+slice_x room_crate_o
 .fb_c
-	cpx	map_ncrates
+	cpx sl_end
 	bcs .fb_p
-	+lda_mx crate_room
-	cmp col_room
-	bne .fb_cn
 	+lda_mx crate_x
 	sta box_x
 	+lda_mx crate_z
@@ -529,14 +527,12 @@ update_floor
 	lda proc_tmp2
 	sta floor_y
 .uf_c0
-	ldx #0
+	ldy room_idx
+	+slice_x room_crate_o
 	; crate tops (walkable)
 .uf_c
-	cpx	map_ncrates
+	cpx sl_end
 	bcs .uf_p
-	+lda_mx crate_room
-	cmp room_idx
-	bne .uf_cn
 	+lda_mx crate_x
 	sta box_x
 	+lda_mx crate_z
@@ -1080,13 +1076,15 @@ update_fall
 ; col_room set. C=1 blocked and box_* is that crate. X = index.
 ; ------------------------------------------------------------------
 crates_block
-	ldx #0
+	tya				; slice_x clobbers Y; the flag comes back after it
+	pha
+	ldy col_room
+	+slice_x room_crate_o
+	pla
+	tay
 .cb_c
-	cpx	map_ncrates
+	cpx sl_end
 	bcs .cb_no
-	+lda_mx crate_room
-	cmp col_room
-	bne .cb_n
 	+lda_mx crate_y
 	sta box_y
 	+lda_mx crate_sy
@@ -1094,7 +1092,12 @@ crates_block
 	jsr player_overlaps_y
 	bcc .cb_n
 	cpy #0
-	beq .cb_wall			; projectile — volume wall
+	bne .cb_step
+	+lda_mx crate_flags
+	cmp #2
+	beq .cb_n			; solid-prop collider: projectiles pass
+	bne .cb_wall			; projectile — volume wall
+.cb_step
 	sec
 	lda cam_yh
 	sbc #EYE_HEIGHT			; feet

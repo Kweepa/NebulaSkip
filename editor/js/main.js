@@ -3129,6 +3129,21 @@ function renderLayoutObjectFields(root, objs) {
       const k = clampItemScale(o.scale ?? (o.big ? 8 : 1));
       return k > 1 && !itemScaleFits(itemMeshFor(doc, o.pickup), k);
     });
+    // Props only (a pickup vanishes when taken; a barrel when it blows up). The cooker boxes the
+    // placed mesh verts, so scale and facing are included.
+    const solidable = objs.filter((o) => !itemMeta(doc, o.pickup).pickup && o.pickup !== "barrel");
+    if (solidable.length) {
+      const allOn = solidable.every((o) => o.collide === true);
+      const f = toggleField("Collide", allOn, () =>
+        apply((obj) => {
+          if (!solidable.includes(obj)) return;
+          if (allOn) delete obj.collide;
+          else obj.collide = true;
+        })
+      );
+      f.title = "Block the player and enemies with the bounding box of the item's verts";
+      root.appendChild(f);
+    }
     if (badScale) {
       const k = clampItemScale(badScale.scale ?? (badScale.big ? 8 : 1));
       const warn = document.createElement("p");
@@ -3433,6 +3448,15 @@ function renderLayoutObjectFields(root, objs) {
         })
       )
     );
+    const allPlayerOnly = objs.every((o) => !!o.playerOnly);
+    const po = toggleField("Player only", allPlayerOnly, () =>
+      apply((obj) => {
+        if (allPlayerOnly) delete obj.playerOnly;
+        else obj.playerOnly = true;
+      })
+    );
+    po.title = "Not drawn in the game; blocks and carries the player and enemies, but not shots or sight";
+    root.appendChild(po);
   }
 
   if (kind === "slope") {
