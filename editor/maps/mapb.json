@@ -22,7 +22,8 @@
       "rx": 0,
       "ry": 0,
       "rz": 0,
-      "cuts": []
+      "cuts": [],
+      "noCombat": true
     },
     {
       "id": "e99d083e-9cf6-479d-bb12-ab04e7b38fe2",
@@ -74,16 +75,16 @@
     {
       "id": "05d74ea7-b63f-46ea-86a5-fe184df38784",
       "kind": "trigger",
-      "x": 97,
+      "x": 102,
       "y": 55,
-      "z": 45,
-      "sx": 8,
+      "z": 47,
+      "sx": 4,
       "sy": 4,
-      "sz": 8,
+      "sz": 5,
       "face": "+z",
       "axis": "z",
       "dir": 1,
-      "purpose": "message",
+      "purpose": "ship",
       "text": "Press fire to board ship",
       "tag": "",
       "roomId": "ce8196db-247e-4d1f-8fe4-c732e8f25d35"

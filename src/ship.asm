@@ -7,8 +7,8 @@
 ; loop at PORTB_PLAY, so the bank-0 static tables (sm_*, t_s_*, t_bit) can be read
 ; directly; t_blit switches to PORTB_MAIN for the row copy itself.
 ;
-; Reachable: the current map, the accepted bounty's map, and any map visited
-; (ship_seen, quicksaved). Travel reloads the target map at its spawn like
+; Reachable: the current map and any map in ship_seen (visited, or its bounty was
+; accepted at the terminal; permanent, quicksaved). Travel reloads the target map at its spawn like
 ; next_level does: HP / ammo / weapons / bits are kept, keys are per-map.
 !zone ship
 
@@ -59,8 +59,6 @@ sh_seen
 sh_reach
 	inx
 	cpx level_num
-	beq .sr_y
-	cpx bounty_map				; 0 = none; X >= 1 here
 	beq .sr_y
 	dex
 	jmp sh_seen

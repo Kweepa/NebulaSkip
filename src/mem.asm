@@ -218,9 +218,9 @@ d5_hi		= d5_lo + 1
 d5_t		= d5_hi + 1
 bits_l		= d5_t + 1			; currency (starts at 42), 16-bit
 bits_h		= bits_l + 1
-bounty_sel	= bits_h + 1			; 0 none, else accepted bounty index + 1
-bounty_map	= bounty_sel + 1		; its map number (1..MAP_NLEVELS)
-shop_owned	= bounty_map + 1		; 16-bit mask, bit N = shop item N bought
+bounty_acc	= bits_h + 1			; 16-bit mask, bit N = bounty N accepted (its map is also marked in ship_seen)
+bounty_acc_h	= bounty_acc + 1
+shop_owned	= bounty_acc_h + 1		; 16-bit mask, bit N = shop item N bought
 shop_owned_h	= shop_owned + 1
 ship_seen	= shop_owned_h + 1		; 16-bit mask, bit N-1 = map N visited (ship chart access)
 ship_seen_h	= ship_seen + 1

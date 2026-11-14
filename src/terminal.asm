@@ -23,8 +23,8 @@ term_init
 	sta term_scr
 	sta term_sel
 	sta term_old
-	sta bounty_sel
-	sta bounty_map
+	sta bounty_acc
+	sta bounty_acc_h
 	sta shop_owned
 	sta shop_owned_h
 	sta ship_seen
@@ -192,11 +192,13 @@ t_loop						; ship.asm returns here too
 	beq .tr_return
 	cmp #1
 	beq .tr_buy
-	; bounty accepted: remember it, map access is unlocked
-	stx bounty_sel				; X = index + 1
-	dex
+	; bounty accepted: its map stays on the ship chart for good (no current bounty)
+	dex					; X = bounty index
+	jsr t_bty_acc
 	lda bty_map,x
-	sta bounty_map
+	tax
+	dex					; node index = map - 1
+	jsr sh_mark
 	lda #SOUND_ITEMUP
 	jsr play_sound
 	lda #0
@@ -620,7 +622,8 @@ t_draw_main
 	lda term_tmp2
 	cmp #3
 	bcc .dm_l
-	lda bounty_sel
+	lda bounty_acc
+	ora bounty_acc_h
 	beq .dm_x
 	jsr t_rbegin
 	lda #<t_s_access
@@ -790,10 +793,17 @@ t_marker
 	rts
 .mk_b
 	txa
-	clc
-	adc #1
-	cmp bounty_sel
-	bne .mk_n
+	and #7
+	tay
+	lda t_bit,y
+	cpx #8
+	bcs .mk_h
+	and bounty_acc
+	jmp .mk_t
+.mk_h
+	and bounty_acc_h
+.mk_t
+	beq .mk_n
 .mk_set
 	lda #'x'
 	sta term_row + TERM_COLS - 1
@@ -812,6 +822,22 @@ t_owned
 	rts
 .ow_h
 	and shop_owned_h
+	rts
+
+; X = bounty index -> set its bit in bounty_acc. X kept.
+t_bty_acc
+	txa
+	and #7
+	tay
+	lda t_bit,y
+	cpx #8
+	bcs .ba_h
+	ora bounty_acc
+	sta bounty_acc
+	rts
+.ba_h
+	ora bounty_acc_h
+	sta bounty_acc_h
 	rts
 
 t_setowned
