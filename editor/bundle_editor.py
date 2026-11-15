@@ -164,6 +164,15 @@ def main() -> None:
           <span class="stick-label">Front</span>
         </div>
         <canvas id="view-canvas" tabindex="0"></canvas>
+        <div class="stick-pane item-pane" id="item-front" hidden>
+          <canvas id="item-front-canvas" tabindex="0"></canvas>
+        </div>
+        <div class="stick-pane item-pane" id="item-right" hidden>
+          <canvas id="item-right-canvas" tabindex="0"></canvas>
+        </div>
+        <div class="stick-pane item-pane" id="item-top" hidden>
+          <canvas id="item-top-canvas" tabindex="0"></canvas>
+        </div>
       </div>
       <p class="hint" id="hint"></p>
       <div id="build-panel" class="build-panel" hidden></div>

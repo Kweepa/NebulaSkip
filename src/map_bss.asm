@@ -165,11 +165,12 @@ en_bty	= $050E		; enemy bounty n (bits = 4n-1); 0 = not a bounty (DNA rig scan)
 en_bnm	= $0510		; enemy bounty name: byte offset into map_text (NUL-terminated)
 room_flags	= $0512		; per room: bit 0 = ROOM_OPEN_SKY (no ceiling collision). Packed after room_bg.
 room_crate_o	= $0514		; per room: first crate index (nrooms+1 entries; last = map_ncrates)
-!if (room_crate_o - room_x) & 1 {
+en_hp0	= $0516		; enemy starting hp byte (placed hp, else type default; genmap resolves). Read by init_enemies.
+!if (en_hp0 - room_x) & 1 {
 	!error "map pointer table is not aligned words"
 }
-!if (room_crate_o - room_x) / 2 > 127 {
+!if (en_hp0 - room_x) / 2 > 127 {
 	!error "map pointer table exceeds 128 bind fields"
 }
-; MAP_BSS_END = $0516  size=278
-; $0516..$0523 is a gap; play BSS still starts at $0524.
+; MAP_BSS_END = $0518  size=280
+; $0518..$0523 is a gap; play BSS still starts at $0524.

@@ -174,7 +174,7 @@ def main() -> None:
 
     labels = parse_labels(Path(args.labels))
     max_id = 255
-    last = "room_crate_o"  # highest map pointer word ($0514); slope_flags lives in a low gap
+    last = "en_hp0"  # highest map pointer word ($0516); slope_flags lives in a low gap
     if "room_x" in labels and last in labels:
         max_id = (labels[last] - labels["room_x"]) // 2
         if max_id < 0 or max_id > 127:

@@ -43,6 +43,8 @@ import {
   MAX_BOUNTY_NAME_LEN,
   clampBounty,
   clampBountyName,
+  clampPlacedEnemyHp,
+  enemyHp,
   STAND_VAR_MAX,
   STAND_VAR_NAME_MAX,
   addStandVariantClip,
@@ -73,6 +75,7 @@ import {
   itemPagePlan,
   itemKeys,
   itemLabel,
+  enemyGhostItemSegs,
   allMeshKeys,
   isCustomItem,
   setCustomItemNames,
@@ -419,6 +422,7 @@ const previewView = new PreviewView(document.getElementById("preview-canvas"), {
 const animView = new AnimView(document.getElementById("view-canvas"), {
   stage: document.getElementById("map-stage"),
   showCollision: () => collisionOn,
+  getGhostItem: () => enemyGhostItemSegs(doc, doc.enemies[enemyIndex]),
   getEnemy: () => doc.enemies[enemyIndex],
   getFrame: () => {
     const e = doc.enemies[enemyIndex];
@@ -613,6 +617,11 @@ const stickFront = makeStickOrtho("stick-front-canvas", "x", 1);
 
 const itemView = new ItemView(document.getElementById("view-canvas"), {
   stage: document.getElementById("map-stage"),
+  ortho: {
+    front: document.getElementById("item-front-canvas"),
+    right: document.getElementById("item-right-canvas"),
+    top: document.getElementById("item-top-canvas"),
+  },
   getMesh: () => {
     if (!doc.items) doc.items = {};
     if (!doc.items[itemMeshKey]) doc.items[itemMeshKey] = { verts: [], lines: [] };
@@ -1295,6 +1304,12 @@ function setMode(mode) {
   }
   stickLeft.enabled = stick;
   stickFront.enabled = stick;
+  // Items tab: 2x2 Front | Right / Top | Perspective (the perspective canvas is #view-canvas).
+  mapStage?.classList.toggle("item-stage", mode === "items");
+  for (const id of ["item-front", "item-right", "item-top"]) {
+    const el = document.getElementById(id);
+    if (el) el.hidden = mode !== "items";
+  }
   const hintEl = document.getElementById("hint");
   if (hintEl) hintEl.hidden = mode === "build";
   const fontLeft = document.getElementById("font-left");
@@ -1317,7 +1332,7 @@ function setMode(mode) {
     mode === "layout"
       ? "Drag palette to place · LMB box/click-select · Ctrl+LMB box-select points · Shift add · WASD/wheel fly · Q/E up · RMB look · Alt+LMB / Alt+MMB orbit · MMB pan · Alt+RMB zoom · F focus · G drop · Ctrl+D dup · gizmo moves selection · Del"
       : mode === "items"
-          ? "LMB box-select verts · click vert/line to select · Shift add · gizmo moves · V add vert · L add line · Ctrl+C/V copy/paste · Del · F focus · MMB pan · Alt+LMB / RMB orbit · Alt+RMB zoom"
+          ? "LMB box-select verts · click vert/line to select · Shift add · gizmo moves · V add vert · L add line · Ctrl+C/V copy/paste · Del · F focus · MMB pan · Wheel / Alt+RMB zoom · Perspective: Alt+LMB / RMB orbit · Front/Right/Top: Alt+LMB / RMB pan · pan and zoom are shared by all views"
           : mode === "build"
               ? "Open the repo once · Reload after a build"
               : mode === "font"
@@ -3353,6 +3368,19 @@ function renderLayoutObjectFields(root, objs) {
     );
     btyRow.title = "0 = not a bounty. Snaps to 3, 7, 11 ... 1019 (one byte). Scannable with the DNA rig once dead.";
     root.appendChild(btyRow);
+    // Per placed enemy. Blank = the enemy type's hp (set on the type in the Enemies tab).
+    const hpCur = unanimous(objs, (o) => clampPlacedEnemyHp(o.hp));
+    const hpType = unanimous(objs, (o) => o.enemy);
+    const hpInp = numberInputMixed(hpCur, (n) => apply((obj) => (obj.hp = clampPlacedEnemyHp(n))));
+    hpInp.min = "0";
+    hpInp.max = "255";
+    if (hpCur === 0) {
+      hpInp.value = "";
+      hpInp.placeholder = hpType ? String(enemyHp(hpType, doc.enemies)) : "type default";
+    }
+    const hpRow = field("HP", hpInp);
+    hpRow.title = "Game byte 1..255. Blank = the enemy type's hp.";
+    root.appendChild(hpRow);
     renderStandPicker(root, objs, apply);
   }
 
@@ -3906,6 +3934,31 @@ function renderInspector() {
   blockRow.className = "field-pair";
   blockRow.append(field("Block radius", blockInp));
   root.appendChild(blockRow);
+
+  const ghostSel = document.createElement("select");
+  ghostSel.title = "Editor-only reference prop drawn at the root. Not exported.";
+  const ghostNone = document.createElement("option");
+  ghostNone.value = "";
+  ghostNone.textContent = "None";
+  ghostSel.appendChild(ghostNone);
+  for (const key of itemKeys()) {
+    const o = document.createElement("option");
+    o.value = key;
+    o.textContent = itemLabel(key);
+    ghostSel.appendChild(o);
+  }
+  ghostSel.value = itemKeys().includes(e.ghostItem) ? e.ghostItem : "";
+  ghostSel.addEventListener("change", () => {
+    pushUndo();
+    if (ghostSel.value) e.ghostItem = ghostSel.value;
+    else delete e.ghostItem;
+    markDirty();
+    refreshAll();
+  });
+  const ghostRow = document.createElement("div");
+  ghostRow.className = "field-pair";
+  ghostRow.append(field("Ghost item", ghostSel));
+  root.appendChild(ghostRow);
 
   const timeline = getTimeline(e);
   const spriteEnemy = enemyHasSprites(e);

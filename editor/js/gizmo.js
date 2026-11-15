@@ -1,6 +1,7 @@
 import {
   closestTOnSegment2d,
   distPointToSegment2d,
+  lookVectors,
   NEAR,
   projectLine,
   projectPoint,
@@ -66,9 +67,28 @@ function pointInPoly2d(x, y, poly) {
 export function gizmoMetrics(c, cam, w, h) {
   const focal = Math.min(w, h) * 0.9;
   const targetPx = Math.min(w, h) * GIZMO_SCREEN_FRAC;
+  if (cam.ortho) {
+    const axisLen = targetPx / cam.ortho;
+    return { axisLen, planeLen: axisLen / 3, focal, targetPx };
+  }
   const cc = worldToCamera(c, cam);
   const axisLen = cc.z >= NEAR ? (targetPx / focal) * cc.z : GIZMO_FALLBACK_LEN;
   return { axisLen, planeLen: axisLen / 3, focal, targetPx };
+}
+
+/**
+ * Orthographic views look along a world axis: the end-on axis and the edge-on plane collapse to a
+ * point / line, so they are neither drawn nor grabbable. Perspective cameras show everything.
+ */
+function gizmoAxisShown(cam, axis) {
+  if (!cam.ortho) return true;
+  return Math.abs(lookVectors(cam.yaw, cam.pitch).forward[axis]) < 0.99;
+}
+
+function gizmoPlaneShown(cam, planeN) {
+  if (!cam.ortho) return true;
+  const f = lookVectors(cam.yaw, cam.pitch).forward;
+  return Math.abs(f.x * planeN.x + f.y * planeN.y + f.z * planeN.z) > 0.01;
 }
 
 export function gizmoPlaneHandles(c, gizmo) {
@@ -179,12 +199,14 @@ export function drawTranslateGizmo(ctx, c, cam, w, h, state = {}) {
   const { hoverGizmo = null, drag = null } = state;
   const gizmo = gizmoMetrics(c, cam, w, h);
   for (const handle of gizmoPlaneHandles(c, gizmo)) {
+    if (!gizmoPlaneShown(cam, handle.planeN)) continue;
     const hi =
       (hoverGizmo?.kind === "plane" && hoverGizmo.plane === handle.plane) ||
       (drag?.kind === "plane" && drag.plane === handle.plane);
     drawGizmoPlaneQuad(ctx, handle.corners, cam, w, h, handle.fill, handle.stroke, hi);
   }
   for (const axis of ["x", "y", "z"]) {
+    if (!gizmoAxisShown(cam, axis)) continue;
     const hi =
       (hoverGizmo?.kind === "axis" && hoverGizmo.axis === axis) ||
       (drag?.kind === "axis" && drag.axis === axis);
@@ -197,12 +219,14 @@ export function drawTranslateGizmo(ctx, c, cam, w, h, state = {}) {
 export function hitTranslateGizmo(c, cam, w, h, mx, my, axisHit = GIZMO_AXIS_HIT) {
   const gizmo = gizmoMetrics(c, cam, w, h);
   for (const handle of gizmoPlaneHandles(c, gizmo)) {
+    if (!gizmoPlaneShown(cam, handle.planeN)) continue;
     const poly = projectGizmoPoly(handle.corners, cam, w, h);
     if (poly && pointInPoly2d(mx, my, poly)) return handle;
   }
   const pc = projectPoint(c, cam, w, h);
   if (!pc.ok) return null;
   for (const axis of ["x", "y", "z"]) {
+    if (!gizmoAxisShown(cam, axis)) continue;
     const end = gizmoAxisEnd(c, axis, gizmo.axisLen);
     const pa = projectPoint(end, cam, w, h);
     if (!pa.ok) continue;

@@ -7,6 +7,7 @@ import {
   ITEM_MAX_VERTS,
   ITEM_MAX_LINES,
   ITEM_MAX_UNIQUE,
+  ITEM_POS_Q,
   ITEM_ORBIT_DIST_MIN,
   ITEM_ORBIT_DIST_MAX,
   aabbCenter,
@@ -26,6 +27,7 @@ import {
   screenRay,
 } from "./math3d.js";
 import {
+  GIZMO_AXIS_COLS,
   GIZMO_FALLBACK_LEN,
   drawTranslateGizmo,
   gizmoAxisDragDelta,
@@ -42,6 +44,21 @@ const SPHERE_COL = "#e08a3e";
 const SPHERE_COL_HOT = "#ffb36b";
 const SPHERE_COL_SEL = "#d4a017";
 
+/**
+ * The four viewports. Ortho views look along a world axis (same orientations as the enemy editor's
+ * Front / Right panes and the map editor's Top pane). They have no state of their own: centre and
+ * zoom come from ItemView.orbit (target, dist), so pan and zoom stay in sync across all views.
+ */
+const ITEM_VIEW_DEFS = {
+  front: { label: "Front", yaw: Math.PI, pitch: 0 },
+  right: { label: "Right", yaw: -Math.PI / 2, pitch: 0 },
+  // yaw π: screen-right is -X (as in Front) and +Z points down the screen, so Top lines up with Front.
+  top: { label: "Top", yaw: Math.PI, pitch: -Math.PI / 2 },
+  persp: { label: "Perspective" },
+};
+/** Ortho eye distance: beyond any model coordinate so plane-drag rays always start in front of the plane. */
+const ITEM_ORTHO_EYE = 200;
+
 function clampItemDist(d) {
   return Math.max(ITEM_ORBIT_DIST_MIN, Math.min(ITEM_ORBIT_DIST_MAX, d));
 }
@@ -57,10 +74,20 @@ function offsetSortKey([dx, dy, dz]) {
 }
 
 export class ItemView {
+  /** The view the current pointer event / draw pass is working in; cssW, cssH and #cam() read it. */
+  #v = null;
+
+  /** `canvas` is the perspective view; opts.ortho = { front, right, top } are the orthographic canvases. */
   constructor(canvas, opts) {
-    this.canvas = canvas;
-    this.ctx = canvas.getContext("2d");
     this.opts = opts;
+    const mkView = (kind, cv) => ({ kind, canvas: cv, ctx: cv.getContext("2d"), w: 0, h: 0 });
+    this.views = [
+      mkView("front", opts.ortho.front),
+      mkView("right", opts.ortho.right),
+      mkView("top", opts.ortho.top),
+      mkView("persp", canvas),
+    ];
+    this.#v = this.views[3];
     this.orbit = { yaw: 0.6, pitch: 0.35, dist: 16, target: { x: 0, y: 0, z: 0 } };
     this.drag = null;
     this.hoverVert = -1;
@@ -78,24 +105,44 @@ export class ItemView {
     this._ro.observe(opts.stage || canvas.parentElement);
     this.resize();
 
-    canvas.addEventListener("pointerenter", () => {
-      this.pointerInside = true;
-    });
-    canvas.addEventListener("pointerleave", () => {
-      this.pointerInside = false;
-    });
-    canvas.addEventListener("pointerdown", (e) => this.#onDown(e));
-    canvas.addEventListener("pointermove", (e) => this.#onMove(e));
-    canvas.addEventListener("pointerup", (e) => this.#onUp(e));
-    canvas.addEventListener("pointerleave", (e) => this.#onUp(e));
-    canvas.addEventListener("wheel", (e) => this.#onWheel(e), { passive: false });
-    canvas.addEventListener("contextmenu", (e) => e.preventDefault());
-    canvas.addEventListener("mousedown", (e) => {
-      if (e.button === 1) e.preventDefault();
-    });
-    canvas.addEventListener("auxclick", (e) => {
-      if (e.button === 1) e.preventDefault();
-    });
+    for (const view of this.views) {
+      const cv = view.canvas;
+      const as = (fn) => (e) => {
+        this.#v = view;
+        fn(e);
+      };
+      cv.addEventListener("pointerenter", () => {
+        this.pointerInside = true;
+      });
+      cv.addEventListener("pointerleave", () => {
+        this.pointerInside = false;
+      });
+      cv.addEventListener("pointerdown", as((e) => this.#onDown(e)));
+      cv.addEventListener("pointermove", as((e) => this.#onMove(e)));
+      cv.addEventListener("pointerup", as((e) => this.#onUp(e)));
+      cv.addEventListener(
+        "pointerleave",
+        as((e) => {
+          // Hover highlights are model-space, so they show in every view: drop them when the pointer leaves.
+          if (!this.drag) {
+            this.hoverVert = -1;
+            this.hoverLine = -1;
+            this.hoverGizmo = null;
+            this.hoverSphere = -1;
+            this.hoverRing = -1;
+          }
+          this.#onUp(e);
+        })
+      );
+      cv.addEventListener("wheel", as((e) => this.#onWheel(e)), { passive: false });
+      cv.addEventListener("contextmenu", (e) => e.preventDefault());
+      cv.addEventListener("mousedown", (e) => {
+        if (e.button === 1) e.preventDefault();
+      });
+      cv.addEventListener("auxclick", (e) => {
+        if (e.button === 1) e.preventDefault();
+      });
+    }
     const spinLoop = () => {
       if (this.enabled && this.#spinning()) this.draw();
       requestAnimationFrame(spinLoop);
@@ -122,20 +169,31 @@ export class ItemView {
     return this.#spinning() ? itemSpinAngle() : 0;
   }
 
+  get cssW() {
+    return this.#v.w;
+  }
+
+  get cssH() {
+    return this.#v.h;
+  }
+
+  /** Each canvas fills its grid cell (CSS 100%); measure the cell, then size the backing store to it. */
   resize() {
     if (!this.enabled) return;
-    const stage = this.opts.stage || this.canvas.parentElement;
-    const rect = stage.getBoundingClientRect();
     const dpr = Math.min(2, window.devicePixelRatio || 1);
-    const w = Math.max(64, Math.floor(rect.width));
-    const h = Math.max(64, Math.floor(rect.height));
-    this.canvas.width = Math.floor(w * dpr);
-    this.canvas.height = Math.floor(h * dpr);
-    this.canvas.style.width = `${w}px`;
-    this.canvas.style.height = `${h}px`;
-    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    this.cssW = w;
-    this.cssH = h;
+    for (const view of this.views) {
+      const cv = view.canvas;
+      cv.style.width = "";
+      cv.style.height = "";
+      const rect = cv.getBoundingClientRect();
+      const w = Math.max(32, Math.floor(rect.width));
+      const h = Math.max(32, Math.floor(rect.height));
+      cv.width = Math.floor(w * dpr);
+      cv.height = Math.floor(h * dpr);
+      view.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      view.w = w;
+      view.h = h;
+    }
     this.draw();
   }
 
@@ -379,16 +437,32 @@ export class ItemView {
     return this.opts.getMesh?.() || { verts: [], lines: [] };
   }
 
-  #cam() {
-    const { yaw, pitch, dist, target } = this.orbit;
+  /**
+   * Perspective: the orbit camera. Ortho: looks along a world axis at orbit.target with `ortho` set to the
+   * pixels-per-unit the perspective view has at the target plane (focal / dist), so every view shows the
+   * same scale and centre.
+   */
+  #cam(view = this.#v) {
+    const { dist, target } = this.orbit;
+    const def = ITEM_VIEW_DEFS[view.kind];
+    const ortho = view.kind !== "persp";
+    const yaw = ortho ? def.yaw : this.orbit.yaw;
+    const pitch = ortho ? def.pitch : this.orbit.pitch;
     const { forward } = lookVectors(yaw, pitch);
-    return {
-      x: target.x - forward.x * dist,
-      y: target.y - forward.y * dist,
-      z: target.z - forward.z * dist,
+    const back = ortho ? ITEM_ORTHO_EYE : dist;
+    const cam = {
+      x: target.x - forward.x * back,
+      y: target.y - forward.y * back,
+      z: target.z - forward.z * back,
       yaw,
       pitch,
     };
+    if (ortho) cam.ortho = Math.max(0.01, (Math.min(view.w, view.h) * 0.9) / dist);
+    return cam;
+  }
+
+  get #persp() {
+    return this.views[3];
   }
 
   /** Frame mesh verts; if none, center on origin without changing dist. */
@@ -430,8 +504,9 @@ export class ItemView {
     const center = aabbCenter(box);
     const { yaw, pitch } = this.orbit;
     const { forward, right, up } = lookVectors(yaw, pitch);
-    const w = this.cssW;
-    const h = this.cssH;
+    // Frames the perspective view; the ortho views follow through orbit.target / dist.
+    const w = this.#persp.w;
+    const h = this.#persp.h;
     const focal = Math.min(w, h) * 0.9;
     const pad = 0.82;
     const halfW = Math.max(1, w * 0.5 * pad);
@@ -459,7 +534,7 @@ export class ItemView {
   }
 
   #eventPos(e) {
-    const rect = this.canvas.getBoundingClientRect();
+    const rect = this.#v.canvas.getBoundingClientRect();
     return {
       x: ((e.clientX - rect.left) / rect.width) * this.cssW,
       y: ((e.clientY - rect.top) / rect.height) * this.cssH,
@@ -669,13 +744,19 @@ export class ItemView {
     return best;
   }
 
-  /** Screen centre and radius (px) of sphere i, or null when behind the camera. Spin is off while the pointer is in. */
+  /**
+   * Screen centre and radius (px) of a sphere in the active view, or null when behind the camera.
+   * `upp` is world units per pixel of radius at the sphere (perspective z / focal, ortho 1 / px), so
+   * a radius drag is r = pixels * upp. Spin is off while the pointer is in.
+   */
   #sphereScreen(sp) {
     const w = this.cssW;
     const h = this.cssH;
-    const pr = projectPoint(sp, this.#cam(), w, h);
+    const cam = this.#cam();
+    const pr = projectPoint(sp, cam, w, h);
     if (!pr.ok) return null;
-    return { sx: pr.sx, sy: pr.sy, z: pr.z, rad: (sp.r * Math.min(w, h) * 0.9) / pr.z };
+    const upp = cam.ortho ? 1 / cam.ortho : pr.z / (Math.min(w, h) * 0.9);
+    return { sx: pr.sx, sy: pr.sy, z: pr.z, upp, rad: sp.r / upp };
   }
 
   /** Nearest sphere centre within the vert hit radius. `prefer` wins a tie (a sphere sitting on a vertex). */
@@ -828,30 +909,32 @@ export class ItemView {
 
   #onDown(e) {
     if (!this.enabled) return;
-    this.canvas.focus();
+    this.#v.canvas.focus();
     const p = this.#eventPos(e);
     const mesh = this.#mesh();
+    // Orthographic views can't orbit: where the perspective view orbits, they pan.
+    const turn = this.#v.kind === "persp" ? "orbit" : "pan";
 
     if (e.button === 2 && e.altKey) {
       this.drag = { kind: "zoom", last: p };
-      this.canvas.setPointerCapture(e.pointerId);
+      this.#v.canvas.setPointerCapture(e.pointerId);
       return;
     }
     if (e.button === 1) {
       this.drag = { kind: "pan", last: p };
-      this.canvas.setPointerCapture(e.pointerId);
+      this.#v.canvas.setPointerCapture(e.pointerId);
       return;
     }
     if (e.button === 2) {
-      this.drag = { kind: "orbit", last: p };
-      this.canvas.setPointerCapture(e.pointerId);
+      this.drag = { kind: turn, last: p };
+      this.#v.canvas.setPointerCapture(e.pointerId);
       return;
     }
     if (e.button !== 0) return;
     if (e.altKey) {
       e.preventDefault();
-      this.drag = { kind: "orbit", last: p };
-      this.canvas.setPointerCapture(e.pointerId);
+      this.drag = { kind: turn, last: p };
+      this.#v.canvas.setPointerCapture(e.pointerId);
       return;
     }
 
@@ -861,7 +944,7 @@ export class ItemView {
       const gizmoHit = hitTranslateGizmo(prim.v, cam, this.cssW, this.cssH, p.x, p.y);
       if (gizmoHit) {
         this.#startGizmoDrag(gizmoHit, prim, p, e.ctrlKey || e.metaKey);
-        this.canvas.setPointerCapture(e.pointerId);
+        this.#v.canvas.setPointerCapture(e.pointerId);
         return;
       }
     }
@@ -871,15 +954,15 @@ export class ItemView {
       if (hit.vert >= 0) this.#selectVert(hit.vert, e.shiftKey);
       else this.#selectSphere(hit.sphere, e.shiftKey);
       this.drag = { kind: "select" };
-      this.canvas.setPointerCapture(e.pointerId);
+      this.#v.canvas.setPointerCapture(e.pointerId);
       this.draw();
       return;
     }
 
-    const ri = this.#hitSphereRing(p.x, p.y, mesh);
+    const ri =this.#hitSphereRing(p.x, p.y, mesh);
     if (ri >= 0) {
       this.drag = { kind: "radius", si: ri, began: false };
-      this.canvas.setPointerCapture(e.pointerId);
+      this.#v.canvas.setPointerCapture(e.pointerId);
       this.draw();
       return;
     }
@@ -888,13 +971,13 @@ export class ItemView {
     if (li >= 0) {
       this.#selectLine(li, e.shiftKey);
       this.drag = { kind: "select" };
-      this.canvas.setPointerCapture(e.pointerId);
+      this.#v.canvas.setPointerCapture(e.pointerId);
       this.draw();
       return;
     }
 
-    this.drag = { kind: "box", start: p, end: p, additive: e.shiftKey };
-    this.canvas.setPointerCapture(e.pointerId);
+    this.drag = { kind: "box", start: p, end: p, additive: e.shiftKey, view: this.#v };
+    this.#v.canvas.setPointerCapture(e.pointerId);
   }
 
   #onMove(e) {
@@ -914,7 +997,7 @@ export class ItemView {
       const onHandle = this.hoverGizmo || hit.vert >= 0 || hit.sphere >= 0;
       this.hoverRing = onHandle ? -1 : this.#hitSphereRing(p.x, p.y, mesh);
       this.hoverLine = onHandle || this.hoverRing >= 0 ? -1 : this.#hitLine(p.x, p.y, mesh);
-      this.canvas.style.cursor = this.hoverRing >= 0 ? "nesw-resize" : "";
+      this.#v.canvas.style.cursor = this.hoverRing >= 0 ? "nesw-resize" : "";
       this.draw();
       return;
     }
@@ -922,8 +1005,8 @@ export class ItemView {
       const sp = mesh.spheres?.[this.drag.si];
       const s = sp && this.#sphereScreen(sp);
       if (!s) return;
-      // Inverse of the draw radius: r = px * z / focal.
-      const r = clampItemSphereR((Math.hypot(p.x - s.sx, p.y - s.sy) * s.z) / (Math.min(this.cssW, this.cssH) * 0.9));
+      // Inverse of the draw radius: r = px * upp (persp z / focal, ortho 1 / pixels-per-unit).
+      const r = clampItemSphereR(Math.hypot(p.x - s.sx, p.y - s.sy) * s.upp);
       if (r === sp.r) return;
       if (!this.drag.began) {
         this.opts.beginUndo?.();
@@ -948,9 +1031,12 @@ export class ItemView {
       const dx = p.x - this.drag.last.x;
       const dy = p.y - this.drag.last.y;
       this.drag.last = p;
+      // Moves the shared orbit.target in this view's screen plane. dist / focal is 1 / pixels-per-unit in
+      // the perspective view and the ortho views alike, so every view recentres on the same point.
+      const cam = this.#cam();
       const focal = Math.min(this.cssW, this.cssH) * 0.9;
       const scale = this.orbit.dist / focal;
-      const { right, up } = lookVectors(this.orbit.yaw, this.orbit.pitch);
+      const { right, up } = lookVectors(cam.yaw, cam.pitch);
       const t = this.orbit.target;
       t.x += (-right.x * dx + up.x * dy) * scale;
       t.y += (-right.y * dx + up.y * dy) * scale;
@@ -1084,10 +1170,10 @@ export class ItemView {
     }
     if (this.drag?.kind === "radius") this.opts.endUndo?.();
     this.drag = null;
-    this.canvas.style.cursor = "";
+    this.#v.canvas.style.cursor = "";
     if (orbitEnded) this.opts.onViewChanged?.();
     try {
-      this.canvas.releasePointerCapture(e.pointerId);
+      this.#v.canvas.releasePointerCapture(e.pointerId);
     } catch {
       /* ignore */
     }
@@ -1147,23 +1233,139 @@ export class ItemView {
     ctx.restore();
   }
 
+  /**
+   * Top view: a guide line through every unique X (vertical, red) and unique Z (horizontal, blue) used by the
+   * mesh verts and sphere origins, i.e. the values the ITEM_MAX_UNIQUE budget counts. Corner text shows the use.
+   */
+  #drawUniqueGuides(ctx, cam, w, h, mesh) {
+    const { nx, nz, xs, zs } = itemUniqueXZ([...mesh.verts, ...(mesh.spheres || [])]);
+    ctx.save();
+    ctx.lineWidth = 1;
+    ctx.setLineDash([5, 4]);
+    ctx.globalAlpha = 0.6;
+    ctx.strokeStyle = GIZMO_AXIS_COLS.x;
+    for (const q of xs) {
+      const sx = Math.round(projectPoint({ x: q / ITEM_POS_Q, y: 0, z: 0 }, cam, w, h).sx) + 0.5;
+      ctx.beginPath();
+      ctx.moveTo(sx, 0);
+      ctx.lineTo(sx, h);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = GIZMO_AXIS_COLS.z;
+    for (const q of zs) {
+      const sy = Math.round(projectPoint({ x: 0, y: 0, z: q / ITEM_POS_Q }, cam, w, h).sy) + 0.5;
+      ctx.beginPath();
+      ctx.moveTo(0, sy);
+      ctx.lineTo(w, sy);
+      ctx.stroke();
+    }
+    ctx.restore();
+    ctx.fillStyle = nx > ITEM_MAX_UNIQUE || nz > ITEM_MAX_UNIQUE ? "#e55" : "#8b91a0";
+    ctx.font = "11px Segoe UI, sans-serif";
+    ctx.fillText(`unique X ${nx}/${ITEM_MAX_UNIQUE} · Z ${nz}/${ITEM_MAX_UNIQUE}`, 8, 30);
+  }
+
+  /**
+   * Background grid for an ortho view: 1-unit lines (coarsened by powers of two when cells get tiny),
+   * 0.25 sub-lines once zoomed in, every 4th line brighter, and the two world axes in their gizmo colours.
+   */
+  #drawOrthoGrid(ctx, cam, w, h) {
+    const px = cam.ortho;
+    const { right, up } = lookVectors(cam.yaw, cam.pitch);
+    const axisOf = (v) => (Math.abs(v.x) > 0.5 ? "x" : Math.abs(v.y) > 0.5 ? "y" : "z");
+    const hAxis = axisOf(right);
+    const vAxis = axisOf(up);
+    const hs = right[hAxis] > 0 ? 1 : -1;
+    const vs = up[vAxis] > 0 ? 1 : -1;
+    const o = projectPoint({ x: 0, y: 0, z: 0 }, cam, w, h);
+    let step = 1;
+    while (step * px < 5 && step < 64) step *= 2;
+    const style = (n) => {
+      if (Math.abs(n % 4) < 1e-6) return "#363e4e";
+      if (Math.abs(n % 1) < 1e-6) return "#262c39";
+      return "#171b24";
+    };
+    const line = (pos, vertical, col, alpha = 1) => {
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = col;
+      ctx.beginPath();
+      if (vertical) {
+        const x = Math.round(pos) + 0.5;
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, h);
+      } else {
+        const y = Math.round(pos) + 0.5;
+        ctx.moveTo(0, y);
+        ctx.lineTo(w, y);
+      }
+      ctx.stroke();
+    };
+    const sub = px * 0.25 >= 7 ? 0.25 : step;
+    ctx.save();
+    ctx.lineWidth = 1;
+    // Horizontal axis value n sits at x = o.sx + hs*n*px; vertical axis value n at y = o.sy - vs*n*px.
+    const nA = ((0 - o.sx) / px) * hs;
+    const nB = ((w - o.sx) / px) * hs;
+    const hMin = Math.ceil(Math.min(nA, nB) / sub) * sub;
+    const hMax = Math.floor(Math.max(nA, nB) / sub) * sub;
+    for (let n = hMin; n <= hMax + 1e-9; n += sub) {
+      if (Math.abs(n) < 1e-9) continue;
+      line(o.sx + hs * n * px, true, style(n));
+    }
+    const nC = ((o.sy - 0) / px) * vs;
+    const nD = ((o.sy - h) / px) * vs;
+    const vMin = Math.ceil(Math.min(nC, nD) / sub) * sub;
+    const vMax = Math.floor(Math.max(nC, nD) / sub) * sub;
+    for (let n = vMin; n <= vMax + 1e-9; n += sub) {
+      if (Math.abs(n) < 1e-9) continue;
+      line(o.sy - vs * n * px, false, style(n));
+    }
+    // The line at horizontal value 0 runs along the vertical axis, and vice versa.
+    line(o.sx, true, GIZMO_AXIS_COLS[vAxis], 0.55);
+    line(o.sy, false, GIZMO_AXIS_COLS[hAxis], 0.55);
+    ctx.restore();
+  }
+
   draw() {
     if (!this.enabled) return;
-    const ctx = this.ctx;
-    const w = this.cssW;
-    const h = this.cssH;
-    if (!w || !h) return;
+    const prev = this.#v;
+    // Live box-select preview is computed once in the view the box is dragged in.
+    let preview = null;
+    const d = this.drag;
+    if (d?.kind === "box" && d.view) {
+      this.#v = d.view;
+      const r = this.#boxRect();
+      if (r.w >= ITEM_BOX_CLICK || r.h >= ITEM_BOX_CLICK) {
+        preview = { verts: this.#vertsInBox(r), spheres: this.#spheresInBox(r) };
+      }
+    }
+    for (const view of this.views) {
+      if (!view.w || !view.h) continue;
+      this.#v = view;
+      this.#drawView(view, preview);
+    }
+    this.#v = prev;
+  }
+
+  #drawView(view, preview) {
+    const ctx = view.ctx;
+    const w = view.w;
+    const h = view.h;
     ctx.fillStyle = "#0a0a0c";
     ctx.fillRect(0, 0, w, h);
-    const cam = this.#cam();
+    const cam = this.#cam(view);
+    const ortho = !!cam.ortho;
     const mesh = this.#mesh();
     const lo = ITEM_MIN;
     const hi = ITEM_MAX;
 
-    for (let i = lo; i <= hi; i++) {
-      const col = i === 0 ? "#3d4658" : "#2a3140";
-      this.#strokeSeg(ctx, cam, w, h, { x: i, y: 0, z: lo }, { x: i, y: 0, z: hi }, col);
-      this.#strokeSeg(ctx, cam, w, h, { x: lo, y: 0, z: i }, { x: hi, y: 0, z: i }, col);
+    if (ortho) this.#drawOrthoGrid(ctx, cam, w, h);
+    else {
+      for (let i = lo; i <= hi; i++) {
+        const col = i === 0 ? "#3d4658" : "#2a3140";
+        this.#strokeSeg(ctx, cam, w, h, { x: i, y: 0, z: lo }, { x: i, y: 0, z: hi }, col);
+        this.#strokeSeg(ctx, cam, w, h, { x: lo, y: 0, z: i }, { x: hi, y: 0, z: i }, col);
+      }
     }
     const cube = [
       [
@@ -1217,19 +1419,16 @@ export class ItemView {
     ];
     for (const [a, b] of cube) this.#strokeSeg(ctx, cam, w, h, a, b, "#252a35");
 
-    this.#drawForwardArrow(ctx, cam, w, h);
+    // Of the ortho views only Top shows the forward arrow; Perspective always does.
+    if (view.kind === "top" || view.kind === "persp") this.#drawForwardArrow(ctx, cam, w, h);
     this.#drawGhost(ctx, cam, w, h);
 
     let shownVerts = this.selectedVerts;
     let shownSpheres = this.selectedSpheres;
-    if (this.drag?.kind === "box") {
-      const r = this.#boxRect();
-      if (r.w >= ITEM_BOX_CLICK || r.h >= ITEM_BOX_CLICK) {
-        const hits = this.#vertsInBox(r);
-        const sHits = this.#spheresInBox(r);
-        shownVerts = this.drag.additive ? [...new Set([...this.selectedVerts, ...hits])] : hits;
-        shownSpheres = this.drag.additive ? [...new Set([...this.selectedSpheres, ...sHits])] : sHits;
-      }
+    if (preview) {
+      const add = this.drag.additive;
+      shownVerts = add ? [...new Set([...this.selectedVerts, ...preview.verts])] : preview.verts;
+      shownSpheres = add ? [...new Set([...this.selectedSpheres, ...preview.spheres])] : preview.spheres;
     }
 
     const yaw = this.#spinYaw();
@@ -1240,6 +1439,8 @@ export class ItemView {
           z: -v.x * Math.sin(yaw) + v.z * Math.cos(yaw),
         }))
       : mesh.verts;
+
+    if (view.kind === "top" && !yaw) this.#drawUniqueGuides(ctx, cam, w, h, mesh);
 
     mesh.lines.forEach(([ia, ib], i) => {
       const a = dverts[ia];
@@ -1257,7 +1458,7 @@ export class ItemView {
         : sp;
       const pr = projectPoint(c, cam, w, h);
       if (!pr.ok) return;
-      const rad = (sp.r * Math.min(w, h) * 0.9) / pr.z;
+      const rad = ortho ? sp.r * cam.ortho : (sp.r * Math.min(w, h) * 0.9) / pr.z;
       const sel = shownSpheres.includes(i);
       const hot = this.hoverRing === i || (this.drag?.kind === "radius" && this.drag.si === i);
       const col = sel ? SPHERE_COL_SEL : hot ? SPHERE_COL_HOT : SPHERE_COL;
@@ -1305,7 +1506,7 @@ export class ItemView {
     const prim = this.#selectionAnchor();
     if (prim) this.#drawGizmo(ctx, cam, w, h, prim.v);
 
-    if (this.drag?.kind === "box") {
+    if (this.drag?.kind === "box" && this.drag.view === view) {
       const r = this.#boxRect();
       ctx.fillStyle = "rgba(212, 160, 23, 0.12)";
       ctx.fillRect(r.x0, r.y0, r.w, r.h);
@@ -1315,5 +1516,9 @@ export class ItemView {
       ctx.strokeRect(r.x0 + 0.5, r.y0 + 0.5, r.w, r.h);
       ctx.setLineDash([]);
     }
+
+    ctx.fillStyle = "#8b91a0";
+    ctx.font = "11px Segoe UI, sans-serif";
+    ctx.fillText(ITEM_VIEW_DEFS[view.kind].label, 8, 16);
   }
 }

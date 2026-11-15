@@ -49,6 +49,8 @@ function projectCam(c, w, h, f, sy0) {
 
 export function projectPoint(p, cam, w, h, focal) {
   const c = worldToCamera(p, cam);
+  // Orthographic: cam.ortho is pixels per world unit; depth does not scale the screen position.
+  if (cam.ortho) return { ...c, ok: true, sx: w * 0.5 + c.x * cam.ortho, sy: principalY(cam, h) - c.y * cam.ortho };
   if (c.z < NEAR) return { ...c, ok: false, sx: 0, sy: 0 };
   const f = focal ?? Math.min(w, h) * 0.9;
   const s = projectCam(c, w, h, f, principalY(cam, h));
@@ -59,6 +61,11 @@ export function projectPoint(p, cam, w, h, focal) {
 export function projectLine(a, b, cam, w, h, focal) {
   const ca = worldToCamera(a, cam);
   const cb = worldToCamera(b, cam);
+  if (cam.ortho) {
+    const k = cam.ortho;
+    const sy0 = principalY(cam, h);
+    return { ax: w * 0.5 + ca.x * k, ay: sy0 - ca.y * k, bx: w * 0.5 + cb.x * k, by: sy0 - cb.y * k };
+  }
   if (ca.z < NEAR && cb.z < NEAR) return null;
   let pa = ca;
   let pb = cb;
@@ -80,6 +87,19 @@ export function projectLine(a, b, cam, w, h, focal) {
 }
 
 export function screenRay(mx, my, cam, w, h, focal) {
+  if (cam.ortho) {
+    const { forward, right, up } = lookVectors(cam.yaw, cam.pitch);
+    const u = (mx - w * 0.5) / cam.ortho;
+    const v = -(my - principalY(cam, h)) / cam.ortho;
+    return {
+      origin: {
+        x: cam.x + right.x * u + up.x * v,
+        y: cam.y + right.y * u + up.y * v,
+        z: cam.z + right.z * u + up.z * v,
+      },
+      dir: { ...forward },
+    };
+  }
   const f = focal ?? Math.min(w, h) * 0.9;
   const nx = (mx - w * 0.5) / f;
   const ny = -(my - principalY(cam, h)) / f;

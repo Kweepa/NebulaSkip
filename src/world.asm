@@ -102,7 +102,7 @@ init_things
 .ib_rts
 	rts
 
-; All enemies idle, HP from type, frame 0
+; All enemies idle, HP from the placement (en_hp0), frame 0
 init_enemies
 	lda #$a5
 	sta random8
@@ -138,8 +138,7 @@ init_enemies
 	lsr
 	and #SV_MAX - 1
 	sta en_stand,x			; genmap zeroes this outside no-combat rooms
-	+ldy_mx en_type
-	lda enemy_hp_init,y
+	+lda_mx en_hp0			; per placement; genmap fills it from the type's hp when unset
 	sta en_hp,x
 	+lda_mx en_tag			; tagged = hidden until a spawn trigger fires
 	beq .ie_nx

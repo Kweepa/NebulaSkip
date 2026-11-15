@@ -218,6 +218,25 @@ def stand_var_index(enemy_type: str, stand: str) -> int:
     return _STAND_INDEX.get(enemy_type, {}).get(stand, 0)
 
 
+_TYPE_HP: dict[str, int] = {}
+
+
+def enemy_hp0(enemy_type: str, placed) -> int:
+    """Starting hp byte for a placement: its own `hp` (1..255), else the enemy type's hp."""
+    try:
+        v = int(placed)
+    except (TypeError, ValueError):
+        v = 0
+    if v > 0:
+        return min(255, v)
+    if not _TYPE_HP:
+        for name, dos in zip(genenemies.TYPES, genenemies.DOS_NAME):
+            path = ROOT / "editor" / "enemies" / f"{dos}.json"
+            enemy = json.loads(path.read_text(encoding="utf-8"))
+            _TYPE_HP[name] = genenemies.enemy_hp_byte(enemy, name)
+    return _TYPE_HP[enemy_type]
+
+
 def room_index(rooms: list[dict], obj: dict, kind: str) -> int:
     rid = obj.get("roomId")
     id_to_i = {r.get("id"): i for i, r in enumerate(rooms)}
@@ -1038,6 +1057,7 @@ def cook_one(level: dict, map_key: str) -> bytes:
     en_tag = []
     en_bty = []  # bounty n (bits paid = 4n-1); 0 = not a bounty
     en_bnm = []  # bounty name: offset into text_blob (filled after the trigger texts)
+    en_hp0 = []  # starting hp byte: placed enemy "hp", else the type's hp (genenemies.enemy_hp_byte)
     en_tag_ids: dict[str, int] = {}  # enemy tag -> 1..N (0 = untagged)
     for e in enemies:
         etag = (e.get("tag") or "").strip()
@@ -1061,6 +1081,7 @@ def cook_one(level: dict, map_key: str) -> bytes:
             if not stand:
                 print(f"{map_key}: {name} stand {e['stand']!r} is not an exported stand animation; using the plain stand")
         en_rot.append((int(e.get("rot") or 0) & 7) | (stand << 3))
+        en_hp0.append(enemy_hp0(name, e.get("hp")))
         en_room.append(ri)
         en_tag.append(en_tag_ids.get((e.get("tag") or "").strip(), 0))
         bits = int(e.get("bounty") or 0)
@@ -1441,6 +1462,7 @@ def cook_one(level: dict, map_key: str) -> bytes:
     add(en_tag)
     add(en_bty)
     add(en_bnm)
+    add(en_hp0)
     add(tr_x)
     add(tr_y)
     add(tr_z)

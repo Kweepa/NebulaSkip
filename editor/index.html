@@ -539,6 +539,44 @@ select.error {
   gap: 4px;
 }
 
+/* Items tab: 2x2 Front | Right / Top | Perspective. The perspective canvas is #view-canvas. */
+.map-stage.item-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 4px;
+}
+
+.map-stage.item-stage .item-pane {
+  display: block;
+}
+
+.map-stage.item-stage #item-front {
+  grid-area: 1 / 1;
+}
+
+.map-stage.item-stage #item-right {
+  grid-area: 1 / 2;
+}
+
+.map-stage.item-stage #item-top {
+  grid-area: 2 / 1;
+}
+
+.map-stage.item-stage #view-canvas {
+  grid-area: 2 / 2;
+  min-width: 0;
+  min-height: 0;
+}
+
+.item-pane canvas {
+  outline: none;
+}
+
+.item-pane canvas:focus {
+  border-color: var(--accent);
+}
+
 .stick-pane {
   position: relative;
   min-width: 0;
@@ -1869,6 +1907,15 @@ body.font-dragging * {
           <span class="stick-label">Front</span>
         </div>
         <canvas id="view-canvas" tabindex="0"></canvas>
+        <div class="stick-pane item-pane" id="item-front" hidden>
+          <canvas id="item-front-canvas" tabindex="0"></canvas>
+        </div>
+        <div class="stick-pane item-pane" id="item-right" hidden>
+          <canvas id="item-right-canvas" tabindex="0"></canvas>
+        </div>
+        <div class="stick-pane item-pane" id="item-top" hidden>
+          <canvas id="item-top-canvas" tabindex="0"></canvas>
+        </div>
       </div>
       <p class="hint" id="hint"></p>
       <div id="build-panel" class="build-panel" hidden></div>
@@ -5796,6 +5843,24 @@ function anyRotatingItem(doc, objs) {
   return false;
 }
 
+/**
+ * Editor-only reference prop for the enemy tab (enemy.ghostItem = item key). Segments in enemy
+ * space: origin at the feet root, item world units / LAYOUT_ENEMY_SCALE. Not exported.
+ */
+function enemyGhostItemSegs(doc, enemy) {
+  const key = enemy?.ghostItem;
+  if (!key || !itemKeys().includes(key)) return [];
+  const mesh = doc?.items?.[key];
+  if (!itemMeshHasGeom(mesh)) return [];
+  const k = 1 / LAYOUT_ENEMY_SCALE;
+  const verts = mesh.verts.map((v) => ({ x: Number(v.x) * k, y: Number(v.y) * k, z: Number(v.z) * k }));
+  const segs = [];
+  for (const [a, b] of mesh.lines) {
+    if (verts[a] && verts[b]) segs.push({ a: verts[a], b: verts[b] });
+  }
+  return segs;
+}
+
 function itemMeshWorldSegs(obj, mesh, yaw = 0) {
   const m = mesh && itemMeshHasGeom(mesh) ? mesh : defaultItemMeshes().backpack;
   const c = Math.cos(yaw);
@@ -6503,6 +6568,9 @@ function clampObject(obj) {
     const stand = clampStandVarName(obj.stand);
     if (stand) obj.stand = stand;
     else delete obj.stand;
+    const hp = clampPlacedEnemyHp(obj.hp);
+    if (hp) obj.hp = hp;
+    else delete obj.hp;
   }
   if (obj.kind === "trigger") {
     obj.purpose = clampTriggerPurpose(obj.purpose);
@@ -6626,6 +6694,8 @@ function createObject(kind, x, y, z, extra = {}) {
     if (bnm) obj.bountyName = bnm;
     const stand = clampStandVarName(extra.stand);
     if (stand) obj.stand = stand;
+    const hp = clampPlacedEnemyHp(extra.hp);
+    if (hp) obj.hp = hp;
   }
   if (kind === "trigger") {
     obj.purpose = clampTriggerPurpose(extra.purpose);
@@ -6732,6 +6802,13 @@ function clampBounty(bits) {
   if (!Number.isFinite(b) || b <= 0) return 0;
   const n = Math.max(1, Math.min(BOUNTY_MAX_N, Math.round((b + 1) / 4)));
   return n * 4 - 1;
+}
+
+/** Placed-enemy HP game byte, 1..255. 0 = unset: the enemy type's hp is used. */
+function clampPlacedEnemyHp(n) {
+  const v = Math.round(Number(n));
+  if (!Number.isFinite(v) || v <= 0) return 0;
+  return Math.min(255, v);
 }
 
 function isFigureObject(obj) {
@@ -8427,6 +8504,7 @@ function parseObjects(list) {
       bounty: o.bounty,
       bountyName: o.bountyName,
       stand: o.stand,
+      hp: o.hp,
       enableTag: o.enableTag,
       lockKey: o.lockKey,
       doorType: o.doorType,
@@ -8829,6 +8907,7 @@ function normalizeDocument(raw) {
       enemy.hp = clampEnemyHp(e.hp, enemy.name);
       enemy.painChance = clampEnemyPainChance(e.painChance, enemy.name);
       enemy.blockR = clampEnemyBlockR(e.blockR);
+      if (typeof e.ghostItem === "string" && e.ghostItem) enemy.ghostItem = e.ghostItem;
       const exportClips = normalizeExportClips(e.exportClips);
       if (exportClips) enemy.exportClips = exportClips;
       doc.enemies.push(enemy);
@@ -8909,6 +8988,8 @@ function projectCam(c, w, h, f, sy0) {
 
 function projectPoint(p, cam, w, h, focal) {
   const c = worldToCamera(p, cam);
+  // Orthographic: cam.ortho is pixels per world unit; depth does not scale the screen position.
+  if (cam.ortho) return { ...c, ok: true, sx: w * 0.5 + c.x * cam.ortho, sy: principalY(cam, h) - c.y * cam.ortho };
   if (c.z < NEAR) return { ...c, ok: false, sx: 0, sy: 0 };
   const f = focal ?? Math.min(w, h) * 0.9;
   const s = projectCam(c, w, h, f, principalY(cam, h));
@@ -8919,6 +9000,11 @@ function projectPoint(p, cam, w, h, focal) {
 function projectLine(a, b, cam, w, h, focal) {
   const ca = worldToCamera(a, cam);
   const cb = worldToCamera(b, cam);
+  if (cam.ortho) {
+    const k = cam.ortho;
+    const sy0 = principalY(cam, h);
+    return { ax: w * 0.5 + ca.x * k, ay: sy0 - ca.y * k, bx: w * 0.5 + cb.x * k, by: sy0 - cb.y * k };
+  }
   if (ca.z < NEAR && cb.z < NEAR) return null;
   let pa = ca;
   let pb = cb;
@@ -8940,6 +9026,19 @@ function projectLine(a, b, cam, w, h, focal) {
 }
 
 function screenRay(mx, my, cam, w, h, focal) {
+  if (cam.ortho) {
+    const { forward, right, up } = lookVectors(cam.yaw, cam.pitch);
+    const u = (mx - w * 0.5) / cam.ortho;
+    const v = -(my - principalY(cam, h)) / cam.ortho;
+    return {
+      origin: {
+        x: cam.x + right.x * u + up.x * v,
+        y: cam.y + right.y * u + up.y * v,
+        z: cam.z + right.z * u + up.z * v,
+      },
+      dir: { ...forward },
+    };
+  }
   const f = focal ?? Math.min(w, h) * 0.9;
   const nx = (mx - w * 0.5) / f;
   const ny = -(my - principalY(cam, h)) / f;
@@ -9165,9 +9264,28 @@ function pointInPoly2d(x, y, poly) {
 function gizmoMetrics(c, cam, w, h) {
   const focal = Math.min(w, h) * 0.9;
   const targetPx = Math.min(w, h) * GIZMO_SCREEN_FRAC;
+  if (cam.ortho) {
+    const axisLen = targetPx / cam.ortho;
+    return { axisLen, planeLen: axisLen / 3, focal, targetPx };
+  }
   const cc = worldToCamera(c, cam);
   const axisLen = cc.z >= NEAR ? (targetPx / focal) * cc.z : GIZMO_FALLBACK_LEN;
   return { axisLen, planeLen: axisLen / 3, focal, targetPx };
+}
+
+/**
+ * Orthographic views look along a world axis: the end-on axis and the edge-on plane collapse to a
+ * point / line, so they are neither drawn nor grabbable. Perspective cameras show everything.
+ */
+function gizmoAxisShown(cam, axis) {
+  if (!cam.ortho) return true;
+  return Math.abs(lookVectors(cam.yaw, cam.pitch).forward[axis]) < 0.99;
+}
+
+function gizmoPlaneShown(cam, planeN) {
+  if (!cam.ortho) return true;
+  const f = lookVectors(cam.yaw, cam.pitch).forward;
+  return Math.abs(f.x * planeN.x + f.y * planeN.y + f.z * planeN.z) > 0.01;
 }
 
 function gizmoPlaneHandles(c, gizmo) {
@@ -9278,12 +9396,14 @@ function drawTranslateGizmo(ctx, c, cam, w, h, state = {}) {
   const { hoverGizmo = null, drag = null } = state;
   const gizmo = gizmoMetrics(c, cam, w, h);
   for (const handle of gizmoPlaneHandles(c, gizmo)) {
+    if (!gizmoPlaneShown(cam, handle.planeN)) continue;
     const hi =
       (hoverGizmo?.kind === "plane" && hoverGizmo.plane === handle.plane) ||
       (drag?.kind === "plane" && drag.plane === handle.plane);
     drawGizmoPlaneQuad(ctx, handle.corners, cam, w, h, handle.fill, handle.stroke, hi);
   }
   for (const axis of ["x", "y", "z"]) {
+    if (!gizmoAxisShown(cam, axis)) continue;
     const hi =
       (hoverGizmo?.kind === "axis" && hoverGizmo.axis === axis) ||
       (drag?.kind === "axis" && drag.axis === axis);
@@ -9296,12 +9416,14 @@ function drawTranslateGizmo(ctx, c, cam, w, h, state = {}) {
 function hitTranslateGizmo(c, cam, w, h, mx, my, axisHit = GIZMO_AXIS_HIT) {
   const gizmo = gizmoMetrics(c, cam, w, h);
   for (const handle of gizmoPlaneHandles(c, gizmo)) {
+    if (!gizmoPlaneShown(cam, handle.planeN)) continue;
     const poly = projectGizmoPoly(handle.corners, cam, w, h);
     if (poly && pointInPoly2d(mx, my, poly)) return handle;
   }
   const pc = projectPoint(c, cam, w, h);
   if (!pc.ok) return null;
   for (const axis of ["x", "y", "z"]) {
+    if (!gizmoAxisShown(cam, axis)) continue;
     const end = gizmoAxisEnd(c, axis, gizmo.axisLen);
     const pa = projectPoint(end, cam, w, h);
     if (!pa.ok) continue;
@@ -13724,6 +13846,9 @@ class AnimView {
     this.#strokeSeg(ctx, cam, w, h, { x: 0, y: 0, z: -20 }, { x: 0, y: 0, z: 20 }, "#66a");
     this.#drawForwardArrow(ctx, cam, w, h);
     if (this.opts.showCollision?.() !== false) this.#drawCollision(ctx, cam, w, h);
+    for (const s of this.opts.getGhostItem?.() || []) {
+      this.#strokeSeg(ctx, cam, w, h, s.a, s.b, "#6b5a8a", 1);
+    }
 
     if (overlay) {
       ctx.lineWidth = 1;
@@ -13835,6 +13960,21 @@ const SPHERE_COL = "#e08a3e";
 const SPHERE_COL_HOT = "#ffb36b";
 const SPHERE_COL_SEL = "#d4a017";
 
+/**
+ * The four viewports. Ortho views look along a world axis (same orientations as the enemy editor's
+ * Front / Right panes and the map editor's Top pane). They have no state of their own: centre and
+ * zoom come from ItemView.orbit (target, dist), so pan and zoom stay in sync across all views.
+ */
+const ITEM_VIEW_DEFS = {
+  front: { label: "Front", yaw: Math.PI, pitch: 0 },
+  right: { label: "Right", yaw: -Math.PI / 2, pitch: 0 },
+  // yaw π: screen-right is -X (as in Front) and +Z points down the screen, so Top lines up with Front.
+  top: { label: "Top", yaw: Math.PI, pitch: -Math.PI / 2 },
+  persp: { label: "Perspective" },
+};
+/** Ortho eye distance: beyond any model coordinate so plane-drag rays always start in front of the plane. */
+const ITEM_ORTHO_EYE = 200;
+
 function clampItemDist(d) {
   return Math.max(ITEM_ORBIT_DIST_MIN, Math.min(ITEM_ORBIT_DIST_MAX, d));
 }
@@ -13850,10 +13990,20 @@ function offsetSortKey([dx, dy, dz]) {
 }
 
 class ItemView {
+  /** The view the current pointer event / draw pass is working in; cssW, cssH and #cam() read it. */
+  #v = null;
+
+  /** `canvas` is the perspective view; opts.ortho = { front, right, top } are the orthographic canvases. */
   constructor(canvas, opts) {
-    this.canvas = canvas;
-    this.ctx = canvas.getContext("2d");
     this.opts = opts;
+    const mkView = (kind, cv) => ({ kind, canvas: cv, ctx: cv.getContext("2d"), w: 0, h: 0 });
+    this.views = [
+      mkView("front", opts.ortho.front),
+      mkView("right", opts.ortho.right),
+      mkView("top", opts.ortho.top),
+      mkView("persp", canvas),
+    ];
+    this.#v = this.views[3];
     this.orbit = { yaw: 0.6, pitch: 0.35, dist: 16, target: { x: 0, y: 0, z: 0 } };
     this.drag = null;
     this.hoverVert = -1;
@@ -13871,24 +14021,44 @@ class ItemView {
     this._ro.observe(opts.stage || canvas.parentElement);
     this.resize();
 
-    canvas.addEventListener("pointerenter", () => {
-      this.pointerInside = true;
-    });
-    canvas.addEventListener("pointerleave", () => {
-      this.pointerInside = false;
-    });
-    canvas.addEventListener("pointerdown", (e) => this.#onDown(e));
-    canvas.addEventListener("pointermove", (e) => this.#onMove(e));
-    canvas.addEventListener("pointerup", (e) => this.#onUp(e));
-    canvas.addEventListener("pointerleave", (e) => this.#onUp(e));
-    canvas.addEventListener("wheel", (e) => this.#onWheel(e), { passive: false });
-    canvas.addEventListener("contextmenu", (e) => e.preventDefault());
-    canvas.addEventListener("mousedown", (e) => {
-      if (e.button === 1) e.preventDefault();
-    });
-    canvas.addEventListener("auxclick", (e) => {
-      if (e.button === 1) e.preventDefault();
-    });
+    for (const view of this.views) {
+      const cv = view.canvas;
+      const as = (fn) => (e) => {
+        this.#v = view;
+        fn(e);
+      };
+      cv.addEventListener("pointerenter", () => {
+        this.pointerInside = true;
+      });
+      cv.addEventListener("pointerleave", () => {
+        this.pointerInside = false;
+      });
+      cv.addEventListener("pointerdown", as((e) => this.#onDown(e)));
+      cv.addEventListener("pointermove", as((e) => this.#onMove(e)));
+      cv.addEventListener("pointerup", as((e) => this.#onUp(e)));
+      cv.addEventListener(
+        "pointerleave",
+        as((e) => {
+          // Hover highlights are model-space, so they show in every view: drop them when the pointer leaves.
+          if (!this.drag) {
+            this.hoverVert = -1;
+            this.hoverLine = -1;
+            this.hoverGizmo = null;
+            this.hoverSphere = -1;
+            this.hoverRing = -1;
+          }
+          this.#onUp(e);
+        })
+      );
+      cv.addEventListener("wheel", as((e) => this.#onWheel(e)), { passive: false });
+      cv.addEventListener("contextmenu", (e) => e.preventDefault());
+      cv.addEventListener("mousedown", (e) => {
+        if (e.button === 1) e.preventDefault();
+      });
+      cv.addEventListener("auxclick", (e) => {
+        if (e.button === 1) e.preventDefault();
+      });
+    }
     const spinLoop = () => {
       if (this.enabled && this.#spinning()) this.draw();
       requestAnimationFrame(spinLoop);
@@ -13915,20 +14085,31 @@ class ItemView {
     return this.#spinning() ? itemSpinAngle() : 0;
   }
 
+  get cssW() {
+    return this.#v.w;
+  }
+
+  get cssH() {
+    return this.#v.h;
+  }
+
+  /** Each canvas fills its grid cell (CSS 100%); measure the cell, then size the backing store to it. */
   resize() {
     if (!this.enabled) return;
-    const stage = this.opts.stage || this.canvas.parentElement;
-    const rect = stage.getBoundingClientRect();
     const dpr = Math.min(2, window.devicePixelRatio || 1);
-    const w = Math.max(64, Math.floor(rect.width));
-    const h = Math.max(64, Math.floor(rect.height));
-    this.canvas.width = Math.floor(w * dpr);
-    this.canvas.height = Math.floor(h * dpr);
-    this.canvas.style.width = `${w}px`;
-    this.canvas.style.height = `${h}px`;
-    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    this.cssW = w;
-    this.cssH = h;
+    for (const view of this.views) {
+      const cv = view.canvas;
+      cv.style.width = "";
+      cv.style.height = "";
+      const rect = cv.getBoundingClientRect();
+      const w = Math.max(32, Math.floor(rect.width));
+      const h = Math.max(32, Math.floor(rect.height));
+      cv.width = Math.floor(w * dpr);
+      cv.height = Math.floor(h * dpr);
+      view.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      view.w = w;
+      view.h = h;
+    }
     this.draw();
   }
 
@@ -14172,16 +14353,32 @@ class ItemView {
     return this.opts.getMesh?.() || { verts: [], lines: [] };
   }
 
-  #cam() {
-    const { yaw, pitch, dist, target } = this.orbit;
+  /**
+   * Perspective: the orbit camera. Ortho: looks along a world axis at orbit.target with `ortho` set to the
+   * pixels-per-unit the perspective view has at the target plane (focal / dist), so every view shows the
+   * same scale and centre.
+   */
+  #cam(view = this.#v) {
+    const { dist, target } = this.orbit;
+    const def = ITEM_VIEW_DEFS[view.kind];
+    const ortho = view.kind !== "persp";
+    const yaw = ortho ? def.yaw : this.orbit.yaw;
+    const pitch = ortho ? def.pitch : this.orbit.pitch;
     const { forward } = lookVectors(yaw, pitch);
-    return {
-      x: target.x - forward.x * dist,
-      y: target.y - forward.y * dist,
-      z: target.z - forward.z * dist,
+    const back = ortho ? ITEM_ORTHO_EYE : dist;
+    const cam = {
+      x: target.x - forward.x * back,
+      y: target.y - forward.y * back,
+      z: target.z - forward.z * back,
       yaw,
       pitch,
     };
+    if (ortho) cam.ortho = Math.max(0.01, (Math.min(view.w, view.h) * 0.9) / dist);
+    return cam;
+  }
+
+  get #persp() {
+    return this.views[3];
   }
 
   /** Frame mesh verts; if none, center on origin without changing dist. */
@@ -14223,8 +14420,9 @@ class ItemView {
     const center = aabbCenter(box);
     const { yaw, pitch } = this.orbit;
     const { forward, right, up } = lookVectors(yaw, pitch);
-    const w = this.cssW;
-    const h = this.cssH;
+    // Frames the perspective view; the ortho views follow through orbit.target / dist.
+    const w = this.#persp.w;
+    const h = this.#persp.h;
     const focal = Math.min(w, h) * 0.9;
     const pad = 0.82;
     const halfW = Math.max(1, w * 0.5 * pad);
@@ -14252,7 +14450,7 @@ class ItemView {
   }
 
   #eventPos(e) {
-    const rect = this.canvas.getBoundingClientRect();
+    const rect = this.#v.canvas.getBoundingClientRect();
     return {
       x: ((e.clientX - rect.left) / rect.width) * this.cssW,
       y: ((e.clientY - rect.top) / rect.height) * this.cssH,
@@ -14462,13 +14660,19 @@ class ItemView {
     return best;
   }
 
-  /** Screen centre and radius (px) of sphere i, or null when behind the camera. Spin is off while the pointer is in. */
+  /**
+   * Screen centre and radius (px) of a sphere in the active view, or null when behind the camera.
+   * `upp` is world units per pixel of radius at the sphere (perspective z / focal, ortho 1 / px), so
+   * a radius drag is r = pixels * upp. Spin is off while the pointer is in.
+   */
   #sphereScreen(sp) {
     const w = this.cssW;
     const h = this.cssH;
-    const pr = projectPoint(sp, this.#cam(), w, h);
+    const cam = this.#cam();
+    const pr = projectPoint(sp, cam, w, h);
     if (!pr.ok) return null;
-    return { sx: pr.sx, sy: pr.sy, z: pr.z, rad: (sp.r * Math.min(w, h) * 0.9) / pr.z };
+    const upp = cam.ortho ? 1 / cam.ortho : pr.z / (Math.min(w, h) * 0.9);
+    return { sx: pr.sx, sy: pr.sy, z: pr.z, upp, rad: sp.r / upp };
   }
 
   /** Nearest sphere centre within the vert hit radius. `prefer` wins a tie (a sphere sitting on a vertex). */
@@ -14621,30 +14825,32 @@ class ItemView {
 
   #onDown(e) {
     if (!this.enabled) return;
-    this.canvas.focus();
+    this.#v.canvas.focus();
     const p = this.#eventPos(e);
     const mesh = this.#mesh();
+    // Orthographic views can't orbit: where the perspective view orbits, they pan.
+    const turn = this.#v.kind === "persp" ? "orbit" : "pan";
 
     if (e.button === 2 && e.altKey) {
       this.drag = { kind: "zoom", last: p };
-      this.canvas.setPointerCapture(e.pointerId);
+      this.#v.canvas.setPointerCapture(e.pointerId);
       return;
     }
     if (e.button === 1) {
       this.drag = { kind: "pan", last: p };
-      this.canvas.setPointerCapture(e.pointerId);
+      this.#v.canvas.setPointerCapture(e.pointerId);
       return;
     }
     if (e.button === 2) {
-      this.drag = { kind: "orbit", last: p };
-      this.canvas.setPointerCapture(e.pointerId);
+      this.drag = { kind: turn, last: p };
+      this.#v.canvas.setPointerCapture(e.pointerId);
       return;
     }
     if (e.button !== 0) return;
     if (e.altKey) {
       e.preventDefault();
-      this.drag = { kind: "orbit", last: p };
-      this.canvas.setPointerCapture(e.pointerId);
+      this.drag = { kind: turn, last: p };
+      this.#v.canvas.setPointerCapture(e.pointerId);
       return;
     }
 
@@ -14654,7 +14860,7 @@ class ItemView {
       const gizmoHit = hitTranslateGizmo(prim.v, cam, this.cssW, this.cssH, p.x, p.y);
       if (gizmoHit) {
         this.#startGizmoDrag(gizmoHit, prim, p, e.ctrlKey || e.metaKey);
-        this.canvas.setPointerCapture(e.pointerId);
+        this.#v.canvas.setPointerCapture(e.pointerId);
         return;
       }
     }
@@ -14664,15 +14870,15 @@ class ItemView {
       if (hit.vert >= 0) this.#selectVert(hit.vert, e.shiftKey);
       else this.#selectSphere(hit.sphere, e.shiftKey);
       this.drag = { kind: "select" };
-      this.canvas.setPointerCapture(e.pointerId);
+      this.#v.canvas.setPointerCapture(e.pointerId);
       this.draw();
       return;
     }
 
-    const ri = this.#hitSphereRing(p.x, p.y, mesh);
+    const ri =this.#hitSphereRing(p.x, p.y, mesh);
     if (ri >= 0) {
       this.drag = { kind: "radius", si: ri, began: false };
-      this.canvas.setPointerCapture(e.pointerId);
+      this.#v.canvas.setPointerCapture(e.pointerId);
       this.draw();
       return;
     }
@@ -14681,13 +14887,13 @@ class ItemView {
     if (li >= 0) {
       this.#selectLine(li, e.shiftKey);
       this.drag = { kind: "select" };
-      this.canvas.setPointerCapture(e.pointerId);
+      this.#v.canvas.setPointerCapture(e.pointerId);
       this.draw();
       return;
     }
 
-    this.drag = { kind: "box", start: p, end: p, additive: e.shiftKey };
-    this.canvas.setPointerCapture(e.pointerId);
+    this.drag = { kind: "box", start: p, end: p, additive: e.shiftKey, view: this.#v };
+    this.#v.canvas.setPointerCapture(e.pointerId);
   }
 
   #onMove(e) {
@@ -14707,7 +14913,7 @@ class ItemView {
       const onHandle = this.hoverGizmo || hit.vert >= 0 || hit.sphere >= 0;
       this.hoverRing = onHandle ? -1 : this.#hitSphereRing(p.x, p.y, mesh);
       this.hoverLine = onHandle || this.hoverRing >= 0 ? -1 : this.#hitLine(p.x, p.y, mesh);
-      this.canvas.style.cursor = this.hoverRing >= 0 ? "nesw-resize" : "";
+      this.#v.canvas.style.cursor = this.hoverRing >= 0 ? "nesw-resize" : "";
       this.draw();
       return;
     }
@@ -14715,8 +14921,8 @@ class ItemView {
       const sp = mesh.spheres?.[this.drag.si];
       const s = sp && this.#sphereScreen(sp);
       if (!s) return;
-      // Inverse of the draw radius: r = px * z / focal.
-      const r = clampItemSphereR((Math.hypot(p.x - s.sx, p.y - s.sy) * s.z) / (Math.min(this.cssW, this.cssH) * 0.9));
+      // Inverse of the draw radius: r = px * upp (persp z / focal, ortho 1 / pixels-per-unit).
+      const r = clampItemSphereR(Math.hypot(p.x - s.sx, p.y - s.sy) * s.upp);
       if (r === sp.r) return;
       if (!this.drag.began) {
         this.opts.beginUndo?.();
@@ -14741,9 +14947,12 @@ class ItemView {
       const dx = p.x - this.drag.last.x;
       const dy = p.y - this.drag.last.y;
       this.drag.last = p;
+      // Moves the shared orbit.target in this view's screen plane. dist / focal is 1 / pixels-per-unit in
+      // the perspective view and the ortho views alike, so every view recentres on the same point.
+      const cam = this.#cam();
       const focal = Math.min(this.cssW, this.cssH) * 0.9;
       const scale = this.orbit.dist / focal;
-      const { right, up } = lookVectors(this.orbit.yaw, this.orbit.pitch);
+      const { right, up } = lookVectors(cam.yaw, cam.pitch);
       const t = this.orbit.target;
       t.x += (-right.x * dx + up.x * dy) * scale;
       t.y += (-right.y * dx + up.y * dy) * scale;
@@ -14877,10 +15086,10 @@ class ItemView {
     }
     if (this.drag?.kind === "radius") this.opts.endUndo?.();
     this.drag = null;
-    this.canvas.style.cursor = "";
+    this.#v.canvas.style.cursor = "";
     if (orbitEnded) this.opts.onViewChanged?.();
     try {
-      this.canvas.releasePointerCapture(e.pointerId);
+      this.#v.canvas.releasePointerCapture(e.pointerId);
     } catch {
       /* ignore */
     }
@@ -14940,23 +15149,139 @@ class ItemView {
     ctx.restore();
   }
 
+  /**
+   * Top view: a guide line through every unique X (vertical, red) and unique Z (horizontal, blue) used by the
+   * mesh verts and sphere origins, i.e. the values the ITEM_MAX_UNIQUE budget counts. Corner text shows the use.
+   */
+  #drawUniqueGuides(ctx, cam, w, h, mesh) {
+    const { nx, nz, xs, zs } = itemUniqueXZ([...mesh.verts, ...(mesh.spheres || [])]);
+    ctx.save();
+    ctx.lineWidth = 1;
+    ctx.setLineDash([5, 4]);
+    ctx.globalAlpha = 0.6;
+    ctx.strokeStyle = GIZMO_AXIS_COLS.x;
+    for (const q of xs) {
+      const sx = Math.round(projectPoint({ x: q / ITEM_POS_Q, y: 0, z: 0 }, cam, w, h).sx) + 0.5;
+      ctx.beginPath();
+      ctx.moveTo(sx, 0);
+      ctx.lineTo(sx, h);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = GIZMO_AXIS_COLS.z;
+    for (const q of zs) {
+      const sy = Math.round(projectPoint({ x: 0, y: 0, z: q / ITEM_POS_Q }, cam, w, h).sy) + 0.5;
+      ctx.beginPath();
+      ctx.moveTo(0, sy);
+      ctx.lineTo(w, sy);
+      ctx.stroke();
+    }
+    ctx.restore();
+    ctx.fillStyle = nx > ITEM_MAX_UNIQUE || nz > ITEM_MAX_UNIQUE ? "#e55" : "#8b91a0";
+    ctx.font = "11px Segoe UI, sans-serif";
+    ctx.fillText(`unique X ${nx}/${ITEM_MAX_UNIQUE} · Z ${nz}/${ITEM_MAX_UNIQUE}`, 8, 30);
+  }
+
+  /**
+   * Background grid for an ortho view: 1-unit lines (coarsened by powers of two when cells get tiny),
+   * 0.25 sub-lines once zoomed in, every 4th line brighter, and the two world axes in their gizmo colours.
+   */
+  #drawOrthoGrid(ctx, cam, w, h) {
+    const px = cam.ortho;
+    const { right, up } = lookVectors(cam.yaw, cam.pitch);
+    const axisOf = (v) => (Math.abs(v.x) > 0.5 ? "x" : Math.abs(v.y) > 0.5 ? "y" : "z");
+    const hAxis = axisOf(right);
+    const vAxis = axisOf(up);
+    const hs = right[hAxis] > 0 ? 1 : -1;
+    const vs = up[vAxis] > 0 ? 1 : -1;
+    const o = projectPoint({ x: 0, y: 0, z: 0 }, cam, w, h);
+    let step = 1;
+    while (step * px < 5 && step < 64) step *= 2;
+    const style = (n) => {
+      if (Math.abs(n % 4) < 1e-6) return "#363e4e";
+      if (Math.abs(n % 1) < 1e-6) return "#262c39";
+      return "#171b24";
+    };
+    const line = (pos, vertical, col, alpha = 1) => {
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = col;
+      ctx.beginPath();
+      if (vertical) {
+        const x = Math.round(pos) + 0.5;
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, h);
+      } else {
+        const y = Math.round(pos) + 0.5;
+        ctx.moveTo(0, y);
+        ctx.lineTo(w, y);
+      }
+      ctx.stroke();
+    };
+    const sub = px * 0.25 >= 7 ? 0.25 : step;
+    ctx.save();
+    ctx.lineWidth = 1;
+    // Horizontal axis value n sits at x = o.sx + hs*n*px; vertical axis value n at y = o.sy - vs*n*px.
+    const nA = ((0 - o.sx) / px) * hs;
+    const nB = ((w - o.sx) / px) * hs;
+    const hMin = Math.ceil(Math.min(nA, nB) / sub) * sub;
+    const hMax = Math.floor(Math.max(nA, nB) / sub) * sub;
+    for (let n = hMin; n <= hMax + 1e-9; n += sub) {
+      if (Math.abs(n) < 1e-9) continue;
+      line(o.sx + hs * n * px, true, style(n));
+    }
+    const nC = ((o.sy - 0) / px) * vs;
+    const nD = ((o.sy - h) / px) * vs;
+    const vMin = Math.ceil(Math.min(nC, nD) / sub) * sub;
+    const vMax = Math.floor(Math.max(nC, nD) / sub) * sub;
+    for (let n = vMin; n <= vMax + 1e-9; n += sub) {
+      if (Math.abs(n) < 1e-9) continue;
+      line(o.sy - vs * n * px, false, style(n));
+    }
+    // The line at horizontal value 0 runs along the vertical axis, and vice versa.
+    line(o.sx, true, GIZMO_AXIS_COLS[vAxis], 0.55);
+    line(o.sy, false, GIZMO_AXIS_COLS[hAxis], 0.55);
+    ctx.restore();
+  }
+
   draw() {
     if (!this.enabled) return;
-    const ctx = this.ctx;
-    const w = this.cssW;
-    const h = this.cssH;
-    if (!w || !h) return;
+    const prev = this.#v;
+    // Live box-select preview is computed once in the view the box is dragged in.
+    let preview = null;
+    const d = this.drag;
+    if (d?.kind === "box" && d.view) {
+      this.#v = d.view;
+      const r = this.#boxRect();
+      if (r.w >= ITEM_BOX_CLICK || r.h >= ITEM_BOX_CLICK) {
+        preview = { verts: this.#vertsInBox(r), spheres: this.#spheresInBox(r) };
+      }
+    }
+    for (const view of this.views) {
+      if (!view.w || !view.h) continue;
+      this.#v = view;
+      this.#drawView(view, preview);
+    }
+    this.#v = prev;
+  }
+
+  #drawView(view, preview) {
+    const ctx = view.ctx;
+    const w = view.w;
+    const h = view.h;
     ctx.fillStyle = "#0a0a0c";
     ctx.fillRect(0, 0, w, h);
-    const cam = this.#cam();
+    const cam = this.#cam(view);
+    const ortho = !!cam.ortho;
     const mesh = this.#mesh();
     const lo = ITEM_MIN;
     const hi = ITEM_MAX;
 
-    for (let i = lo; i <= hi; i++) {
-      const col = i === 0 ? "#3d4658" : "#2a3140";
-      this.#strokeSeg(ctx, cam, w, h, { x: i, y: 0, z: lo }, { x: i, y: 0, z: hi }, col);
-      this.#strokeSeg(ctx, cam, w, h, { x: lo, y: 0, z: i }, { x: hi, y: 0, z: i }, col);
+    if (ortho) this.#drawOrthoGrid(ctx, cam, w, h);
+    else {
+      for (let i = lo; i <= hi; i++) {
+        const col = i === 0 ? "#3d4658" : "#2a3140";
+        this.#strokeSeg(ctx, cam, w, h, { x: i, y: 0, z: lo }, { x: i, y: 0, z: hi }, col);
+        this.#strokeSeg(ctx, cam, w, h, { x: lo, y: 0, z: i }, { x: hi, y: 0, z: i }, col);
+      }
     }
     const cube = [
       [
@@ -15010,19 +15335,16 @@ class ItemView {
     ];
     for (const [a, b] of cube) this.#strokeSeg(ctx, cam, w, h, a, b, "#252a35");
 
-    this.#drawForwardArrow(ctx, cam, w, h);
+    // Of the ortho views only Top shows the forward arrow; Perspective always does.
+    if (view.kind === "top" || view.kind === "persp") this.#drawForwardArrow(ctx, cam, w, h);
     this.#drawGhost(ctx, cam, w, h);
 
     let shownVerts = this.selectedVerts;
     let shownSpheres = this.selectedSpheres;
-    if (this.drag?.kind === "box") {
-      const r = this.#boxRect();
-      if (r.w >= ITEM_BOX_CLICK || r.h >= ITEM_BOX_CLICK) {
-        const hits = this.#vertsInBox(r);
-        const sHits = this.#spheresInBox(r);
-        shownVerts = this.drag.additive ? [...new Set([...this.selectedVerts, ...hits])] : hits;
-        shownSpheres = this.drag.additive ? [...new Set([...this.selectedSpheres, ...sHits])] : sHits;
-      }
+    if (preview) {
+      const add = this.drag.additive;
+      shownVerts = add ? [...new Set([...this.selectedVerts, ...preview.verts])] : preview.verts;
+      shownSpheres = add ? [...new Set([...this.selectedSpheres, ...preview.spheres])] : preview.spheres;
     }
 
     const yaw = this.#spinYaw();
@@ -15033,6 +15355,8 @@ class ItemView {
           z: -v.x * Math.sin(yaw) + v.z * Math.cos(yaw),
         }))
       : mesh.verts;
+
+    if (view.kind === "top" && !yaw) this.#drawUniqueGuides(ctx, cam, w, h, mesh);
 
     mesh.lines.forEach(([ia, ib], i) => {
       const a = dverts[ia];
@@ -15050,7 +15374,7 @@ class ItemView {
         : sp;
       const pr = projectPoint(c, cam, w, h);
       if (!pr.ok) return;
-      const rad = (sp.r * Math.min(w, h) * 0.9) / pr.z;
+      const rad = ortho ? sp.r * cam.ortho : (sp.r * Math.min(w, h) * 0.9) / pr.z;
       const sel = shownSpheres.includes(i);
       const hot = this.hoverRing === i || (this.drag?.kind === "radius" && this.drag.si === i);
       const col = sel ? SPHERE_COL_SEL : hot ? SPHERE_COL_HOT : SPHERE_COL;
@@ -15098,7 +15422,7 @@ class ItemView {
     const prim = this.#selectionAnchor();
     if (prim) this.#drawGizmo(ctx, cam, w, h, prim.v);
 
-    if (this.drag?.kind === "box") {
+    if (this.drag?.kind === "box" && this.drag.view === view) {
       const r = this.#boxRect();
       ctx.fillStyle = "rgba(212, 160, 23, 0.12)";
       ctx.fillRect(r.x0, r.y0, r.w, r.h);
@@ -15108,6 +15432,10 @@ class ItemView {
       ctx.strokeRect(r.x0 + 0.5, r.y0 + 0.5, r.w, r.h);
       ctx.setLineDash([]);
     }
+
+    ctx.fillStyle = "#8b91a0";
+    ctx.font = "11px Segoe UI, sans-serif";
+    ctx.fillText(ITEM_VIEW_DEFS[view.kind].label, 8, 16);
   }
 }
 
@@ -17016,6 +17344,7 @@ const previewView = new PreviewView(document.getElementById("preview-canvas"), {
 const animView = new AnimView(document.getElementById("view-canvas"), {
   stage: document.getElementById("map-stage"),
   showCollision: () => collisionOn,
+  getGhostItem: () => enemyGhostItemSegs(doc, doc.enemies[enemyIndex]),
   getEnemy: () => doc.enemies[enemyIndex],
   getFrame: () => {
     const e = doc.enemies[enemyIndex];
@@ -17210,6 +17539,11 @@ const stickFront = makeStickOrtho("stick-front-canvas", "x", 1);
 
 const itemView = new ItemView(document.getElementById("view-canvas"), {
   stage: document.getElementById("map-stage"),
+  ortho: {
+    front: document.getElementById("item-front-canvas"),
+    right: document.getElementById("item-right-canvas"),
+    top: document.getElementById("item-top-canvas"),
+  },
   getMesh: () => {
     if (!doc.items) doc.items = {};
     if (!doc.items[itemMeshKey]) doc.items[itemMeshKey] = { verts: [], lines: [] };
@@ -17892,6 +18226,12 @@ function setMode(mode) {
   }
   stickLeft.enabled = stick;
   stickFront.enabled = stick;
+  // Items tab: 2x2 Front | Right / Top | Perspective (the perspective canvas is #view-canvas).
+  mapStage?.classList.toggle("item-stage", mode === "items");
+  for (const id of ["item-front", "item-right", "item-top"]) {
+    const el = document.getElementById(id);
+    if (el) el.hidden = mode !== "items";
+  }
   const hintEl = document.getElementById("hint");
   if (hintEl) hintEl.hidden = mode === "build";
   const fontLeft = document.getElementById("font-left");
@@ -17914,7 +18254,7 @@ function setMode(mode) {
     mode === "layout"
       ? "Drag palette to place · LMB box/click-select · Ctrl+LMB box-select points · Shift add · WASD/wheel fly · Q/E up · RMB look · Alt+LMB / Alt+MMB orbit · MMB pan · Alt+RMB zoom · F focus · G drop · Ctrl+D dup · gizmo moves selection · Del"
       : mode === "items"
-          ? "LMB box-select verts · click vert/line to select · Shift add · gizmo moves · V add vert · L add line · Ctrl+C/V copy/paste · Del · F focus · MMB pan · Alt+LMB / RMB orbit · Alt+RMB zoom"
+          ? "LMB box-select verts · click vert/line to select · Shift add · gizmo moves · V add vert · L add line · Ctrl+C/V copy/paste · Del · F focus · MMB pan · Wheel / Alt+RMB zoom · Perspective: Alt+LMB / RMB orbit · Front/Right/Top: Alt+LMB / RMB pan · pan and zoom are shared by all views"
           : mode === "build"
               ? "Open the repo once · Reload after a build"
               : mode === "font"
@@ -19950,6 +20290,19 @@ function renderLayoutObjectFields(root, objs) {
     );
     btyRow.title = "0 = not a bounty. Snaps to 3, 7, 11 ... 1019 (one byte). Scannable with the DNA rig once dead.";
     root.appendChild(btyRow);
+    // Per placed enemy. Blank = the enemy type's hp (set on the type in the Enemies tab).
+    const hpCur = unanimous(objs, (o) => clampPlacedEnemyHp(o.hp));
+    const hpType = unanimous(objs, (o) => o.enemy);
+    const hpInp = numberInputMixed(hpCur, (n) => apply((obj) => (obj.hp = clampPlacedEnemyHp(n))));
+    hpInp.min = "0";
+    hpInp.max = "255";
+    if (hpCur === 0) {
+      hpInp.value = "";
+      hpInp.placeholder = hpType ? String(enemyHp(hpType, doc.enemies)) : "type default";
+    }
+    const hpRow = field("HP", hpInp);
+    hpRow.title = "Game byte 1..255. Blank = the enemy type's hp.";
+    root.appendChild(hpRow);
     renderStandPicker(root, objs, apply);
   }
 
@@ -20503,6 +20856,31 @@ function renderInspector() {
   blockRow.className = "field-pair";
   blockRow.append(field("Block radius", blockInp));
   root.appendChild(blockRow);
+
+  const ghostSel = document.createElement("select");
+  ghostSel.title = "Editor-only reference prop drawn at the root. Not exported.";
+  const ghostNone = document.createElement("option");
+  ghostNone.value = "";
+  ghostNone.textContent = "None";
+  ghostSel.appendChild(ghostNone);
+  for (const key of itemKeys()) {
+    const o = document.createElement("option");
+    o.value = key;
+    o.textContent = itemLabel(key);
+    ghostSel.appendChild(o);
+  }
+  ghostSel.value = itemKeys().includes(e.ghostItem) ? e.ghostItem : "";
+  ghostSel.addEventListener("change", () => {
+    pushUndo();
+    if (ghostSel.value) e.ghostItem = ghostSel.value;
+    else delete e.ghostItem;
+    markDirty();
+    refreshAll();
+  });
+  const ghostRow = document.createElement("div");
+  ghostRow.className = "field-pair";
+  ghostRow.append(field("Ghost item", ghostSel));
+  root.appendChild(ghostRow);
 
   const timeline = getTimeline(e);
   const spriteEnemy = enemyHasSprites(e);

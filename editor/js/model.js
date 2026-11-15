@@ -1679,6 +1679,24 @@ export function anyRotatingItem(doc, objs) {
   return false;
 }
 
+/**
+ * Editor-only reference prop for the enemy tab (enemy.ghostItem = item key). Segments in enemy
+ * space: origin at the feet root, item world units / LAYOUT_ENEMY_SCALE. Not exported.
+ */
+export function enemyGhostItemSegs(doc, enemy) {
+  const key = enemy?.ghostItem;
+  if (!key || !itemKeys().includes(key)) return [];
+  const mesh = doc?.items?.[key];
+  if (!itemMeshHasGeom(mesh)) return [];
+  const k = 1 / LAYOUT_ENEMY_SCALE;
+  const verts = mesh.verts.map((v) => ({ x: Number(v.x) * k, y: Number(v.y) * k, z: Number(v.z) * k }));
+  const segs = [];
+  for (const [a, b] of mesh.lines) {
+    if (verts[a] && verts[b]) segs.push({ a: verts[a], b: verts[b] });
+  }
+  return segs;
+}
+
 export function itemMeshWorldSegs(obj, mesh, yaw = 0) {
   const m = mesh && itemMeshHasGeom(mesh) ? mesh : defaultItemMeshes().backpack;
   const c = Math.cos(yaw);
@@ -2386,6 +2404,9 @@ export function clampObject(obj) {
     const stand = clampStandVarName(obj.stand);
     if (stand) obj.stand = stand;
     else delete obj.stand;
+    const hp = clampPlacedEnemyHp(obj.hp);
+    if (hp) obj.hp = hp;
+    else delete obj.hp;
   }
   if (obj.kind === "trigger") {
     obj.purpose = clampTriggerPurpose(obj.purpose);
@@ -2509,6 +2530,8 @@ export function createObject(kind, x, y, z, extra = {}) {
     if (bnm) obj.bountyName = bnm;
     const stand = clampStandVarName(extra.stand);
     if (stand) obj.stand = stand;
+    const hp = clampPlacedEnemyHp(extra.hp);
+    if (hp) obj.hp = hp;
   }
   if (kind === "trigger") {
     obj.purpose = clampTriggerPurpose(extra.purpose);
@@ -2615,6 +2638,13 @@ export function clampBounty(bits) {
   if (!Number.isFinite(b) || b <= 0) return 0;
   const n = Math.max(1, Math.min(BOUNTY_MAX_N, Math.round((b + 1) / 4)));
   return n * 4 - 1;
+}
+
+/** Placed-enemy HP game byte, 1..255. 0 = unset: the enemy type's hp is used. */
+export function clampPlacedEnemyHp(n) {
+  const v = Math.round(Number(n));
+  if (!Number.isFinite(v) || v <= 0) return 0;
+  return Math.min(255, v);
 }
 
 export function isFigureObject(obj) {
@@ -4310,6 +4340,7 @@ function parseObjects(list) {
       bounty: o.bounty,
       bountyName: o.bountyName,
       stand: o.stand,
+      hp: o.hp,
       enableTag: o.enableTag,
       lockKey: o.lockKey,
       doorType: o.doorType,
@@ -4712,6 +4743,7 @@ export function normalizeDocument(raw) {
       enemy.hp = clampEnemyHp(e.hp, enemy.name);
       enemy.painChance = clampEnemyPainChance(e.painChance, enemy.name);
       enemy.blockR = clampEnemyBlockR(e.blockR);
+      if (typeof e.ghostItem === "string" && e.ghostItem) enemy.ghostItem = e.ghostItem;
       const exportClips = normalizeExportClips(e.exportClips);
       if (exportClips) enemy.exportClips = exportClips;
       doc.enemies.push(enemy);

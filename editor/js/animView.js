@@ -725,6 +725,9 @@ export class AnimView {
     this.#strokeSeg(ctx, cam, w, h, { x: 0, y: 0, z: -20 }, { x: 0, y: 0, z: 20 }, "#66a");
     this.#drawForwardArrow(ctx, cam, w, h);
     if (this.opts.showCollision?.() !== false) this.#drawCollision(ctx, cam, w, h);
+    for (const s of this.opts.getGhostItem?.() || []) {
+      this.#strokeSeg(ctx, cam, w, h, s.a, s.b, "#6b5a8a", 1);
+    }
 
     if (overlay) {
       ctx.lineWidth = 1;

@@ -531,6 +531,44 @@ select.error {
   gap: 4px;
 }
 
+/* Items tab: 2x2 Front | Right / Top | Perspective. The perspective canvas is #view-canvas. */
+.map-stage.item-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 4px;
+}
+
+.map-stage.item-stage .item-pane {
+  display: block;
+}
+
+.map-stage.item-stage #item-front {
+  grid-area: 1 / 1;
+}
+
+.map-stage.item-stage #item-right {
+  grid-area: 1 / 2;
+}
+
+.map-stage.item-stage #item-top {
+  grid-area: 2 / 1;
+}
+
+.map-stage.item-stage #view-canvas {
+  grid-area: 2 / 2;
+  min-width: 0;
+  min-height: 0;
+}
+
+.item-pane canvas {
+  outline: none;
+}
+
+.item-pane canvas:focus {
+  border-color: var(--accent);
+}
+
 .stick-pane {
   position: relative;
   min-width: 0;
