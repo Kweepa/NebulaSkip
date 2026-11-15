@@ -16854,11 +16854,18 @@ function spriteHit(pack, prefix, letter, rot) {
 
 
 // ---- js/stickOrtho.js ----
-/** Orthographic stick pane. Front edits X/Y. Left edits Z/Y. */
+/**
+ * Orthographic stick pane. Front edits X/Y. Left edits Z/Y.
+ * Selection matches the perspective view: click a vertex or a line, drag a box on empty space,
+ * Shift adds. A press on an already-selected vertex drags the whole selection.
+ */
 
 const STICK_GROUND_Y = 0.72;
 
 const HIT = 8;
+const STICK_LINE_HIT = 6;
+/** A box smaller than this in both dimensions is a click (clears the selection unless Shift). */
+const STICK_BOX_CLICK = 4;
 
 function clampCoord(v, lim) {
   const n = Math.round(v);
@@ -16970,27 +16977,94 @@ class StickOrtho {
     }
     if (e.button !== 0) return;
     if (this.opts.showWire?.() === false) return;
-    const hit = this.#hitVert(p.x, p.y);
-    if (hit < 0) return;
     const selected = this.opts.getSelected?.() || [];
-    const next = e.shiftKey
-      ? selected.includes(hit)
-        ? selected.filter((i) => i !== hit)
-        : [...selected, hit]
-      : selected.includes(hit)
-        ? selected
-        : [hit];
-    this.opts.onSelect?.(next);
-    const verts = this.#verts();
-    this.drag = {
-      kind: "vert",
-      x: p.x,
-      y: p.y,
-      indices: next.slice(),
-      start: next.map((i) => ({ ...verts[i] })),
-      undo: false,
-    };
+    const hit = this.#hitVert(p.x, p.y);
+    if (hit >= 0) {
+      if (e.shiftKey) {
+        // Shift only adds, as in the perspective view; no drag so a stray Shift-click can't move anything.
+        this.opts.onSelect?.(selected.includes(hit) ? selected : [...selected, hit]);
+        this.drag = { kind: "select" };
+        this.canvas.setPointerCapture(e.pointerId);
+        this.draw();
+        return;
+      }
+      const next = selected.includes(hit) ? selected : [hit];
+      this.opts.onSelect?.(next);
+      const verts = this.#verts();
+      this.drag = {
+        kind: "vert",
+        x: p.x,
+        y: p.y,
+        indices: next.slice(),
+        start: next.map((i) => ({ ...verts[i] })),
+        undo: false,
+      };
+      this.canvas.setPointerCapture(e.pointerId);
+      return;
+    }
+    const li = this.#hitLine(p.x, p.y);
+    if (li >= 0) {
+      this.opts.onSelectLine?.(li, e.shiftKey);
+      this.drag = { kind: "select" };
+      this.canvas.setPointerCapture(e.pointerId);
+      this.draw();
+      return;
+    }
+    this.drag = { kind: "box", start: p, end: p, additive: e.shiftKey };
     this.canvas.setPointerCapture(e.pointerId);
+  }
+
+  #hitLine(sx, sy) {
+    const verts = this.#verts();
+    const lines = this.#enemy()?.lines;
+    if (!verts || !lines) return -1;
+    let best = -1;
+    let bestD = STICK_LINE_HIT;
+    lines.forEach(([a, b], i) => {
+      const pa = verts[a];
+      const pb = verts[b];
+      if (!pa || !pb) return;
+      const sa = this.#toScreen(pa);
+      const sb = this.#toScreen(pb);
+      const d = distPointToSegment2d(sx, sy, sa.x, sa.y, sb.x, sb.y);
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    });
+    return best;
+  }
+
+  #boxRect() {
+    const a = this.drag.start;
+    const b = this.drag.end;
+    const x0 = Math.min(a.x, b.x);
+    const y0 = Math.min(a.y, b.y);
+    const x1 = Math.max(a.x, b.x);
+    const y1 = Math.max(a.y, b.y);
+    return { x0, y0, x1, y1, w: x1 - x0, h: y1 - y0 };
+  }
+
+  /** Every vertex whose projection is in the box, regardless of depth. */
+  #vertsInBox(rect) {
+    const hits = [];
+    (this.#verts() || []).forEach((v, i) => {
+      const p = this.#toScreen(v);
+      if (p.x >= rect.x0 && p.x <= rect.x1 && p.y >= rect.y0 && p.y <= rect.y1) hits.push(i);
+    });
+    return hits;
+  }
+
+  #finishBox() {
+    const rect = this.#boxRect();
+    const additive = this.drag.additive;
+    if (rect.w < STICK_BOX_CLICK && rect.h < STICK_BOX_CLICK) {
+      if (!additive) this.opts.onSelect?.([]);
+      return;
+    }
+    const hits = this.#vertsInBox(rect);
+    const selected = this.opts.getSelected?.() || [];
+    this.opts.onSelect?.(additive ? [...new Set([...selected, ...hits])] : hits);
   }
 
   #onMove(e) {
@@ -17004,6 +17078,12 @@ class StickOrtho {
       this.draw();
       return;
     }
+    if (this.drag.kind === "box") {
+      this.drag.end = p;
+      this.draw();
+      return;
+    }
+    if (this.drag.kind !== "vert") return;
     if (!this.drag.undo) {
       this.opts.beginUndo?.();
       this.drag.undo = true;
@@ -17029,10 +17109,14 @@ class StickOrtho {
 
   #onUp(e) {
     if (!this.drag) return;
+    const kind = this.drag.kind;
+    if (kind === "box") this.#finishBox();
     if (this.drag.undo) this.opts.endUndo?.();
     this.drag = null;
     if (this.canvas.hasPointerCapture?.(e.pointerId)) this.canvas.releasePointerCapture(e.pointerId);
-    this.opts.onPose?.();
+    // Selection-only gestures don't change the pose, so they must not mark the document dirty.
+    if (kind === "box" || kind === "select") this.draw();
+    else this.opts.onPose?.();
   }
 
   setScale(px) {
@@ -17122,16 +17206,43 @@ class StickOrtho {
       }
       ctx.restore();
     }
+    const ghost = this.opts.getGhostItem?.();
+    if (ghost?.length) {
+      ctx.save();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = "#6b5a8a";
+      ctx.beginPath();
+      for (const s of ghost) {
+        const sa = this.#toScreen(s.a);
+        const sb = this.#toScreen(s.b);
+        ctx.moveTo(sa.x, sa.y);
+        ctx.lineTo(sb.x, sb.y);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
     if (!verts || this.opts.showWire?.() === false) return;
-    const selected = new Set(this.opts.getSelected?.() || []);
-    ctx.lineWidth = 1.5;
+    let selectedList = this.opts.getSelected?.() || [];
+    // Live preview of a box-select in progress.
+    const boxing = this.drag?.kind === "box";
+    const rect = boxing ? this.#boxRect() : null;
+    if (rect && (rect.w >= STICK_BOX_CLICK || rect.h >= STICK_BOX_CLICK)) {
+      const hits = this.#vertsInBox(rect);
+      selectedList = this.drag.additive ? [...new Set([...selectedList, ...hits])] : hits;
+    }
+    const selected = new Set(selectedList);
+    const selLines = new Set(this.opts.getSelectedLines?.() || []);
+    let li = -1;
     for (const [a, b] of e.lines || []) {
+      li++;
       const pa = verts[a];
       const pb = verts[b];
       if (!pa || !pb) continue;
       const sa = this.#toScreen(pa);
       const sb = this.#toScreen(pb);
-      ctx.strokeStyle = "#9ab";
+      const lineSel = selLines.has(li);
+      ctx.lineWidth = lineSel ? 2.5 : 1.5;
+      ctx.strokeStyle = lineSel ? "#fc6" : "#9ab";
       ctx.beginPath();
       ctx.moveTo(sa.x, sa.y);
       ctx.lineTo(sb.x, sb.y);
@@ -17143,6 +17254,15 @@ class StickOrtho {
       ctx.beginPath();
       ctx.arc(p.x, p.y, selected.has(i) ? 4.5 : 3, 0, Math.PI * 2);
       ctx.fill();
+    }
+    if (rect) {
+      ctx.fillStyle = "rgba(212, 160, 23, 0.12)";
+      ctx.fillRect(rect.x0, rect.y0, rect.w, rect.h);
+      ctx.strokeStyle = "#d4a017";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 3]);
+      ctx.strokeRect(rect.x0 + 0.5, rect.y0 + 0.5, rect.w, rect.h);
+      ctx.setLineDash([]);
     }
   }
 }
@@ -17341,6 +17461,17 @@ const previewView = new PreviewView(document.getElementById("preview-canvas"), {
   },
 });
 
+/** Line pick shared by the perspective view and the Front/Right panes. */
+function selectEnemyLine(i, additive) {
+  if (i < 0) selectedLines = [];
+  else if (additive) {
+    if (!selectedLines.includes(i)) selectedLines.push(i);
+  } else selectedLines = [i];
+  selectedVerts = [];
+  markUi();
+  refreshPanels();
+}
+
 const animView = new AnimView(document.getElementById("view-canvas"), {
   stage: document.getElementById("map-stage"),
   showCollision: () => collisionOn,
@@ -17388,15 +17519,7 @@ const animView = new AnimView(document.getElementById("view-canvas"), {
     markUi();
     refreshPanels();
   },
-  onSelectLine: (i, additive) => {
-    if (i < 0) selectedLines = [];
-    else if (additive) {
-      if (!selectedLines.includes(i)) selectedLines.push(i);
-    } else selectedLines = [i];
-    selectedVerts = [];
-    markUi();
-    refreshPanels();
-  },
+  onSelectLine: selectEnemyLine,
   onChange: () => {
     markDirty();
     refreshPanels();
@@ -17501,8 +17624,11 @@ function makeStickOrtho(id, horiz, rot, mirror = null) {
     horiz,
     mirror,
     getEnemy: () => activeEnemy(),
+    getGhostItem: () => enemyGhostItemSegs(doc, activeEnemy()),
     getFrame: () => frameIndex,
     getSelected: () => selectedVerts,
+    getSelectedLines: () => selectedLines,
+    onSelectLine: selectEnemyLine,
     onSelect: (next) => {
       selectedVerts = next;
       selectedLines = [];

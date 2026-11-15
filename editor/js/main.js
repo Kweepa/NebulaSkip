@@ -419,6 +419,17 @@ const previewView = new PreviewView(document.getElementById("preview-canvas"), {
   },
 });
 
+/** Line pick shared by the perspective view and the Front/Right panes. */
+function selectEnemyLine(i, additive) {
+  if (i < 0) selectedLines = [];
+  else if (additive) {
+    if (!selectedLines.includes(i)) selectedLines.push(i);
+  } else selectedLines = [i];
+  selectedVerts = [];
+  markUi();
+  refreshPanels();
+}
+
 const animView = new AnimView(document.getElementById("view-canvas"), {
   stage: document.getElementById("map-stage"),
   showCollision: () => collisionOn,
@@ -466,15 +477,7 @@ const animView = new AnimView(document.getElementById("view-canvas"), {
     markUi();
     refreshPanels();
   },
-  onSelectLine: (i, additive) => {
-    if (i < 0) selectedLines = [];
-    else if (additive) {
-      if (!selectedLines.includes(i)) selectedLines.push(i);
-    } else selectedLines = [i];
-    selectedVerts = [];
-    markUi();
-    refreshPanels();
-  },
+  onSelectLine: selectEnemyLine,
   onChange: () => {
     markDirty();
     refreshPanels();
@@ -579,8 +582,11 @@ function makeStickOrtho(id, horiz, rot, mirror = null) {
     horiz,
     mirror,
     getEnemy: () => activeEnemy(),
+    getGhostItem: () => enemyGhostItemSegs(doc, activeEnemy()),
     getFrame: () => frameIndex,
     getSelected: () => selectedVerts,
+    getSelectedLines: () => selectedLines,
+    onSelectLine: selectEnemyLine,
     onSelect: (next) => {
       selectedVerts = next;
       selectedLines = [];
