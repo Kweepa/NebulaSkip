@@ -646,8 +646,12 @@ const BUILTIN_ITEM_ICONS = {
 export const BACKPACK_TYPES = PICKUP_TYPES;
 
 export const ITEM_MESH_KEYS = PICKUP_TYPES;
-export const DOOR_TYPES = ["Tech", "Arch", "Tri", "Crack"];
-export const DOOR_MESH_KEYS = DOOR_TYPES;
+/** Shipped door styles: doorways can use these. */
+export const DOOR_TYPES = ["Tech", "Arch", "Tri"];
+/** Static mesh slots after the items that are not doors ("wall hit" bump crack). Same cook slots as doors. */
+export const BUMP_MESH_KEYS = ["Crack"];
+/** Every static (non-item) mesh slot, in cook order: doors then the bump crack. */
+export const DOOR_MESH_KEYS = [...DOOR_TYPES, ...BUMP_MESH_KEYS];
 export const ALL_MESH_KEYS = [...ITEM_MESH_KEYS, ...DOOR_MESH_KEYS];
 
 /**
@@ -690,10 +694,10 @@ export function isCustomItem(key) {
  * type, its mesh the door face. The four shipped doors always are. Module registry so doc-less
  * clamps (clampDoorType) know the set.
  */
-let doorKeySet = new Set(DOOR_MESH_KEYS);
+let doorKeySet = new Set(DOOR_TYPES);
 
 export function setItemDoors(metaMap) {
-  doorKeySet = new Set(DOOR_MESH_KEYS);
+  doorKeySet = new Set(DOOR_TYPES);
   if (!metaMap || typeof metaMap !== "object") return;
   for (const key of itemKeys()) if (metaMap[key]?.door === true) doorKeySet.add(key);
 }
@@ -704,7 +708,7 @@ export function isDoorItem(key) {
 
 /** Door types in cook order: the shipped four, then flagged items. */
 export function doorTypes() {
-  return [...DOOR_MESH_KEYS, ...itemKeys().filter((k) => doorKeySet.has(k))];
+  return [...DOOR_TYPES, ...itemKeys().filter((k) => doorKeySet.has(k))];
 }
 
 /** Items the Things palette places as pickups/props (doors are placed as doorways). */
@@ -775,7 +779,7 @@ export function itemNameProblem(name, except = null) {
 /** Built-in flags. Lightpost / barrel are still props. */
 export function builtinItemMeta(key) {
   if (DOOR_MESH_KEYS.includes(key)) {
-    return { rotating: false, pickup: false, door: true, icon: BUILTIN_ITEM_ICONS[key] ?? null };
+    return { rotating: false, pickup: false, door: DOOR_TYPES.includes(key), icon: BUILTIN_ITEM_ICONS[key] ?? null };
   }
   const prop = key === "lightpost" || key === "barrel";
   return { rotating: !prop, pickup: !prop, door: false, icon: BUILTIN_ITEM_ICONS[key] ?? null };
@@ -842,11 +846,12 @@ export function itemMeta(doc, key) {
   const base = baseItemMeta(key);
   const o = doc?.itemMeta?.[key];
   if (!o || typeof o !== "object") return base;
-  const door = DOOR_MESH_KEYS.includes(key) ? true : o.door == null ? base.door : !!o.door;
+  const fixed = DOOR_MESH_KEYS.includes(key);
+  const door = fixed ? DOOR_TYPES.includes(key) : o.door == null ? base.door : !!o.door;
   return {
-    // A door is a static face: it never spins and is never a pickup.
-    rotating: door ? false : o.rotating == null ? base.rotating : !!o.rotating,
-    pickup: door ? false : isCustomItem(key) ? (o.pickup == null ? base.pickup : !!o.pickup) : base.pickup,
+    // A door (or the bump crack) is a static face: it never spins and is never a pickup.
+    rotating: door || fixed ? false : o.rotating == null ? base.rotating : !!o.rotating,
+    pickup: door || fixed ? false : isCustomItem(key) ? (o.pickup == null ? base.pickup : !!o.pickup) : base.pickup,
     door,
     icon: parseItemIcon(o.icon) ?? base.icon,
     label: isCustomItem(key) ? key : clampItemName(o.label) || base.label,
@@ -862,10 +867,11 @@ export function setItemMeta(doc, key, patch) {
   const shipped = baseItemMeta(key).icon;
   const same = icon && shipped && icon.join("|") === shipped.join("|");
   const label = isCustomItem(key) ? "" : clampItemName(next.label);
-  const door = DOOR_MESH_KEYS.includes(key) ? true : !!next.door;
+  const fixed = DOOR_MESH_KEYS.includes(key);
+  const door = fixed ? DOOR_TYPES.includes(key) : !!next.door;
   doc.itemMeta[key] = {
-    rotating: door ? false : !!next.rotating,
-    pickup: door ? false : !!next.pickup,
+    rotating: door || fixed ? false : !!next.rotating,
+    pickup: door || fixed ? false : !!next.pickup,
     ...(door !== baseItemMeta(key).door ? { door } : {}),
     ...(icon && !same ? { icon } : {}),
     ...(label && label !== defaultItemLabel(key) ? { label } : {}),
@@ -886,10 +892,11 @@ export function parseItemMetaMap(raw, customList) {
     const base = custom ? { rotating: true, pickup: false, door: false } : builtinItemMeta(key);
     const icon = parseItemIcon(o.icon);
     const label = custom ? "" : clampItemName(o.label);
-    const door = DOOR_MESH_KEYS.includes(key) ? true : o.door == null ? base.door : o.door === true;
+    const fixed = DOOR_MESH_KEYS.includes(key);
+    const door = fixed ? DOOR_TYPES.includes(key) : o.door == null ? base.door : o.door === true;
     out[key] = {
-      rotating: door ? false : o.rotating == null ? base.rotating : !!o.rotating,
-      pickup: door ? false : custom ? !!o.pickup : base.pickup,
+      rotating: door || fixed ? false : o.rotating == null ? base.rotating : !!o.rotating,
+      pickup: door || fixed ? false : custom ? !!o.pickup : base.pickup,
       ...(door !== base.door ? { door } : {}),
       ...(icon ? { icon } : {}),
       ...(label && label !== defaultItemLabel(key) ? { label } : {}),
@@ -1004,7 +1011,6 @@ export function clampDoorType(s) {
   if (lower === "tech") return "Tech";
   if (lower === "arch") return "Arch";
   if (lower === "tri") return "Tri";
-  if (lower === "crack") return "Crack";
   return "Tech";
 }
 
@@ -1026,7 +1032,7 @@ export function doorSizeForScale(scale) {
 /** True for a door type (flagged item or shipped door), incl. the old lowercase spellings. */
 export function isDoorMeshKey(key) {
   const t = String(key ?? "");
-  return doorKeySet.has(t) || t === "tech" || t === "arch" || t === "tri" || t === "crack";
+  return doorKeySet.has(t) || t === "tech" || t === "arch" || t === "tri";
 }
 
 export function clampItemCoord(n) {

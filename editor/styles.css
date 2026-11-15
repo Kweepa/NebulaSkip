@@ -402,10 +402,12 @@ h2 {
   min-width: 0;
   padding: 0.15rem 0.3rem;
   font-size: 0.75rem;
-  line-height: 1.1;
+  line-height: 1.15;
+  height: calc(2 * 1.15em + 0.3rem + 2px);
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: center;
 }
 
 .stand-grid.inactive {

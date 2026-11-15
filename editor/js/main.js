@@ -52,7 +52,6 @@ import {
   standVariantClips,
   doorTypes,
   placeableItemKeys,
-  isDoorItem,
   defaultItemMeta,
   DOOR_LOCKS,
   DOOR_LOCK_LABELS,
@@ -2494,7 +2493,8 @@ function buildItemFlags(root, key) {
   const custom = isCustomItem(key);
   const door = meta.door;
   const shippedDoor = DOOR_MESH_KEYS.includes(key);
-  const flag = (label, active, locked, title, onToggle) => {
+  const bump = !door && shippedDoor;
+  const flag =(label, active, locked, title, onToggle) => {
     const f = toggleField(label, active, onToggle);
     const b = f.querySelector("button");
     b.disabled = locked;
@@ -2507,13 +2507,15 @@ function buildItemFlags(root, key) {
       "Door",
       door,
       shippedDoor,
-      shippedDoor
-        ? "Shipped door style: the game's bump crack and fallbacks use it"
+      bump
+        ? "Not a door: the game's wall-hit crack (shipped mesh slot)"
+        : shippedDoor
+        ? "Shipped door style"
         : "Door type: appears under Doors in the Maps picker and in the doorway Type list. Mesh origin = bottom-centre of the face, X across, Z out.",
       () => toggleItemDoor(key)
     )
   );
-  if (door) return;
+  if (door || bump) return;
   root.appendChild(
     flag("Rotating", meta.rotating, false, "Yaw-spins in the editor and in game", () => {
       pushUndo();
@@ -2553,7 +2555,7 @@ function buildItemFlags(root, key) {
  * not on an existing vertex costs one vertex of the item's 16.
  */
 function buildItemSpheres(root, key) {
-  if (itemMeta(doc, key).door) return;
+  if (itemMeta(doc, key).door || DOOR_MESH_KEYS.includes(key)) return;
   const mesh = doc.items[key];
   const list = mesh.spheres || [];
   const h = document.createElement("h3");
@@ -3665,7 +3667,7 @@ function renderInspector() {
     nameInp.maxLength = ITEM_NAME_MAX;
     nameInp.value = itemLabel(itemMeshKey);
     nameInp.spellcheck = false;
-    nameInp.title = isDoorItem(itemMeshKey)
+    nameInp.title = DOOR_MESH_KEYS.includes(itemMeshKey)
       ? "Editor name"
       : "Name shown here and in game (\"You got the ...\")";
     nameInp.addEventListener("change", () => {
@@ -3680,7 +3682,7 @@ function renderInspector() {
     if (itemMeshKey !== "backpack" && !doc.items[itemMeshKey].verts.length) {
       const f = document.createElement("p");
       f.className = "muted";
-      f.textContent = isDoorItem(itemMeshKey)
+      f.textContent = DOOR_MESH_KEYS.includes(itemMeshKey)
         ? "Empty — falls back to Tech."
         : "Empty — falls back to backpack.";
       root.appendChild(f);

@@ -240,7 +240,7 @@
       "dir": 1,
       "rot": 4,
       "enemy": "Human",
-      "stand": "leanoncounter",
+      "stand": "lean on desk",
       "roomId": "db241be9-929a-4455-ba75-6b573e52cd96"
     },
     {
@@ -294,7 +294,7 @@
       "dir": 1,
       "rot": 4,
       "enemy": "Human",
-      "stand": "leanonwall",
+      "stand": "lean on wall",
       "roomId": "a332164c-ce1a-4e8d-9cbe-e03e03ff0541"
     },
     {
@@ -1319,6 +1319,57 @@
       "dir": 1,
       "playerOnly": true,
       "roomId": "db241be9-929a-4455-ba75-6b573e52cd96"
+    },
+    {
+      "id": "0508c09f-f84c-4f8a-a0a7-b76369f58e3c",
+      "kind": "enemy",
+      "x": 139,
+      "y": 64,
+      "z": 103,
+      "sx": 2,
+      "sy": 4,
+      "sz": 2,
+      "face": "+z",
+      "axis": "z",
+      "dir": 1,
+      "rot": 2,
+      "enemy": "Human",
+      "stand": "sit on ground",
+      "roomId": "e51d4c40-59cd-4848-b6b2-b7a01b69c7f2"
+    },
+    {
+      "id": "5d5c27db-c44f-4d9f-991f-a50332e98ef7",
+      "kind": "trigger",
+      "x": 140,
+      "y": 64,
+      "z": 102,
+      "sx": 5,
+      "sy": 4,
+      "sz": 4,
+      "face": "+z",
+      "axis": "z",
+      "dir": 1,
+      "purpose": "message",
+      "text": "\"Spare some bits?\"",
+      "tag": "",
+      "roomId": "e51d4c40-59cd-4848-b6b2-b7a01b69c7f2"
+    },
+    {
+      "id": "0a70886f-7791-4da0-85d4-56f7ca233315",
+      "kind": "pickup",
+      "x": 185,
+      "y": 67,
+      "z": 107,
+      "sx": 0.9270509831248422,
+      "sy": 1.5,
+      "sz": 0.8028497019894523,
+      "face": "+z",
+      "axis": "z",
+      "dir": 1,
+      "roomId": "5b17f1fc-9520-41de-9e0e-259351c66c77",
+      "pickup": "arrow down",
+      "rot": 2,
+      "scale": 2
     }
   ]
 }
