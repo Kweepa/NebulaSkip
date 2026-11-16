@@ -418,6 +418,12 @@ STATIC_END	= $7900
 !if QS_OVL != STATIC_END {
 	!error "QS_OVL must equal STATIC_END"
 }
+; Cutscene overlay (a8cutscene.asm, disk file CUT<letter>): loaded by cut_arrive over the empty
+; static block when a map has a cutscene; code + baked data must end by STATIC_END.
+CUT_BASE	= $6b40
+!if CUT_BASE != STATIC_BASE {
+	!error "CUT_BASE must equal STATIC_BASE"
+}
 ; Boot parks tab.prg in bank 1 (survives menu and reboot); a8_bind_tabs copies
 ; it into the LUTs at every GAME start. tab.prg payload is 1344 B.
 TAB_STAGE	= $4000

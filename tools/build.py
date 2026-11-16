@@ -247,6 +247,16 @@ def map_prgs() -> list[Path]:
     return [mapnames.prg_path(l) for l in mapnames.map_letters()]
 
 
+def cut_prgs() -> list[Path]:
+    """maps/cut<x>.prg written by gencutscene --pack (only maps with a cutscene)."""
+    return sorted(MAPS.glob("cut?.prg"))
+
+
+def run_gencutscene_pack() -> None:
+    tool("gencutscene.py", "--pack")
+    touch(STAMPS / "gencutscene_pack")
+
+
 def enemy_prgs() -> list[Path]:
     return [ENEMIES / f"{dos}.prg" for dos in DOS]
 
@@ -349,6 +359,12 @@ def steps(exe: str) -> list[Step]:
             # Map PRGs are rewritten by mkreloc. Counts/sizes are not.
             lambda: [SRC / "map_counts.asm", SRC / "map_sizes.asm", *map_prgs()],
             lambda: tool("genmap.py"),
+        ),
+        Step(
+            "gencutscene flags",
+            lambda: [TOOLS / "gencutscene.py", TOOLS / "mapnames.py", doc, *map_json()],
+            lambda: [SRC / "cut_maps.asm"],
+            lambda: tool("gencutscene.py", "--flags"),
         ),
         Step(
             "genitems",
@@ -580,6 +596,37 @@ def steps(exe: str) -> list[Step]:
             ),
         ),
         Step(
+            "gencutsyms",
+            lambda: [TOOLS / "gencutsyms.py", TOOLS / "mkreloc.py", ROOT / "game.lbl"],
+            lambda: [SRC / "cutsyms.asm"],
+            lambda: tool("gencutsyms.py", "--labels", "game.lbl"),
+        ),
+        Step(
+            "acme a8cutscene.asm",
+            lambda: asm_inputs(SRC / "a8cutscene.asm"),
+            lambda: [ROOT / "cutscn.prg", ROOT / "cutscn.lbl"],
+            lambda: acme(
+                exe,
+                ["-v3", "--vicelabels", str(ROOT / "cutscn.lbl"), "a8cutscene.asm"],
+                ["cutscn.prg"],
+            ),
+        ),
+        Step(
+            "gencutscene pack",
+            lambda: [
+                TOOLS / "gencutscene.py",
+                TOOLS / "mapnames.py",
+                SRC / "mem.asm",
+                ROOT / "cutscn.prg",
+                ROOT / "cutscn.lbl",
+                doc,
+                *map_json(),
+            ],
+            lambda: [STAMPS / "gencutscene_pack"],
+            run_gencutscene_pack,
+            anchor=lambda: STAMPS / "gencutscene_pack",
+        ),
+        Step(
             "genesyms",
             lambda: [
                 TOOLS / "genesyms.py",
@@ -615,7 +662,9 @@ def steps(exe: str) -> list[Step]:
                 ROOT / "menu.prg",
                 ROOT / "qsave.prg",
                 ROOT / "gamee.prg",
+                STAMPS / "gencutscene_pack",
                 *map_prgs(),
+                *cut_prgs(),
                 *enemy_prgs(),
             ],
             lambda: [ROOT / "nebula.atr"],

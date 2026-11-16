@@ -3,7 +3,6 @@ import {
   PALETTE_ORDER,
   KIND_ICON,
   ENEMY_TYPES,
-  ENEMY_FACINGS,
   enemyTypesByHp,
   enemiesByHp,
   SKEL_MAX_VERTS,
@@ -224,6 +223,7 @@ import {
   CUT_DUR_MAX,
   CUT_DUR_MIN,
   CUT_FACING_CAMERA,
+  CUT_EASES,
   CUT_FACING_ITEM,
   CUT_PATH_MAX,
   bakeCutscene,
@@ -749,13 +749,16 @@ function cutPreviewState() {
   if (editorMode !== "cutscene") return null;
   const cut = cutCurrent();
   const baked = cutBaked();
-  const out = { room: cutRoom(), cam: null, actors: [] };
+  const out = { room: cutRoom(), cam: null, actors: [], starfield: !!cut?.starfield, yawByte: 0 };
   if (!cut || !baked) return out;
   for (const a of cut.actors) {
     const b = baked.actors.find((o) => o.id === a.id);
     if (!b) continue;
     const s = cutSampleAt(b, cutTimeMs);
-    if (a.kind === "camera") out.cam = { x: s.x, y: s.y, z: s.z, yaw: yawByteToRad(s.yaw), pitch: 0 };
+    if (a.kind === "camera") {
+      out.cam = { x: s.x, y: s.y, z: s.z, yaw: yawByteToRad(s.yaw), pitch: 0 };
+      out.yawByte = s.yaw;
+    }
     else out.actors.push({ obj: { x: s.x, y: s.y, z: s.z, scale: a.scale }, key: a.item, yaw: yawByteToRad(s.yaw) });
   }
   return out;
@@ -990,6 +993,10 @@ function renderCutsceneLeft() {
   });
   root.appendChild(field("Room", roomSel));
 
+  const stars = toggleField("Starfield", !!cut?.starfield, () => cutApply((c) => (c.starfield = !c.starfield)));
+  stars.title = "A scatter of stars behind the room, fixed in the sky so they pan with the camera yaw";
+  root.appendChild(stars);
+
   root.appendChild(
     field(
       "Seconds",
@@ -1077,6 +1084,21 @@ function cutSelectField(options, value, onPick, labelOf = (v) => v) {
   return sel;
 }
 
+function cutYawSlider(a) {
+  return sliderField("Yaw", a.yaw, {
+    min: 0,
+    max: 255,
+    step: 1,
+    format: (v) => `${Math.round((v * 360) / 256)}°`,
+    onInput: (v) => {
+      a.yaw = v;
+      cutView.draw();
+      previewView.draw();
+    },
+    onChange: (v) => cutApply(() => (a.yaw = v)),
+  });
+}
+
 function renderCutsceneInspector(root) {
   const h = document.createElement("h2");
   h.textContent = "Actor";
@@ -1093,24 +1115,25 @@ function renderCutsceneInspector(root) {
 
   if (a.kind === "item") {
     root.appendChild(field("Item", cutSelectField(placeableItemKeys(), a.item, (v) => cutApply(() => (a.item = v)), itemLabel)));
-    root.appendChild(
-      field("Scale", cutSelectField(ITEM_SCALES, a.scale, (v) => cutApply(() => (a.scale = clampItemScale(Number(v)))), (v) => `${v}x`))
-    );
+    // Slider position 0..3 = 1x 2x 4x 8x, as for placed items.
+    const scaleRow = sliderField("Scale", ITEM_SCALES.indexOf(clampItemScale(a.scale)), {
+      min: 0,
+      max: ITEM_SCALES.length - 1,
+      step: 1,
+      format: (i) => `${ITEM_SCALES[i]}x`,
+      onInput: (i) => {
+        a.scale = ITEM_SCALES[i];
+        cutView.draw();
+        previewView.draw();
+      },
+      onChange: (i) => cutApply(() => (a.scale = ITEM_SCALES[i])),
+    });
+    scaleRow.title = "Draw larger about the item origin";
+    root.appendChild(scaleRow);
     root.appendChild(
       field(
         "Facing",
         cutSelectField(CUT_FACING_ITEM, a.facing, (v) => cutApply(() => (a.facing = v)), (v) => (v === "path" ? "along path" : "fixed"))
-      )
-    );
-    root.appendChild(
-      field(
-        "Heading",
-        cutSelectField(
-          ENEMY_FACINGS.map((_, i) => i),
-          a.rot,
-          (v) => cutApply(() => (a.rot = clampEnemyRot(Number(v)))),
-          (i) => ENEMY_FACINGS[i]
-        )
       )
     );
   } else {
@@ -1141,22 +1164,18 @@ function renderCutsceneInspector(root) {
       sel.value = items.some((o) => o.id === a.target) ? a.target : "";
       sel.addEventListener("change", () => cutApply(() => (a.target = sel.value || null)));
       root.appendChild(field("Look at", sel));
-    } else if (a.facing === "fixed") {
-      root.appendChild(
-        sliderField("Yaw", a.yaw, {
-          min: 0,
-          max: 255,
-          step: 1,
-          format: (v) => `${Math.round((v * 360) / 256)}°`,
-          onInput: (v) => {
-            a.yaw = v;
-            cutView.draw();
-            previewView.draw();
-          },
-          onChange: (v) => cutApply(() => (a.yaw = v)),
-        })
-      );
     }
+  }
+  if (a.facing === "fixed") root.appendChild(cutYawSlider(a));
+
+  if (a.path.length >= 2) {
+    const easeLabel = { linear: "constant", out: "slow at end", in: "slow at start", inout: "slow at both ends" };
+    root.appendChild(
+      field(
+        "Speed",
+        cutSelectField(CUT_EASES, a.ease, (v) => cutApply(() => (a.ease = v)), (v) => easeLabel[v])
+      )
+    );
   }
 
   const pt = cutView.sel.point;

@@ -14,11 +14,12 @@ import {
 /*
  * Cutscene data (map.cutscene) and its bake. Pure: no DOM.
  *
- * map.cutscene = { roomId, duration, actors[] }
+ * map.cutscene = { roomId, duration, starfield, actors[] }
  *   roomId    id of the room set aside for the cutscene (null = none)
  *   duration  seconds, CUT_DUR_MIN..CUT_DUR_MAX
+ *   starfield true = scatter of CUT_STAR_COUNT stars behind everything (see STARS)
  *   actors[]  { id, kind: "item"|"camera", x,y,z, path:[{x,y,z}], facing, ... }
- *     item    item (key), scale (1/2/4/8), rot (octant, static facing), facing "fixed"|"path"
+ *     item    item (key), scale (1/2/4/8), yaw (0..255 like the camera; old files: rot octant * 32), facing "fixed"|"path"
  *     camera  yaw (0..255 game units, 256 = turn, 0 = +Z, 64 = +X), facing "fixed"|"path"|"target",
  *             target (actor id). x,y,z is the EYE position, used as is (items draw at x,y,z plus
  *             ITEM_WORLD_BIAS = 1 on X/Z, the camera has no bias). The game projector is yaw-only: no pitch.
@@ -30,10 +31,12 @@ import {
  *             Segment k (0..n-2) uses P[k-1], P[k], P[k+1], P[k+2], local t in 0..1:
  *               0.5 * (2 P1 + (-P0 + P2) t + (2 P0 - 5 P1 + 4 P2 - P3) t^2 + (-P0 + 3 P1 - 3 P2 + P3) t^3)
  *             spline parameter s = k + t, s in 0..n-1.
- *   speed     constant: arc-length table with CUT_ARC_SUB subdivisions per segment (chord lengths, 3D);
- *             distance d = u * total; find table interval, linear s inside it.
+ *   speed     arc-length table with CUT_ARC_SUB subdivisions per segment (chord lengths, 3D);
+ *             distance d = e(u) * total; find table interval, linear s inside it. The actor's `ease`
+ *             picks e: linear = u (constant speed), out = 1 - (1-u)^2 (slows to a stop at the end),
+ *             in = u^2, inout = u^2 (3 - 2u). Only path actors use it.
  *   position  spline(s), clamped to 0..255+255/256, rounded: floor(v * 256 + 0.5) / 256.
- *   yaw       fixed  -> item rot * 32, camera yaw.
+ *   yaw       fixed  -> the actor's yaw.
  *             path   -> atan2(dx, dz) of the analytic derivative at s (ends: t = 0 / t = 1 of the end
  *                       segment); degenerate horizontal tangent keeps the previous sample's yaw
  *                       (first sample: the fixed yaw).
@@ -41,6 +44,19 @@ import {
  *                       same sample. Same degenerate rule.
  *             byte = floor(angle / (2 pi) * 256 + 0.5) mod 256.
  *   ns per actor = full ns when the actor has a path or faces a moving target, else 1.
+ * STARS    only when starfield: CUT_STAR_COUNT stars, a fixed scatter from a 16-bit xorshift, seed $ACE1
+ *           (one step: x ^= x << 7;  x ^= x >> 9;  x ^= x << 8, all mod 65536). Per star, in order:
+ *             step -> (h, l):   fresh position  az = h, row = l >> 1 (0..127)
+ *             step -> (h2, l2): clumping and size
+ *               if (l2 & 4) == 0 the star is placed near the previous star (prev starts at az 0, row 0):
+ *                 az = (prev az + ((l2 >> 3) & 15) - 8) & 255,  row = (prev row + ((h2 >> 3) & 15) - 8) & 127
+ *               size class k = h2 & 7: 0 plus (centre + 4 neighbours), 1..2 vertical pair (centre + the
+ *               row below), else a single dot. The only visible tones in the room are ink and blood red,
+ *               so brightness is size, all ink (pixel 11).
+ *           d = signed byte (az - yaw); the star shows when -32 <= d <= 31, centre at colour-clock column
+ *           x = 48 + d + (d >> 1) (96 columns = 192 hires px, ~1.5 columns per yaw tick); pixels outside
+ *           0..95 / 0..127 are clipped. Drawn before the room. yaw is the camera's byte yaw at the frame.
+ *           No pitch exists, so stars never move vertically.
  * Engine playback: i = t >> 7, frac = (t & 127) << 1, linear lerp of position and shortest-arc yaw.
  */
 
@@ -51,10 +67,16 @@ export const CUT_DUR_MAX = 16;
 export const CUT_DUR_DEFAULT = 3;
 export const CUT_ACTOR_MAX = 6;
 export const CUT_PATH_MAX = 16;
-/** Approximate bytes available for the cutscene data after the overlay code (see the plan). */
-export const CUT_DATA_BUDGET = 2000;
+/**
+ * Bytes available for the cooked data: the bank-0 static block ends at QS_OVL ($7900) and the
+ * overlay code (~830 B) sits in front of the data. tools/gencutscene.py --pack is the real check.
+ */
+export const CUT_DATA_BUDGET = 2600;
+export const CUT_STAR_COUNT = 128;
 export const CUT_FACING_ITEM = ["fixed", "path"];
 export const CUT_FACING_CAMERA = ["fixed", "path", "target"];
+/** Speed along the path: constant, or the distance fraction reshaped over time (see BAKE SPEC). */
+export const CUT_EASES = ["linear", "out", "in", "inout"];
 
 const POS_MAX = WORLD_MAX + 255 / 256;
 
@@ -77,7 +99,7 @@ function clampYawByte(n) {
 }
 
 export function newCutscene() {
-  return { roomId: null, duration: CUT_DUR_DEFAULT, actors: [] };
+  return { roomId: null, duration: CUT_DUR_DEFAULT, starfield: false, actors: [] };
 }
 
 /** A new actor. Items start at (x,y,z) with no path; the camera starts at an eye position. */
@@ -90,9 +112,10 @@ export function createCutActor(kind, opts = {}) {
     z: cutClampCoord(opts.z ?? 128),
     path: [],
     facing: "fixed",
+    ease: "linear",
   };
   if (kind === "camera") return { ...base, yaw: 0, target: null };
-  return { ...base, item: clampPickupType(opts.item ?? "planet"), scale: 1, rot: 0 };
+  return { ...base, item: clampPickupType(opts.item ?? "planet"), scale: 1, yaw: 0 };
 }
 
 function normalizeActor(raw) {
@@ -103,16 +126,14 @@ function normalizeActor(raw) {
   a.id = typeof raw.id === "string" && raw.id ? raw.id : a.id;
   const allowed = kind === "camera" ? CUT_FACING_CAMERA : CUT_FACING_ITEM;
   a.facing = allowed.includes(raw.facing) ? raw.facing : "fixed";
+  a.ease = CUT_EASES.includes(raw.ease) ? raw.ease : "linear";
   a.path = Array.isArray(raw.path)
     ? raw.path.slice(0, CUT_PATH_MAX).map((p) => ({ x: cutClampCoord(p?.x), y: cutClampCoord(p?.y), z: cutClampCoord(p?.z) }))
     : [];
-  if (kind === "camera") {
-    a.yaw = clampYawByte(raw.yaw);
-    a.target = typeof raw.target === "string" && raw.target ? raw.target : null;
-  } else {
-    a.scale = clampItemScale(raw.scale);
-    a.rot = clampEnemyRot(raw.rot);
-  }
+  // Items used to carry an octant `rot`; it reads as yaw = rot * 32.
+  a.yaw = clampYawByte(raw.yaw ?? (kind === "item" ? clampEnemyRot(raw.rot) * 32 : 0));
+  if (kind === "camera") a.target = typeof raw.target === "string" && raw.target ? raw.target : null;
+  else a.scale = clampItemScale(raw.scale);
   return a;
 }
 
@@ -122,7 +143,7 @@ export function normalizeCutscene(raw) {
   const actors = (Array.isArray(raw.actors) ? raw.actors : []).map(normalizeActor).filter(Boolean).slice(0, CUT_ACTOR_MAX);
   const roomId = typeof raw.roomId === "string" && raw.roomId ? raw.roomId : null;
   if (!roomId && !actors.length) return null;
-  return { roomId, duration: clampCutDuration(raw.duration), actors };
+  return { roomId, duration: clampCutDuration(raw.duration), starfield: raw.starfield === true, actors };
 }
 
 /** The map's cutscene, created on first use (editing). */
@@ -208,6 +229,14 @@ function sAtU(table, u) {
   return (j + f) / CUT_ARC_SUB;
 }
 
+/** Time fraction u -> fraction of the path length covered. out: decelerates to a stop at the end. */
+function easeU(ease, u) {
+  if (ease === "out") return 1 - (1 - u) * (1 - u);
+  if (ease === "in") return u * u;
+  if (ease === "inout") return u * u * (3 - 2 * u);
+  return u;
+}
+
 function q256(v) {
   const c = Math.max(0, Math.min(POS_MAX, v));
   return Math.floor(c * 256 + 0.5) / 256;
@@ -224,7 +253,7 @@ export function cutSampleCount(durMs) {
 }
 
 function fixedYaw(a) {
-  return a.kind === "camera" ? clampYawByte(a.yaw) : clampEnemyRot(a.rot) * 32;
+  return clampYawByte(a.yaw);
 }
 
 /** Unrounded position + tangent of an actor at sample time index. */
@@ -237,7 +266,7 @@ function rawSamples(a, ns, durMs) {
   }
   const table = arcTable(a.path);
   for (let i = 0; i < ns; i++) {
-    const u = Math.min((i * CUT_STEP_MS) / durMs, 1);
+    const u = easeU(a.ease, Math.min((i * CUT_STEP_MS) / durMs, 1));
     out.push(crAt(a.path, sAtU(table, u)));
   }
   return out;
@@ -324,11 +353,56 @@ export function cutSampleAt(baked, tMs) {
   return { x: lerp(baked.x), y: lerp(baked.y), z: lerp(baked.z), yaw };
 }
 
-/** Bytes of the cooked data block: header 4, per actor 5 + 7 per sample (see the plan's binary layout). */
+/** Bytes of the cooked data: fixed 34-byte header (4 + five 6-entry actor tables), 7 per sample. */
 export function cutsceneBytes(baked) {
-  let n = 4;
-  for (const a of baked.actors) n += 5 + 7 * a.ns;
+  let n = 35;
+  for (const a of baked.actors) n += 7 * a.ns;
   return n;
+}
+
+/**
+ * The star pixels visible at camera yaw byte `yaw` (the STARS spec):
+ * [{ x: 0..95 colour-clock column, y: 0..127 row }]. Mirrors cut_stars in src/a8cutscene.asm.
+ */
+export function cutStars(yaw) {
+  const out = [];
+  const yb = ((Math.round(yaw) % 256) + 256) % 256;
+  let x = 0xace1;
+  const rng = () => {
+    x ^= (x << 7) & 0xffff;
+    x ^= x >> 9;
+    x ^= (x << 8) & 0xffff;
+  };
+  let pa = 0;
+  let py = 0;
+  for (let i = 0; i < CUT_STAR_COUNT; i++) {
+    rng();
+    let az = x >> 8;
+    let row = (x & 255) >> 1;
+    rng();
+    const h2 = x >> 8;
+    const l2 = x & 255;
+    if ((l2 & 4) === 0) {
+      az = (pa + ((l2 >> 3) & 15) - 8) & 255;
+      row = (py + ((h2 >> 3) & 15) - 8) & 127;
+    }
+    pa = az;
+    py = row;
+    let d = (az - yb) & 255;
+    if (d >= 128) d -= 256;
+    if (d < -32 || d > 31) continue;
+    const cx = 48 + d + (d >> 1);
+    const k = h2 & 7;
+    const px = [[0, 0]];
+    if (k === 0) px.push([1, 0], [-1, 0], [0, -1], [0, 1]);
+    else if (k <= 2) px.push([0, 1]);
+    for (const [dx, dy] of px) {
+      const sx = cx + dx;
+      const sy = row + dy;
+      if (sx >= 0 && sx < 96 && sy >= 0 && sy < 128) out.push({ x: sx, y: sy });
+    }
+  }
+  return out;
 }
 
 export function yawByteToRad(b) {

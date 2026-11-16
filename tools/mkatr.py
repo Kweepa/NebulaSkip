@@ -42,6 +42,11 @@ FILES = [
     ("BANK0", None, None),
     ("MENU", ROOT / "menu.prg", None),
 ] + [(mapnames.key(l), mapnames.prg_path(l), None) for l in mapnames.map_letters()] + [
+    # Cutscene overlay + baked data per map that has one (tools/gencutscene.py --pack).
+    (f"CUT{l}", mapnames.MAP_DIR / f"cut{l.lower()}.prg", None)
+    for l in mapnames.map_letters()
+    if (mapnames.MAP_DIR / f"cut{l.lower()}.prg").is_file()
+] + [
     ("HUMAN", ROOT / "enemies" / "human.prg", None),
     ("BARON", ROOT / "enemies" / "baron.prg", None),
     ("PINKY", ROOT / "enemies" / "pinky.prg", None),

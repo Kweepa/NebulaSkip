@@ -180,6 +180,9 @@ static_end = *
 !if static_end > STATIC_END {
 	!error "static data runs into QS_OVL; end=$", static_end
 }
+!if static_end > CUT_BASE {
+	!error "static data overlaps the cutscene overlay (CUT_BASE); end=$", static_end
+}
 
 ; --- Segment B: everything that runs with the OS ROM on stays below $C000.
 *= $8000

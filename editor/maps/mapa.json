@@ -1860,7 +1860,7 @@
       "face": "+z",
       "axis": "z",
       "dir": 1,
-      "name": "Cutscene planet approach",
+      "name": "Cutscene dock",
       "a8Bg": 100,
       "noCombat": true,
       "openSky": true,
@@ -1874,6 +1874,7 @@
   "cutscene": {
     "roomId": "db56fc64-ac55-4d11-8f37-20d17018a031",
     "duration": 3,
+    "starfield": true,
     "actors": [
       {
         "id": "bfe96ccc-748b-4b7d-b6e6-b1c416ca96ed",
@@ -1883,6 +1884,7 @@
         "z": 173,
         "path": [],
         "facing": "fixed",
+        "ease": "linear",
         "yaw": 117,
         "target": null
       },
@@ -1894,9 +1896,10 @@
         "z": 157,
         "path": [],
         "facing": "fixed",
+        "ease": "linear",
         "item": "planet",
         "scale": 8,
-        "rot": 0
+        "yaw": 0
       },
       {
         "id": "477503c0-e9f3-44a3-be7d-6cd30b53c937",
@@ -1911,7 +1914,7 @@
             "z": 170
           },
           {
-            "x": 71,
+            "x": 73,
             "y": 62,
             "z": 145
           },
@@ -1922,9 +1925,10 @@
           }
         ],
         "facing": "path",
+        "ease": "out",
         "item": "ship",
         "scale": 1,
-        "rot": 4
+        "yaw": 128
       },
       {
         "id": "919a9b00-41e7-404a-8966-4aed34f6d4de",
@@ -1934,9 +1938,23 @@
         "z": 156,
         "path": [],
         "facing": "fixed",
+        "ease": "linear",
         "item": "planet",
         "scale": 1,
-        "rot": 0
+        "yaw": 0
+      },
+      {
+        "id": "407e4265-63ea-44e8-b9e6-cbd6795e553c",
+        "kind": "item",
+        "x": 49,
+        "y": 63,
+        "z": 140,
+        "path": [],
+        "facing": "fixed",
+        "ease": "linear",
+        "item": "barrel",
+        "scale": 2,
+        "yaw": 0
       }
     ]
   }

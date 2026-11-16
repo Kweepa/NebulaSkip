@@ -62,7 +62,7 @@ zone. Never from NMI. Item and door meshes stay inside the bracket from
 | :--- | :--- |
 | `$4000-$5DFF` | Heap (`DYN_BASE`..`HEAP_LIM`), 7680 B: packed map + prefix, then up to two fused enemy banks, relocated as before. Check `tools/checkheap.py` for the tightest map. |
 | `$5E00-$67B8` | Code zone (`CODE0_BASE`..`CODE0_END`=`STATIC_BASE`, 3392 B, 903 B spare): pistol, process, elevator, cheats_apply, rig_poll. Main-loop-only code: runs with `PORTB_PLAY`, no trampolines. |
-| `$6B40-$78FF` | `STATIC_BASE`: empty (3520 B). The sprites and terminal tables moved to segment E. |
+| `$6B40-$78FF` | `STATIC_BASE` / `CUT_BASE`: empty (3520 B) except while a map-arrival cutscene plays: `cut_arrive` (loader.asm) loads disk file `CUT<letter>` here (`src/a8cutscene.asm` code ~830 B + that map's baked data from `tools/gencutscene.py`), runs it from `enter_card`, and the next load ignores it. The sprites and terminal tables moved to segment E. |
 | `$7900-$7FB8` | `QS_OVL`: QSAVE overlay (code 1079 B + 640 B payload buffer), called in place |
 
 **Code-zone rules:** nothing in the zone may be called from the NMI/DLI/VBI path,

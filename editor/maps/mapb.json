@@ -227,6 +227,83 @@
       "dir": 1,
       "roomId": "ce8196db-247e-4d1f-8fe4-c732e8f25d35",
       "pickup": "bird"
+    },
+    {
+      "id": "deb971b2-13cf-40c0-a1de-8a2510f9587e",
+      "kind": "room",
+      "x": 195,
+      "y": 61,
+      "z": 45,
+      "sx": 16,
+      "sy": 14,
+      "sz": 16,
+      "face": "+z",
+      "axis": "z",
+      "dir": 1,
+      "name": "Cutscene landing",
+      "a8Bg": 244,
+      "shape": "box",
+      "rx": 0,
+      "ry": 0,
+      "rz": 0,
+      "cuts": []
     }
-  ]
+  ],
+  "cutscene": {
+    "roomId": "deb971b2-13cf-40c0-a1de-8a2510f9587e",
+    "duration": 4,
+    "starfield": true,
+    "starfield": false,
+    "actors": [
+      {
+        "id": "ba2f3bef-29db-4857-a245-60d8bc543db9",
+        "kind": "camera",
+        "x": 203,
+        "y": 63,
+        "z": 43,
+        "path": [],
+        "facing": "fixed",
+        "ease": "linear",
+        "yaw": 248,
+        "target": null
+      },
+      {
+        "id": "f96bc6e3-2164-4a5d-b95a-da2f63c51a54",
+        "kind": "item",
+        "x": 201,
+        "y": 74,
+        "z": 53,
+        "path": [
+          {
+            "x": 201,
+            "y": 74,
+            "z": 53
+          },
+          {
+            "x": 201,
+            "y": 62,
+            "z": 53
+          }
+        ],
+        "facing": "fixed",
+        "ease": "out",
+        "item": "ship",
+        "scale": 2,
+        "yaw": 128
+      },
+      {
+        "id": "f16fdbc4-5749-425e-8120-e14d4b891997",
+        "kind": "item",
+        "x": 190,
+        "y": 58,
+        "z": 52,
+        "path": [],
+        "facing": "fixed",
+        "ease": "linear",
+        "item": "tree",
+        "scale": 2,
+        "yaw": 60
+      }
+    ]
+  }
 }

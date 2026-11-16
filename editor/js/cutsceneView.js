@@ -1,4 +1,12 @@
-import { itemMeshFor, itemMeshWorldSegs, itemSphereWorld, roomGeometry, WORLD_MAX, WORLD_MIN } from "./model.js";
+import {
+  ITEM_WORLD_BIAS,
+  itemMeshFor,
+  itemMeshWorldSegs,
+  itemSphereWorld,
+  roomGeometry,
+  WORLD_MAX,
+  WORLD_MIN,
+} from "./model.js";
 import { intersectPlane, lookVectors, projectLine, projectPoint, screenRay } from "./math3d.js";
 import {
   GIZMO_FALLBACK_LEN,
@@ -129,15 +137,25 @@ export class CutsceneView {
     return this.#cut()?.actors.find((a) => a.id === id) || null;
   }
 
-  /** The gizmo anchor: the selected path point, or a stationary selected actor. */
+  /** Where an actor's coordinate is drawn: items sit at x/z + ITEM_WORLD_BIAS (like placed pickups), the camera does not. */
+  #shown(a, v) {
+    const b = a.kind === "item" ? ITEM_WORLD_BIAS : 0;
+    return { x: v.x + b, y: v.y, z: v.z + b };
+  }
+
+  /** The gizmo anchor: the selected path point, or a stationary selected actor. `raw` is the stored value, `v` where it is drawn. */
   #selAnchor() {
     const a = this.#actor(this.sel.actor);
     if (!a) return null;
+    let raw;
+    let point = -1;
     if (a.path.length) {
       const p = a.path[this.sel.point];
-      return p ? { a, point: this.sel.point, v: { x: p.x, y: p.y, z: p.z } } : null;
-    }
-    return { a, point: -1, v: { x: a.x, y: a.y, z: a.z } };
+      if (!p) return null;
+      raw = { x: p.x, y: p.y, z: p.z };
+      point = this.sel.point;
+    } else raw = { x: a.x, y: a.y, z: a.z };
+    return { a, point, raw, v: this.#shown(a, raw) };
   }
 
   /** Everything pickable: path points, plus each actor's position at the timeline cursor. */
@@ -148,10 +166,10 @@ export class CutsceneView {
     const t = this.opts.getTimeMs?.() ?? 0;
     const out = [];
     for (const a of cut.actors) {
-      a.path.forEach((p, i) => out.push({ actor: a.id, point: i, pos: p }));
+      a.path.forEach((p, i) => out.push({ actor: a.id, point: i, pos: this.#shown(a, p) }));
       const b = baked?.actors.find((o) => o.id === a.id);
       const s = b ? cutSampleAt(b, t) : cutActorStart(a);
-      out.push({ actor: a.id, point: -1, pos: { x: s.x, y: s.y, z: s.z } });
+      out.push({ actor: a.id, point: -1, pos: this.#shown(a, s) });
     }
     return out;
   }
@@ -223,7 +241,7 @@ export class CutsceneView {
           planeN: hit.planeN,
           grab: hit.world,
           gizmoAxisLen: hit.gizmoAxisLen ?? GIZMO_FALLBACK_LEN,
-          orig: { ...anchor.v },
+          orig: { ...anchor.raw },
           actor: anchor.a.id,
           point: anchor.point,
           start: p,
@@ -268,7 +286,7 @@ export class CutsceneView {
       const dy = p.y - d.last.y;
       d.last = p;
       this.orbit.yaw += dx * 0.01;
-      this.orbit.pitch = Math.max(-1.4, Math.min(1.4, this.orbit.pitch + dy * 0.01));
+      this.orbit.pitch = Math.max(-1.4, Math.min(1.4, this.orbit.pitch - dy * 0.01));
       this.draw();
     } else if (d.kind === "pan") {
       const dx = p.x - d.last.x;
@@ -422,8 +440,8 @@ export class CutsceneView {
           this.#seg(
             ctx,
             cam,
-            { x: b.x[i], y: b.y[i], z: b.z[i] },
-            { x: b.x[i + 1], y: b.y[i + 1], z: b.z[i + 1] },
+            this.#shown(a, { x: b.x[i], y: b.y[i], z: b.z[i] }),
+            this.#shown(a, { x: b.x[i + 1], y: b.y[i + 1], z: b.z[i + 1] }),
             isSel ? CUT_COL_PATH : "#2d4a50",
             isSel ? 2 : 1.25
           );
@@ -432,7 +450,7 @@ export class CutsceneView {
       a.path.forEach((p, i) => {
         const sel = isSel && this.sel.point === i;
         const hov = this.hoverAnchor?.actor === a.id && this.hoverAnchor.point === i;
-        this.#dot(ctx, cam, p, sel ? 5.5 : 4, sel ? CUT_COL_SEL : hov ? "#fff" : isSel ? "#7fd0da" : "#4f8f98");
+        this.#dot(ctx, cam, this.#shown(a, p), sel ? 5.5 : 4, sel ? CUT_COL_SEL : hov ? "#fff" : isSel ? "#7fd0da" : "#4f8f98");
       });
       const pose = poses.get(a.id);
       if (a.kind === "camera") {
@@ -441,7 +459,8 @@ export class CutsceneView {
           const tp = poses.get(a.target);
           if (tp) {
             ctx.setLineDash([4, 3]);
-            this.#seg(ctx, cam, pose, tp, CUT_COL_TARGET, 1);
+            const ta = this.#actor(a.target);
+            this.#seg(ctx, cam, pose, ta ? this.#shown(ta, tp) : tp, CUT_COL_TARGET, 1);
             ctx.setLineDash([]);
           }
         }
@@ -454,10 +473,11 @@ export class CutsceneView {
         for (const s of itemSphereWorld(obj, mesh, yaw)) this.#sphere(ctx, cam, s, col);
         // Facing tick so a mesh-less or symmetric item still shows its heading.
         const { forward } = lookVectors(yaw, 0);
-        this.#seg(ctx, cam, pose, { x: pose.x + forward.x * 6, y: pose.y, z: pose.z + forward.z * 6 }, "#d4a017", 1);
+        const o = this.#shown(a, pose);
+        this.#seg(ctx, cam, o, { x: o.x + forward.x * 6, y: o.y, z: o.z + forward.z * 6 }, "#d4a017", 1);
       }
       const hov = this.hoverAnchor?.actor === a.id && this.hoverAnchor.point < 0;
-      this.#dot(ctx, cam, pose, hov ? 4 : 2.5, hov ? "#fff" : isSel && this.sel.point < 0 ? CUT_COL_SEL : "#8b91a0");
+      this.#dot(ctx, cam, this.#shown(a, pose), hov ? 4 : 2.5, hov ? "#fff" : isSel && this.sel.point < 0 ? CUT_COL_SEL : "#8b91a0");
     }
 
     const anchor = this.#selAnchor();

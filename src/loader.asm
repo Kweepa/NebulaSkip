@@ -4,6 +4,7 @@
 
 !source "asset_sizes.asm"
 !source "level_prefix.asm"
+!source "cut_maps.asm"
 
 ; Filenames are 0-terminated.
 level_dos_name
@@ -1090,11 +1091,102 @@ play_up2
 	jsr hud_keys
 	jmp a8_nmi_on
 
+; Map-arrival cutscene. cut_has (cut_maps.asm, tools/gencutscene.py) flags the maps that ship
+; one. The player is the bank-0 overlay CUT<letter> (a8cutscene.asm + that map's baked data),
+; loaded over the empty static block on demand; a failed load just skips the cutscene.
+; Called first thing in enter_card: NMI on, den_arm 1 (view blank until a frame is published).
+; The overlay's rts returns to enter_card.
+cut_arrive
+	ldx level_num
+	dex
+	cpx #MAP_NLEVELS
+	bcs .ca_rts
+	lda cut_has,x
+	beq .ca_rts
+	jsr load_irq_off
+	jsr FormatDosName			; MAP<letter>; only the first three characters change
+	lda #'C'
+	sta level_dos_name
+	lda #'U'
+	sta level_dos_name + 1
+	lda #'T'
+	sta level_dos_name + 2
+	lda #<CUT_BASE
+	sta load_dest
+	lda #>CUT_BASE
+	sta load_dest+1
+	ldx #<level_dos_name
+	ldy #>level_dos_name
+	jsr LoadPrg
+	bcs .ca_fail
+	lda portb_cur				; PORTB_PLAY: the overlay is in bank 0
+	sta $d301
+	jsr a8_nmi_on
+	jmp CUT_BASE
+.ca_fail
+	lda portb_cur
+	sta $d301
+	jmp a8_nmi_on
+.ca_rts
+	rts
+
+; One cutscene item for the overlay (a8cutscene.asm): A = item slot, Y = scale shift, ent_rot and
+; org_x/y/z (8.8 world) set. This is draw_pickup_mesh / fill_item_verts with the 8.8 origin of
+; crack_xform. The e_enter .. e_leave bracket is here because the bank-0 overlay cannot run while
+; the window shows main RAM.
+cut_draw_item
+	sty item_scale_shl
+	pha
+	jsr load_view_trig
+	pla
+	jsr e_enter
+	cmp #ITEM_DOOR_BASE
+	bcc .cd_slot
+	lda #0
+.cd_slot
+	tay
+	lda item_nv,y
+	bne .cd_nv
+	ldy #TH_BACKPACK
+.cd_nv
+	lda #0
+	sta rot1				; no door scale (as fill_item_verts)
+	sty item_slot_cur
+	jsr E_ITEM_SLOT
+	ldx #0
+	jsr xform_world_vert88
+	lda org_yh				; xform_item_cam takes the item height from box_y (integer part)
+	sta box_y
+	lda item_scale_shl			; item_big_shl scales the mesh from th_draw_fl bits 6-7
+	lsr
+	ror
+	ror
+	sta th_draw_fl
+	jsr xform_item_cam
+	lda #0					; live only inside the transform, as fill_item_verts leaves it
+	sta th_draw_fl
+	ldx mesh_nv				; ... so the 8.8 fraction goes on after
+.cd_fy
+	dex
+	bmi .cd_fd
+	clc
+	lda CAM_Y,x
+	adc org_yl
+	sta CAM_Y,x
+	bcc .cd_fy
+	inc CAM_YH,x
+	jmp .cd_fy
+.cd_fd
+	jsr stroke_mesh
+	jsr item_spheres
+	jmp e_leave
+
 ; "entering" / map name, centered, for ENTER_HOLD_MS. NMI is on and
 ; den_arm is 1. Death and quickload do not call this.
 ENTER_HOLD_MS	= 2000
 
 enter_card
+	jsr cut_arrive
 	jsr hud_enter_rows
 	lda #<enter_dl
 	sta dl_top+2

@@ -27,6 +27,7 @@ import {
   SLOPE_FLAG_TOP,
 } from "./model.js";
 import { BOX_EDGES, cornerWorld, NEAR, worldToCamera } from "./math3d.js";
+import { cutStars } from "./cutsceneModel.js";
 
 /** Game unique-char viewport (24Ã—16 chars). */
 const GAME_VIEW_W = 192;
@@ -572,6 +573,13 @@ export class PreviewView {
     if (doc && room && cut) {
       if (cut.cam) {
         const line = a8InkHex(room.a8Bg ?? ROOM_BG_DEFAULT);
+        if (cut.starfield) {
+          // One colour-clock pixel (2 hires px wide) per star, as the overlay's plot_pixel does.
+          ctx.fillStyle = line;
+          for (const s of cutStars(cut.yawByte)) {
+            ctx.fillRect(Math.round(s.x * 2 * PREVIEW_SX), Math.round(s.y * PREVIEW_SY), Math.ceil(2 * PREVIEW_SX), PREVIEW_SY);
+          }
+        }
         const g = roomGeometry(room);
         for (const e of g.edges) {
           this.#stroke(ctx, cut.cam, g.verts[e.a], g.verts[e.b], line);

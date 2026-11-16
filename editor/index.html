@@ -8981,11 +8981,12 @@ function normalizeDocument(raw) {
 /*
  * Cutscene data (map.cutscene) and its bake. Pure: no DOM.
  *
- * map.cutscene = { roomId, duration, actors[] }
+ * map.cutscene = { roomId, duration, starfield, actors[] }
  *   roomId    id of the room set aside for the cutscene (null = none)
  *   duration  seconds, CUT_DUR_MIN..CUT_DUR_MAX
+ *   starfield true = scatter of CUT_STAR_COUNT stars behind everything (see STARS)
  *   actors[]  { id, kind: "item"|"camera", x,y,z, path:[{x,y,z}], facing, ... }
- *     item    item (key), scale (1/2/4/8), rot (octant, static facing), facing "fixed"|"path"
+ *     item    item (key), scale (1/2/4/8), yaw (0..255 like the camera; old files: rot octant * 32), facing "fixed"|"path"
  *     camera  yaw (0..255 game units, 256 = turn, 0 = +Z, 64 = +X), facing "fixed"|"path"|"target",
  *             target (actor id). x,y,z is the EYE position, used as is (items draw at x,y,z plus
  *             ITEM_WORLD_BIAS = 1 on X/Z, the camera has no bias). The game projector is yaw-only: no pitch.
@@ -8997,10 +8998,12 @@ function normalizeDocument(raw) {
  *             Segment k (0..n-2) uses P[k-1], P[k], P[k+1], P[k+2], local t in 0..1:
  *               0.5 * (2 P1 + (-P0 + P2) t + (2 P0 - 5 P1 + 4 P2 - P3) t^2 + (-P0 + 3 P1 - 3 P2 + P3) t^3)
  *             spline parameter s = k + t, s in 0..n-1.
- *   speed     constant: arc-length table with CUT_ARC_SUB subdivisions per segment (chord lengths, 3D);
- *             distance d = u * total; find table interval, linear s inside it.
+ *   speed     arc-length table with CUT_ARC_SUB subdivisions per segment (chord lengths, 3D);
+ *             distance d = e(u) * total; find table interval, linear s inside it. The actor's `ease`
+ *             picks e: linear = u (constant speed), out = 1 - (1-u)^2 (slows to a stop at the end),
+ *             in = u^2, inout = u^2 (3 - 2u). Only path actors use it.
  *   position  spline(s), clamped to 0..255+255/256, rounded: floor(v * 256 + 0.5) / 256.
- *   yaw       fixed  -> item rot * 32, camera yaw.
+ *   yaw       fixed  -> the actor's yaw.
  *             path   -> atan2(dx, dz) of the analytic derivative at s (ends: t = 0 / t = 1 of the end
  *                       segment); degenerate horizontal tangent keeps the previous sample's yaw
  *                       (first sample: the fixed yaw).
@@ -9008,6 +9011,19 @@ function normalizeDocument(raw) {
  *                       same sample. Same degenerate rule.
  *             byte = floor(angle / (2 pi) * 256 + 0.5) mod 256.
  *   ns per actor = full ns when the actor has a path or faces a moving target, else 1.
+ * STARS    only when starfield: CUT_STAR_COUNT stars, a fixed scatter from a 16-bit xorshift, seed $ACE1
+ *           (one step: x ^= x << 7;  x ^= x >> 9;  x ^= x << 8, all mod 65536). Per star, in order:
+ *             step -> (h, l):   fresh position  az = h, row = l >> 1 (0..127)
+ *             step -> (h2, l2): clumping and size
+ *               if (l2 & 4) == 0 the star is placed near the previous star (prev starts at az 0, row 0):
+ *                 az = (prev az + ((l2 >> 3) & 15) - 8) & 255,  row = (prev row + ((h2 >> 3) & 15) - 8) & 127
+ *               size class k = h2 & 7: 0 plus (centre + 4 neighbours), 1..2 vertical pair (centre + the
+ *               row below), else a single dot. The only visible tones in the room are ink and blood red,
+ *               so brightness is size, all ink (pixel 11).
+ *           d = signed byte (az - yaw); the star shows when -32 <= d <= 31, centre at colour-clock column
+ *           x = 48 + d + (d >> 1) (96 columns = 192 hires px, ~1.5 columns per yaw tick); pixels outside
+ *           0..95 / 0..127 are clipped. Drawn before the room. yaw is the camera's byte yaw at the frame.
+ *           No pitch exists, so stars never move vertically.
  * Engine playback: i = t >> 7, frac = (t & 127) << 1, linear lerp of position and shortest-arc yaw.
  */
 
@@ -9018,10 +9034,16 @@ const CUT_DUR_MAX = 16;
 const CUT_DUR_DEFAULT = 3;
 const CUT_ACTOR_MAX = 6;
 const CUT_PATH_MAX = 16;
-/** Approximate bytes available for the cutscene data after the overlay code (see the plan). */
-const CUT_DATA_BUDGET = 2000;
+/**
+ * Bytes available for the cooked data: the bank-0 static block ends at QS_OVL ($7900) and the
+ * overlay code (~830 B) sits in front of the data. tools/gencutscene.py --pack is the real check.
+ */
+const CUT_DATA_BUDGET = 2600;
+const CUT_STAR_COUNT = 128;
 const CUT_FACING_ITEM = ["fixed", "path"];
 const CUT_FACING_CAMERA = ["fixed", "path", "target"];
+/** Speed along the path: constant, or the distance fraction reshaped over time (see BAKE SPEC). */
+const CUT_EASES = ["linear", "out", "in", "inout"];
 
 const POS_MAX = WORLD_MAX + 255 / 256;
 
@@ -9044,7 +9066,7 @@ function clampYawByte(n) {
 }
 
 function newCutscene() {
-  return { roomId: null, duration: CUT_DUR_DEFAULT, actors: [] };
+  return { roomId: null, duration: CUT_DUR_DEFAULT, starfield: false, actors: [] };
 }
 
 /** A new actor. Items start at (x,y,z) with no path; the camera starts at an eye position. */
@@ -9057,9 +9079,10 @@ function createCutActor(kind, opts = {}) {
     z: cutClampCoord(opts.z ?? 128),
     path: [],
     facing: "fixed",
+    ease: "linear",
   };
   if (kind === "camera") return { ...base, yaw: 0, target: null };
-  return { ...base, item: clampPickupType(opts.item ?? "planet"), scale: 1, rot: 0 };
+  return { ...base, item: clampPickupType(opts.item ?? "planet"), scale: 1, yaw: 0 };
 }
 
 function normalizeActor(raw) {
@@ -9070,16 +9093,14 @@ function normalizeActor(raw) {
   a.id = typeof raw.id === "string" && raw.id ? raw.id : a.id;
   const allowed = kind === "camera" ? CUT_FACING_CAMERA : CUT_FACING_ITEM;
   a.facing = allowed.includes(raw.facing) ? raw.facing : "fixed";
+  a.ease = CUT_EASES.includes(raw.ease) ? raw.ease : "linear";
   a.path = Array.isArray(raw.path)
     ? raw.path.slice(0, CUT_PATH_MAX).map((p) => ({ x: cutClampCoord(p?.x), y: cutClampCoord(p?.y), z: cutClampCoord(p?.z) }))
     : [];
-  if (kind === "camera") {
-    a.yaw = clampYawByte(raw.yaw);
-    a.target = typeof raw.target === "string" && raw.target ? raw.target : null;
-  } else {
-    a.scale = clampItemScale(raw.scale);
-    a.rot = clampEnemyRot(raw.rot);
-  }
+  // Items used to carry an octant `rot`; it reads as yaw = rot * 32.
+  a.yaw = clampYawByte(raw.yaw ?? (kind === "item" ? clampEnemyRot(raw.rot) * 32 : 0));
+  if (kind === "camera") a.target = typeof raw.target === "string" && raw.target ? raw.target : null;
+  else a.scale = clampItemScale(raw.scale);
   return a;
 }
 
@@ -9089,7 +9110,7 @@ function normalizeCutscene(raw) {
   const actors = (Array.isArray(raw.actors) ? raw.actors : []).map(normalizeActor).filter(Boolean).slice(0, CUT_ACTOR_MAX);
   const roomId = typeof raw.roomId === "string" && raw.roomId ? raw.roomId : null;
   if (!roomId && !actors.length) return null;
-  return { roomId, duration: clampCutDuration(raw.duration), actors };
+  return { roomId, duration: clampCutDuration(raw.duration), starfield: raw.starfield === true, actors };
 }
 
 /** The map's cutscene, created on first use (editing). */
@@ -9175,6 +9196,14 @@ function sAtU(table, u) {
   return (j + f) / CUT_ARC_SUB;
 }
 
+/** Time fraction u -> fraction of the path length covered. out: decelerates to a stop at the end. */
+function easeU(ease, u) {
+  if (ease === "out") return 1 - (1 - u) * (1 - u);
+  if (ease === "in") return u * u;
+  if (ease === "inout") return u * u * (3 - 2 * u);
+  return u;
+}
+
 function q256(v) {
   const c = Math.max(0, Math.min(POS_MAX, v));
   return Math.floor(c * 256 + 0.5) / 256;
@@ -9191,7 +9220,7 @@ function cutSampleCount(durMs) {
 }
 
 function fixedYaw(a) {
-  return a.kind === "camera" ? clampYawByte(a.yaw) : clampEnemyRot(a.rot) * 32;
+  return clampYawByte(a.yaw);
 }
 
 /** Unrounded position + tangent of an actor at sample time index. */
@@ -9204,7 +9233,7 @@ function rawSamples(a, ns, durMs) {
   }
   const table = arcTable(a.path);
   for (let i = 0; i < ns; i++) {
-    const u = Math.min((i * CUT_STEP_MS) / durMs, 1);
+    const u = easeU(a.ease, Math.min((i * CUT_STEP_MS) / durMs, 1));
     out.push(crAt(a.path, sAtU(table, u)));
   }
   return out;
@@ -9291,11 +9320,56 @@ function cutSampleAt(baked, tMs) {
   return { x: lerp(baked.x), y: lerp(baked.y), z: lerp(baked.z), yaw };
 }
 
-/** Bytes of the cooked data block: header 4, per actor 5 + 7 per sample (see the plan's binary layout). */
+/** Bytes of the cooked data: fixed 34-byte header (4 + five 6-entry actor tables), 7 per sample. */
 function cutsceneBytes(baked) {
-  let n = 4;
-  for (const a of baked.actors) n += 5 + 7 * a.ns;
+  let n = 35;
+  for (const a of baked.actors) n += 7 * a.ns;
   return n;
+}
+
+/**
+ * The star pixels visible at camera yaw byte `yaw` (the STARS spec):
+ * [{ x: 0..95 colour-clock column, y: 0..127 row }]. Mirrors cut_stars in src/a8cutscene.asm.
+ */
+function cutStars(yaw) {
+  const out = [];
+  const yb = ((Math.round(yaw) % 256) + 256) % 256;
+  let x = 0xace1;
+  const rng = () => {
+    x ^= (x << 7) & 0xffff;
+    x ^= x >> 9;
+    x ^= (x << 8) & 0xffff;
+  };
+  let pa = 0;
+  let py = 0;
+  for (let i = 0; i < CUT_STAR_COUNT; i++) {
+    rng();
+    let az = x >> 8;
+    let row = (x & 255) >> 1;
+    rng();
+    const h2 = x >> 8;
+    const l2 = x & 255;
+    if ((l2 & 4) === 0) {
+      az = (pa + ((l2 >> 3) & 15) - 8) & 255;
+      row = (py + ((h2 >> 3) & 15) - 8) & 127;
+    }
+    pa = az;
+    py = row;
+    let d = (az - yb) & 255;
+    if (d >= 128) d -= 256;
+    if (d < -32 || d > 31) continue;
+    const cx = 48 + d + (d >> 1);
+    const k = h2 & 7;
+    const px = [[0, 0]];
+    if (k === 0) px.push([1, 0], [-1, 0], [0, -1], [0, 1]);
+    else if (k <= 2) px.push([0, 1]);
+    for (const [dx, dy] of px) {
+      const sx = cx + dx;
+      const sy = row + dy;
+      if (sx >= 0 && sx < 96 && sy >= 0 && sy < 128) out.push({ x: sx, y: sy });
+    }
+  }
+  return out;
 }
 
 function yawByteToRad(b) {
@@ -13553,6 +13627,13 @@ class PreviewView {
     if (doc && room && cut) {
       if (cut.cam) {
         const line = a8InkHex(room.a8Bg ?? ROOM_BG_DEFAULT);
+        if (cut.starfield) {
+          // One colour-clock pixel (2 hires px wide) per star, as the overlay's plot_pixel does.
+          ctx.fillStyle = line;
+          for (const s of cutStars(cut.yawByte)) {
+            ctx.fillRect(Math.round(s.x * 2 * PREVIEW_SX), Math.round(s.y * PREVIEW_SY), Math.ceil(2 * PREVIEW_SX), PREVIEW_SY);
+          }
+        }
         const g = roomGeometry(room);
         for (const e of g.edges) {
           this.#stroke(ctx, cut.cam, g.verts[e.a], g.verts[e.b], line);
@@ -13715,15 +13796,25 @@ class CutsceneView {
     return this.#cut()?.actors.find((a) => a.id === id) || null;
   }
 
-  /** The gizmo anchor: the selected path point, or a stationary selected actor. */
+  /** Where an actor's coordinate is drawn: items sit at x/z + ITEM_WORLD_BIAS (like placed pickups), the camera does not. */
+  #shown(a, v) {
+    const b = a.kind === "item" ? ITEM_WORLD_BIAS : 0;
+    return { x: v.x + b, y: v.y, z: v.z + b };
+  }
+
+  /** The gizmo anchor: the selected path point, or a stationary selected actor. `raw` is the stored value, `v` where it is drawn. */
   #selAnchor() {
     const a = this.#actor(this.sel.actor);
     if (!a) return null;
+    let raw;
+    let point = -1;
     if (a.path.length) {
       const p = a.path[this.sel.point];
-      return p ? { a, point: this.sel.point, v: { x: p.x, y: p.y, z: p.z } } : null;
-    }
-    return { a, point: -1, v: { x: a.x, y: a.y, z: a.z } };
+      if (!p) return null;
+      raw = { x: p.x, y: p.y, z: p.z };
+      point = this.sel.point;
+    } else raw = { x: a.x, y: a.y, z: a.z };
+    return { a, point, raw, v: this.#shown(a, raw) };
   }
 
   /** Everything pickable: path points, plus each actor's position at the timeline cursor. */
@@ -13734,10 +13825,10 @@ class CutsceneView {
     const t = this.opts.getTimeMs?.() ?? 0;
     const out = [];
     for (const a of cut.actors) {
-      a.path.forEach((p, i) => out.push({ actor: a.id, point: i, pos: p }));
+      a.path.forEach((p, i) => out.push({ actor: a.id, point: i, pos: this.#shown(a, p) }));
       const b = baked?.actors.find((o) => o.id === a.id);
       const s = b ? cutSampleAt(b, t) : cutActorStart(a);
-      out.push({ actor: a.id, point: -1, pos: { x: s.x, y: s.y, z: s.z } });
+      out.push({ actor: a.id, point: -1, pos: this.#shown(a, s) });
     }
     return out;
   }
@@ -13809,7 +13900,7 @@ class CutsceneView {
           planeN: hit.planeN,
           grab: hit.world,
           gizmoAxisLen: hit.gizmoAxisLen ?? GIZMO_FALLBACK_LEN,
-          orig: { ...anchor.v },
+          orig: { ...anchor.raw },
           actor: anchor.a.id,
           point: anchor.point,
           start: p,
@@ -13854,7 +13945,7 @@ class CutsceneView {
       const dy = p.y - d.last.y;
       d.last = p;
       this.orbit.yaw += dx * 0.01;
-      this.orbit.pitch = Math.max(-1.4, Math.min(1.4, this.orbit.pitch + dy * 0.01));
+      this.orbit.pitch = Math.max(-1.4, Math.min(1.4, this.orbit.pitch - dy * 0.01));
       this.draw();
     } else if (d.kind === "pan") {
       const dx = p.x - d.last.x;
@@ -14008,8 +14099,8 @@ class CutsceneView {
           this.#seg(
             ctx,
             cam,
-            { x: b.x[i], y: b.y[i], z: b.z[i] },
-            { x: b.x[i + 1], y: b.y[i + 1], z: b.z[i + 1] },
+            this.#shown(a, { x: b.x[i], y: b.y[i], z: b.z[i] }),
+            this.#shown(a, { x: b.x[i + 1], y: b.y[i + 1], z: b.z[i + 1] }),
             isSel ? CUT_COL_PATH : "#2d4a50",
             isSel ? 2 : 1.25
           );
@@ -14018,7 +14109,7 @@ class CutsceneView {
       a.path.forEach((p, i) => {
         const sel = isSel && this.sel.point === i;
         const hov = this.hoverAnchor?.actor === a.id && this.hoverAnchor.point === i;
-        this.#dot(ctx, cam, p, sel ? 5.5 : 4, sel ? CUT_COL_SEL : hov ? "#fff" : isSel ? "#7fd0da" : "#4f8f98");
+        this.#dot(ctx, cam, this.#shown(a, p), sel ? 5.5 : 4, sel ? CUT_COL_SEL : hov ? "#fff" : isSel ? "#7fd0da" : "#4f8f98");
       });
       const pose = poses.get(a.id);
       if (a.kind === "camera") {
@@ -14027,7 +14118,8 @@ class CutsceneView {
           const tp = poses.get(a.target);
           if (tp) {
             ctx.setLineDash([4, 3]);
-            this.#seg(ctx, cam, pose, tp, CUT_COL_TARGET, 1);
+            const ta = this.#actor(a.target);
+            this.#seg(ctx, cam, pose, ta ? this.#shown(ta, tp) : tp, CUT_COL_TARGET, 1);
             ctx.setLineDash([]);
           }
         }
@@ -14040,10 +14132,11 @@ class CutsceneView {
         for (const s of itemSphereWorld(obj, mesh, yaw)) this.#sphere(ctx, cam, s, col);
         // Facing tick so a mesh-less or symmetric item still shows its heading.
         const { forward } = lookVectors(yaw, 0);
-        this.#seg(ctx, cam, pose, { x: pose.x + forward.x * 6, y: pose.y, z: pose.z + forward.z * 6 }, "#d4a017", 1);
+        const o = this.#shown(a, pose);
+        this.#seg(ctx, cam, o, { x: o.x + forward.x * 6, y: o.y, z: o.z + forward.z * 6 }, "#d4a017", 1);
       }
       const hov = this.hoverAnchor?.actor === a.id && this.hoverAnchor.point < 0;
-      this.#dot(ctx, cam, pose, hov ? 4 : 2.5, hov ? "#fff" : isSel && this.sel.point < 0 ? CUT_COL_SEL : "#8b91a0");
+      this.#dot(ctx, cam, this.#shown(a, pose), hov ? 4 : 2.5, hov ? "#fff" : isSel && this.sel.point < 0 ? CUT_COL_SEL : "#8b91a0");
     }
 
     const anchor = this.#selAnchor();
@@ -18682,13 +18775,16 @@ function cutPreviewState() {
   if (editorMode !== "cutscene") return null;
   const cut = cutCurrent();
   const baked = cutBaked();
-  const out = { room: cutRoom(), cam: null, actors: [] };
+  const out = { room: cutRoom(), cam: null, actors: [], starfield: !!cut?.starfield, yawByte: 0 };
   if (!cut || !baked) return out;
   for (const a of cut.actors) {
     const b = baked.actors.find((o) => o.id === a.id);
     if (!b) continue;
     const s = cutSampleAt(b, cutTimeMs);
-    if (a.kind === "camera") out.cam = { x: s.x, y: s.y, z: s.z, yaw: yawByteToRad(s.yaw), pitch: 0 };
+    if (a.kind === "camera") {
+      out.cam = { x: s.x, y: s.y, z: s.z, yaw: yawByteToRad(s.yaw), pitch: 0 };
+      out.yawByte = s.yaw;
+    }
     else out.actors.push({ obj: { x: s.x, y: s.y, z: s.z, scale: a.scale }, key: a.item, yaw: yawByteToRad(s.yaw) });
   }
   return out;
@@ -18923,6 +19019,10 @@ function renderCutsceneLeft() {
   });
   root.appendChild(field("Room", roomSel));
 
+  const stars = toggleField("Starfield", !!cut?.starfield, () => cutApply((c) => (c.starfield = !c.starfield)));
+  stars.title = "A scatter of stars behind the room, fixed in the sky so they pan with the camera yaw";
+  root.appendChild(stars);
+
   root.appendChild(
     field(
       "Seconds",
@@ -19010,6 +19110,21 @@ function cutSelectField(options, value, onPick, labelOf = (v) => v) {
   return sel;
 }
 
+function cutYawSlider(a) {
+  return sliderField("Yaw", a.yaw, {
+    min: 0,
+    max: 255,
+    step: 1,
+    format: (v) => `${Math.round((v * 360) / 256)}°`,
+    onInput: (v) => {
+      a.yaw = v;
+      cutView.draw();
+      previewView.draw();
+    },
+    onChange: (v) => cutApply(() => (a.yaw = v)),
+  });
+}
+
 function renderCutsceneInspector(root) {
   const h = document.createElement("h2");
   h.textContent = "Actor";
@@ -19026,24 +19141,25 @@ function renderCutsceneInspector(root) {
 
   if (a.kind === "item") {
     root.appendChild(field("Item", cutSelectField(placeableItemKeys(), a.item, (v) => cutApply(() => (a.item = v)), itemLabel)));
-    root.appendChild(
-      field("Scale", cutSelectField(ITEM_SCALES, a.scale, (v) => cutApply(() => (a.scale = clampItemScale(Number(v)))), (v) => `${v}x`))
-    );
+    // Slider position 0..3 = 1x 2x 4x 8x, as for placed items.
+    const scaleRow = sliderField("Scale", ITEM_SCALES.indexOf(clampItemScale(a.scale)), {
+      min: 0,
+      max: ITEM_SCALES.length - 1,
+      step: 1,
+      format: (i) => `${ITEM_SCALES[i]}x`,
+      onInput: (i) => {
+        a.scale = ITEM_SCALES[i];
+        cutView.draw();
+        previewView.draw();
+      },
+      onChange: (i) => cutApply(() => (a.scale = ITEM_SCALES[i])),
+    });
+    scaleRow.title = "Draw larger about the item origin";
+    root.appendChild(scaleRow);
     root.appendChild(
       field(
         "Facing",
         cutSelectField(CUT_FACING_ITEM, a.facing, (v) => cutApply(() => (a.facing = v)), (v) => (v === "path" ? "along path" : "fixed"))
-      )
-    );
-    root.appendChild(
-      field(
-        "Heading",
-        cutSelectField(
-          ENEMY_FACINGS.map((_, i) => i),
-          a.rot,
-          (v) => cutApply(() => (a.rot = clampEnemyRot(Number(v)))),
-          (i) => ENEMY_FACINGS[i]
-        )
       )
     );
   } else {
@@ -19074,22 +19190,18 @@ function renderCutsceneInspector(root) {
       sel.value = items.some((o) => o.id === a.target) ? a.target : "";
       sel.addEventListener("change", () => cutApply(() => (a.target = sel.value || null)));
       root.appendChild(field("Look at", sel));
-    } else if (a.facing === "fixed") {
-      root.appendChild(
-        sliderField("Yaw", a.yaw, {
-          min: 0,
-          max: 255,
-          step: 1,
-          format: (v) => `${Math.round((v * 360) / 256)}°`,
-          onInput: (v) => {
-            a.yaw = v;
-            cutView.draw();
-            previewView.draw();
-          },
-          onChange: (v) => cutApply(() => (a.yaw = v)),
-        })
-      );
     }
+  }
+  if (a.facing === "fixed") root.appendChild(cutYawSlider(a));
+
+  if (a.path.length >= 2) {
+    const easeLabel = { linear: "constant", out: "slow at end", in: "slow at start", inout: "slow at both ends" };
+    root.appendChild(
+      field(
+        "Speed",
+        cutSelectField(CUT_EASES, a.ease, (v) => cutApply(() => (a.ease = v)), (v) => easeLabel[v])
+      )
+    );
   }
 
   const pt = cutView.sel.point;
