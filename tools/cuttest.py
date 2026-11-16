@@ -5,7 +5,7 @@
     python tools/cuttest.py --render   # only re-render the PNGs from the last run
 
 Boots nebula.atr under the Altirra debugger, skips the menu (see memory note altirra-smoke-test),
-lets `start` load MAPA and run its cutscene, and stops at the first draw_world_prep at or past each
+lets `start` load MAPA and run its cutscene, and stops at the first wait_draw_free at or past each
 --times value while the overlay runs. Each stop logs the time cursor, room_idx and camera and dumps
 both bitmaps; after the overlay returns it logs the restored spawn view at enter_card and dumps a
 few frames of normal play. Needs a build with a cutscene on MAPA (build first). An Altirra window
@@ -63,10 +63,10 @@ def script(lab: dict[str, int], cut: dict[str, int], times: list[int], after: in
          state.replace("{tag}", "ENTRY"),
          f'.printf "SPAWN room=%d xyz=%d,%d,%d rot=%d" db($0415) db($0411) db($0412) db($0413) db($0414)',
          f'.printf "DATA nact=%d dur=%d room=%d" db(${cut["cut_data"] + 1:04x}) dw(${cut["cut_data"] + 2:04x}) db(${cut["cut_data"]:04x})']
-    # One stop per sample time, on the first draw_world_prep at or past it (the bitmap dumped is the
+    # One stop per sample time, on the first wait_draw_free at or past it (draw_world_prep is skipped by hideRoom) (the bitmap dumped is the
     # frame published just before, show_buf says which half).
     for i, t in enumerate(times):
-        L += ["bc *", f'bx "pc={A("draw_world_prep")} and {cond} and dw(${cut["cu_tl"]:04x})>={t}"', "g",
+        L += ["bc *", f'bx "pc={A("wait_draw_free")} and {cond} and dw(${cut["cu_tl"]:04x})>={t}"', "g",
               state.replace("{tag}", f"T{t}"),
               f".writemem {(OUT / f'f{i:02d}.bin').as_posix()} r:$4000 L2000"]
         if skip and i == 1:

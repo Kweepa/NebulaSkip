@@ -14,10 +14,12 @@ import {
 /*
  * Cutscene data (map.cutscene) and its bake. Pure: no DOM.
  *
- * map.cutscene = { roomId, duration, starfield, actors[] }
+ * map.cutscene = { roomId, duration, starfield, hideRoom, actors[] }
  *   roomId    id of the room set aside for the cutscene (null = none)
  *   duration  seconds, CUT_DUR_MIN..CUT_DUR_MAX
  *   starfield true = scatter of CUT_STAR_COUNT stars behind everything (see STARS)
+ *   hideRoom  true = the room's box / mesh is not transformed or stroked (the room still supplies the
+ *             background colours, and its crates / doors / switches still draw)
  *   actors[]  { id, kind: "item"|"camera", x,y,z, path:[{x,y,z}], facing, ... }
  *     item    item (key), scale (1/2/4/8), yaw (0..255 like the camera; old files: rot octant * 32), facing "fixed"|"path"
  *     camera  yaw (0..255 game units, 256 = turn, 0 = +Z, 64 = +X), facing "fixed"|"path"|"target",
@@ -99,7 +101,7 @@ function clampYawByte(n) {
 }
 
 export function newCutscene() {
-  return { roomId: null, duration: CUT_DUR_DEFAULT, starfield: false, actors: [] };
+  return { roomId: null, duration: CUT_DUR_DEFAULT, starfield: false, hideRoom: false, actors: [] };
 }
 
 /** A new actor. Items start at (x,y,z) with no path; the camera starts at an eye position. */
@@ -143,7 +145,7 @@ export function normalizeCutscene(raw) {
   const actors = (Array.isArray(raw.actors) ? raw.actors : []).map(normalizeActor).filter(Boolean).slice(0, CUT_ACTOR_MAX);
   const roomId = typeof raw.roomId === "string" && raw.roomId ? raw.roomId : null;
   if (!roomId && !actors.length) return null;
-  return { roomId, duration: clampCutDuration(raw.duration), starfield: raw.starfield === true, actors };
+  return { roomId, duration: clampCutDuration(raw.duration), starfield: raw.starfield === true, hideRoom: raw.hideRoom === true, actors };
 }
 
 /** The map's cutscene, created on first use (editing). */
@@ -353,9 +355,9 @@ export function cutSampleAt(baked, tMs) {
   return { x: lerp(baked.x), y: lerp(baked.y), z: lerp(baked.z), yaw };
 }
 
-/** Bytes of the cooked data: fixed 34-byte header (4 + five 6-entry actor tables), 7 per sample. */
+/** Bytes of the cooked data: fixed 36-byte header (4 + five 6-entry actor tables + stars + hide flag), 7 per sample. */
 export function cutsceneBytes(baked) {
-  let n = 35;
+  let n = 36;
   for (const a of baked.actors) n += 7 * a.ns;
   return n;
 }

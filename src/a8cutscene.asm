@@ -40,6 +40,7 @@ CD_NS		= 16
 CD_OFFL		= 22
 CD_OFFH		= 28
 CD_STARS	= 34
+CD_HIDE		= 35
 
 *= CUT_BASE
 
@@ -77,7 +78,15 @@ cut_run
 	jsr cut_pose
 	lda #$ff
 	sta mesh_vmask
+	lda cut_data+CD_HIDE
+	beq .prep
+	jsr update_frustum		; hidden room: no hull transform, draw_world skips the stroke when mesh_ne = 0
+	lda #0
+	sta mesh_ne
+	beq .prepd
+.prep
 	jsr draw_world_prep		; as main: hull transform before waiting for the old frame
+.prepd
 	jsr wait_draw_free
 	jsr clear_draw
 	jsr cut_stars
@@ -93,6 +102,7 @@ cut_run
 	sta den_arm
 .den_pub
 	jsr calc_frame_dt
+	jsr hud_print			; frame ms in the top-left, as in play
 	lda draw_buf
 	eor #1
 	sta draw_buf

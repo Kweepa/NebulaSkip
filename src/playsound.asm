@@ -73,8 +73,7 @@ play_sound_init
 	sta $d201
 	sta $d203
 	sta $d205
-	sta $d207
-	rts
+	jmp amb_init				; channel 4: this map's tune from the top
 
 
 ; ------------------------------------------------------------------

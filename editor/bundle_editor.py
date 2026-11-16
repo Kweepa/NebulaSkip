@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parent
 OUT = ROOT / "index.html"
 
 JS_ORDER = [
+    "js/tunesData.js",
     "js/roomGeom.js",
     "js/fontModel.js",
     "js/model.js",
@@ -30,6 +31,7 @@ JS_ORDER = [
     "js/buildView.js",
     "js/wadSprites.js",
     "js/stickOrtho.js",
+    "js/tunePlayer.js",
     "js/main.js",
 ]
 

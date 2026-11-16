@@ -16,6 +16,7 @@ import {
   clampTriggerText,
   clampName,
   clampVerb,
+  clampTune,
   clampJumpSpeed,
   clampGravity,
   jumpArc,
@@ -174,6 +175,8 @@ import {
   SPRITE_MAX_LINES,
 } from "./model.js";
 import { lookVectors, projectLine } from "./math3d.js";
+import { TUNES, tuneByName, tuneBytes } from "./tunesData.js";
+import { TunePreview } from "./tunePlayer.js";
 import {
   DEFAULT_DOC_PATH,
   docFileName,
@@ -259,6 +262,8 @@ const ANIM_PLAY_MS = 100;
 
 let doc = createDefaultDocument();
 let editorMode = "layout";
+// Ambient tune audition (map inspector). One instance: it keeps playing across inspector rebuilds.
+const tunePreview = new TunePreview();
 let localDraw = false;
 let neighbourDraw = false;
 let roomsOnlyDraw = false;
@@ -749,7 +754,7 @@ function cutPreviewState() {
   if (editorMode !== "cutscene") return null;
   const cut = cutCurrent();
   const baked = cutBaked();
-  const out = { room: cutRoom(), cam: null, actors: [], starfield: !!cut?.starfield, yawByte: 0 };
+  const out = { room: cutRoom(), cam: null, actors: [], starfield: !!cut?.starfield, hideRoom: !!cut?.hideRoom, yawByte: 0 };
   if (!cut || !baked) return out;
   for (const a of cut.actors) {
     const b = baked.actors.find((o) => o.id === a.id);
@@ -996,6 +1001,10 @@ function renderCutsceneLeft() {
   const stars = toggleField("Starfield", !!cut?.starfield, () => cutApply((c) => (c.starfield = !c.starfield)));
   stars.title = "A scatter of stars behind the room, fixed in the sky so they pan with the camera yaw";
   root.appendChild(stars);
+
+  const hide = toggleField("Hide room", !!cut?.hideRoom, () => cutApply((c) => (c.hideRoom = !c.hideRoom)));
+  hide.title = "Skip the room box: the game does not transform or draw its vertices (the room still sets the colours)";
+  root.appendChild(hide);
 
   root.appendChild(
     field(
@@ -4420,6 +4429,59 @@ function renderInspector() {
         refreshAll();
       });
       root.appendChild(field("Enter text", verbInp));
+      // Ambient tune: packed into this map by tools/genmap.py, played on POKEY channel 4.
+      const tuneSel = document.createElement("select");
+      const tuneNone = document.createElement("option");
+      tuneNone.value = "";
+      tuneNone.textContent = "(none)";
+      tuneSel.appendChild(tuneNone);
+      for (const t of TUNES) {
+        const opt = document.createElement("option");
+        opt.value = t.name;
+        opt.textContent = t.name;
+        opt.title = t.about;
+        tuneSel.appendChild(opt);
+      }
+      tuneSel.value = clampTune(map.tune);
+      tuneSel.title = "Ambient tune for this map. Library: tools/genambient.py.";
+      const tunePlay = document.createElement("button");
+      tunePlay.type = "button";
+      tunePlay.className = "toggle";
+      const tuneNote = document.createElement("p");
+      tuneNote.className = "muted tune-note";
+      const syncTune = () => {
+        const t = tuneByName(tuneSel.value);
+        const on = tunePreview.playing && !!t && tunePreview.name === t.name;
+        tunePlay.textContent = on ? "Stop" : "Play";
+        tunePlay.classList.toggle("active", on);
+        tunePlay.disabled = !t;
+        tuneNote.textContent = t
+          ? `${t.about} · ${t.secs} s loop · ${tuneBytes(t.name)} bytes of map`
+          : "No tune: channel 4 stays silent on this map.";
+      };
+      tuneSel.addEventListener("change", () => {
+        pushUndo();
+        map.tune = clampTune(tuneSel.value);
+        markDirty();
+        // Auditioning: a new pick replaces the one that is playing.
+        if (tunePreview.playing) {
+          if (map.tune) tunePreview.play(map.tune);
+          else tunePreview.stop();
+        }
+        refreshAll();
+      });
+      tunePlay.addEventListener("click", () => {
+        const t = tuneByName(tuneSel.value);
+        if (tunePreview.playing && t && tunePreview.name === t.name) tunePreview.stop();
+        else if (t) tunePreview.play(t.name);
+        syncTune();
+      });
+      syncTune();
+      const tuneRow = document.createElement("div");
+      tuneRow.className = "tune-row";
+      tuneRow.append(tuneSel, tunePlay);
+      root.appendChild(field("Tune", tuneRow));
+      root.appendChild(tuneNote);
       const physField =(label, key, clamp, min, max, def, step, title) => {
         const inp = document.createElement("input");
         inp.type = "number";

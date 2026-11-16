@@ -355,7 +355,7 @@ def steps(exe: str) -> list[Step]:
         ),
         Step(
             "genmap",
-            lambda: [TOOLS / "genmap.py", TOOLS / "genenemies.py", TOOLS / "roomgeom.py", ROOT / "src" / "overlay.asm", doc, *enemy_json(), *map_json()],
+            lambda: [TOOLS / "genmap.py", TOOLS / "genambient.py", TOOLS / "genmenutune.py", TOOLS / "genpokey.py", TOOLS / "genenemies.py", TOOLS / "roomgeom.py", ROOT / "src" / "overlay.asm", doc, *enemy_json(), *map_json()],
             # Map PRGs are rewritten by mkreloc. Counts/sizes are not.
             lambda: [SRC / "map_counts.asm", SRC / "map_sizes.asm", *map_prgs()],
             lambda: tool("genmap.py"),
@@ -429,6 +429,13 @@ def steps(exe: str) -> list[Step]:
             lambda: [TOOLS / "genmenutune.py", TOOLS / "genpokey.py"],
             lambda: [ROOT / "music" / "menu_tunes.asm"],
             lambda: tool("genmenutune.py"),
+        ),
+        Step(
+            "genambient",
+            lambda: [TOOLS / "genambient.py", TOOLS / "genmenutune.py", TOOLS / "genpokey.py"],
+            # Editor tune library. The game gets its tune through genmap (packed into the map).
+            lambda: [ROOT / "editor" / "js" / "tunesData.js"],
+            lambda: tool("genambient.py"),
         ),
         Step(
             "acme enemy_data_blob.asm",

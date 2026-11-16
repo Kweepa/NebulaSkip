@@ -172,5 +172,8 @@ en_hp0	= $0516		; enemy starting hp byte (placed hp, else type default; genmap r
 !if (en_hp0 - room_x) / 2 > 127 {
 	!error "map pointer table exceeds 128 bind fields"
 }
-; MAP_BSS_END = $0518  size=280
-; $0518..$0523 is a gap; play BSS still starts at $0524.
+; Ambient tune inside the packed map (tools/genambient.py map_block), set by bind_map.
+; Not a bind field. Hi byte 0 = this map has no tune. Read by amb_init (ambient.asm).
+map_tune	= $0518
+; MAP_BSS_END = $051A  size=282
+; $051A..$0523 is a gap; play BSS still starts at $0524.

@@ -985,10 +985,38 @@ bind_map
 .bm_ov
 	jsr $ffff
 	php
+	; bind_cur -> tune block: length word (counts itself), tune bytes, then the text.
 	lda bind_cur
-	sta map_text
+	sta src_ptr
 	lda bind_cur+1
+	sta src_ptr+1
+	ldy #1
+	lda (src_ptr),y
+	tax					; length hi
+	dey
+	clc
+	lda (src_ptr),y
+	adc bind_cur
+	sta map_text
+	txa
+	adc bind_cur+1
 	sta map_text+1
+	lda (src_ptr),y
+	cmp #3					; C = has tune bytes (lo >= 3) ...
+	txa
+	bne .bm_tune				; ... or a length past 255
+	bcs .bm_tune
+	sta map_tune+1				; none: hi 0
+	beq .bm_tdone
+.bm_tune
+	clc
+	lda bind_cur
+	adc #2
+	sta map_tune
+	lda bind_cur+1
+	adc #0
+	sta map_tune+1
+.bm_tdone
 	plp
 	rts
 

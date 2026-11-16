@@ -580,9 +580,11 @@ export class PreviewView {
             ctx.fillRect(Math.round(s.x * 2 * PREVIEW_SX), Math.round(s.y * PREVIEW_SY), Math.ceil(2 * PREVIEW_SX), PREVIEW_SY);
           }
         }
-        const g = roomGeometry(room);
-        for (const e of g.edges) {
-          this.#stroke(ctx, cut.cam, g.verts[e.a], g.verts[e.b], line);
+        if (!cut.hideRoom) {
+          const g = roomGeometry(room);
+          for (const e of g.edges) {
+            this.#stroke(ctx, cut.cam, g.verts[e.a], g.verts[e.b], line);
+          }
         }
         for (const act of cut.actors) {
           const mesh = itemMeshFor(doc, act.key);

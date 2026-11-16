@@ -38,6 +38,11 @@ segment E holds `portb_cur` at `$FE` for its whole stretch (`e_enter` /
 Segment A/B/C/D/E slack is printed by `build-report.json` (`game.segments`); ACME
 `!error`s in `nebula.asm` / `sege.asm` stop the build when a segment overflows.
 After the 2026-11-13 pass: A 2674 B spare, B 1926, C 598, D 171, E 1659, zone 903.
+2026-11-16, with the ambient tune player in A (`ambient.asm`, 508 B with vibrato and glide; VBI code, so it
+has to stay in A): A 1007, B 1642, C 571, D 150, E 1607, zone 905. The tune itself is in
+the packed map (bank-0 heap): length word + tune bytes between the columns and the text
+blob, `map_tune` (`$0518`) set by `bind_map`. The VBI reads it by mapping `PORTB_PLAY`
+for the one byte and restoring the PORTB value it found.
 
 ### Segment E (`$6000-$7FFF`, main RAM under the window)
 

@@ -145,6 +145,10 @@ mod_playsound
 !source "playsound.asm"
 mod_pcsounds
 !source "pcsounds.asm"
+; Ambient tune player, POKEY channel 4 (VBI): must stay in A, mapped in every PORTB
+; state. The tune itself is in the packed map (bank 0), read through PORTB_PLAY.
+mod_ambient
+!source "ambient.asm"
 mod_a8stamp
 !source "a8stamp.asm"
 

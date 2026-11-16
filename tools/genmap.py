@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from roomgeom import clamp_room_shape, nudge_door_outside, room_geometry
 import genenemies
 import genitems
+import genambient
 import mapnames
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -1481,12 +1482,18 @@ def cook_one(level: dict, map_key: str) -> bytes:
     # room_<type>_o: first index of each room's slice (nrooms+1; last = count)
     for lst in (crate_room, slope_room, plat_room, tr_room, th_room):
         add([sum(1 for r in lst if r < i) for i in range(len(rooms) + 1)])
-    payload.extend(text_blob if text_blob else [0])
+    # Ambient tune (level "tune", tools/genambient.py): length word + tune bytes, between the
+    # columns and the text. bind_map reads the word to find map_text. Not counted against
+    # MAP_MAX_BYTES (genambient caps a tune; checkheap sees the whole map).
+    tune = genambient.map_block(level.get("tune"), map_key)
+    text = bytes(text_blob if text_blob else [0])
 
-    if len(payload) > MAP_MAX_BYTES:
+    if len(payload) + len(text) > MAP_MAX_BYTES:
         raise SystemExit(
-            f"{map_key} packed size {len(payload)} exceeds {MAP_MAX_BYTES}"
+            f"{map_key} packed size {len(payload) + len(text)} exceeds {MAP_MAX_BYTES}"
         )
+    payload.extend(tune)
+    payload.extend(text)
     return bytes(payload)
 
 

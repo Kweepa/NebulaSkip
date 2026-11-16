@@ -38,6 +38,7 @@ load_irq_off
 	pha
 	lda #0
 	sta $d40e				; NMI off for the transfer
+	sta $d207				; ambient note would drone through it
 	pla
 	rts
 
@@ -293,6 +294,7 @@ a8_os_install
 a8_pokey_play
 	lda #0
 	sta $d208
+	sta $d207				; SIO's channel 4; amb_tick rewrites it next VBI
 	sta $d20e				; SIOV turns keyboard IRQ back on
 	lda #$03
 	sta $d20f

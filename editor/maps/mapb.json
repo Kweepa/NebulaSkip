@@ -3,6 +3,7 @@
   "enterVerb": "Landing on",
   "jumpSpeed": 23,
   "gravity": 61,
+  "tune": "Canopy",
   "objects": [
     {
       "id": "ce8196db-247e-4d1f-8fe4-c732e8f25d35",
@@ -253,6 +254,7 @@
     "roomId": "deb971b2-13cf-40c0-a1de-8a2510f9587e",
     "duration": 4,
     "starfield": false,
+    "hideRoom": false,
     "actors": [
       {
         "id": "ba2f3bef-29db-4857-a245-60d8bc543db9",

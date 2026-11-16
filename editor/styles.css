@@ -1825,3 +1825,18 @@ body.font-dragging * {
   font-size: 0.8rem;
   color: #e8a0a0;
 }
+
+/* Map inspector: ambient tune picker + audition button. */
+.field .tune-row {
+  display: flex;
+  flex: 1 1 auto;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.field .tune-row .toggle {
+  flex: 0 0 auto;
+}
+.tune-note {
+  margin: 0 0 0.5rem;
+  font-size: 0.75rem;
+}

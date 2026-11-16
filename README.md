@@ -36,7 +36,7 @@ An explosion is a half-dome of pixels pre-simulated.
 
 The pistol is stamped into the mode-E bitmap (body, muzzle, enemy muzzle, impact splat). Bob and recoil move that stamp.
 
-SFX are PC-speaker envelopes on POKEY channels (player / enemy / world).
+SFX are PC-speaker envelopes on POKEY channels 1-3 (player / enemy / world). Channel 4 plays a one-voice ambient tune per map (`src/ambient.asm`). The tune library is `tools/genambient.py` (`--wav-dir tmp` renders previews); a map picks one by name in the editor's map inspector (`"tune"` in the map JSON, with a Play button to audition), and `tools/genmap.py` packs that tune into the map. `tools/check_ambient.py` checks the player in py65.
 
 ## Build
 

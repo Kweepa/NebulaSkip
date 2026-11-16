@@ -453,6 +453,7 @@ suit_col
 	jsr check_cheats
 	jsr flush_sfx
 	jsr update_sfx
+	jsr amb_tick
 	jmp a8_noise
 
 a8_stick

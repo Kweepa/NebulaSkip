@@ -22,7 +22,8 @@ Data (offsets are the CD_* equates in a8cutscene.asm), actor 0 is always the cam
     16 ns[6]       samples
     22 offl[6] 28 offh[6]   offset of the actor's sample block from the start of the data
     34 star count (0 = no starfield; the editor's starfield toggle writes 128)
-    35 sample blocks, per actor: xl[ns] xh[ns] yl[ns] yh[ns] zl[ns] zh[ns] yaw[ns]
+    35 hide room (nonzero = the room box is neither transformed nor stroked)
+    36 sample blocks, per actor: xl[ns] xh[ns] yl[ns] yh[ns] zl[ns] zh[ns] yaw[ns]
 Positions are 8.8 world units, camera = eye, items as the editor places them (the game adds
 ITEM_WORLD_BIAS on X/Z). Yaw is the game byte, 0 = +Z, 64 = +X.
 """
@@ -64,7 +65,8 @@ ITEM_SCALES = (1, 2, 4, 8)
 CD_ROOM, CD_NACT, CD_DUR = 0, 1, 2
 CD_KIND, CD_SCALE, CD_NS, CD_OFFL, CD_OFFH = 4, 10, 16, 22, 28
 CD_STARS = 34
-CD_SAMPLES = 35
+CD_HIDE = 35
+CD_SAMPLES = 36
 CUT_STAR_COUNT = 128
 KIND_CAMERA = 0xFF
 MAX_STEP_UNITS = 127  # the engine lerps a signed 8.8 delta per 128 ms sample
@@ -213,6 +215,7 @@ def normalize(raw) -> dict | None:
         "roomId": room_id,
         "duration": clamp_duration(raw.get("duration")),
         "starfield": raw.get("starfield") is True,
+        "hideRoom": raw.get("hideRoom") is True,
         "actors": actors,
     }
 
@@ -446,6 +449,7 @@ def pack_data(cut: dict, level: dict, key: str) -> bytes:
     head[CD_DUR] = b["durMs"] & 0xFF
     head[CD_DUR + 1] = b["durMs"] >> 8
     head[CD_STARS] = CUT_STAR_COUNT if cut.get("starfield") else 0
+    head[CD_HIDE] = 1 if cut.get("hideRoom") else 0
     body = bytearray()
     for i, a in enumerate(b["actors"]):
         if a["ns"] > 255:

@@ -3,6 +3,7 @@
   "enterVerb": "Landing on",
   "jumpSpeed": 22,
   "gravity": 40,
+  "tune": "Deep Shaft",
   "objects": [
     {
       "id": "2c61275c-9e6b-4cf8-950e-87d7f5606615",
@@ -3315,6 +3316,7 @@
     "roomId": "9fed29f6-53ea-47ba-ab55-24985fa30c86",
     "duration": 3,
     "starfield": true,
+    "hideRoom": true,
     "actors": [
       {
         "id": "4e2bc137-8e3c-430f-94d6-29eaa450c2b6",

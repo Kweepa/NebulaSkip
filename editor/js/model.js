@@ -1,5 +1,6 @@
 import { fontBlank, normalizeFont } from "./fontModel.js";
 import { normalizeCutscene } from "./cutsceneModel.js";
+import { tuneByName, tuneBytes } from "./tunesData.js";
 import {
   ROOM_SHAPES,
   clampRoomShape,
@@ -2600,6 +2601,12 @@ export function clampName(s) {
     .slice(0, MAX_NAME_LEN);
 }
 
+/** Ambient tune name (tunesData.js library, tools/genambient.py); "" = none or unknown. */
+export function clampTune(s) {
+  const t = tuneByName(s);
+  return t ? t.name : "";
+}
+
 /** Enter-card verb shown instead of "entering" ("docking at", "landing on"). */
 export function clampVerb(s) {
   return String(s ?? "")
@@ -3521,11 +3528,15 @@ export function mapStats(doc) {
       poseParts = names.map((n) => `${n} ${poseSize(n)}`);
     }
   }
-  const loadBytes = c64Bytes + poseBytes;
+  // The tune block rides in the map after the columns; genmap does not count it against
+  // MAP_MAX_BYTES, but it is heap like the rest.
+  const tuneB = tuneBytes(map.tune);
+  const loadBytes = c64Bytes + tuneB + poseBytes;
   return {
     total,
     byKind,
     c64Bytes,
+    tuneBytes: tuneB,
     poseBytes,
     loadBytes,
     poseParts,
@@ -3604,7 +3615,7 @@ export function mapKindStatRows(stats) {
 }
 
 export function formatMapLoadTitle(stats) {
-  const bits = [`map ${stats.c64Bytes}`, ...(stats.poseParts || [])];
+  const bits = [`map ${stats.c64Bytes}`, `tune ${stats.tuneBytes ?? 2}`, ...(stats.poseParts || [])];
   return `${bits.join(" + ")} = ${stats.loadBytes}`;
 }
 
@@ -4207,6 +4218,7 @@ export function mapFileRecords(doc) {
           enterVerb: clampVerb(map.enterVerb),
           jumpSpeed: clampJumpSpeed(map.jumpSpeed),
           gravity: clampGravity(map.gravity),
+          ...(clampTune(map.tune) ? { tune: clampTune(map.tune) } : {}),
           objects,
         },
         map.cutscene
@@ -4707,6 +4719,7 @@ export function normalizeDocument(raw) {
         enterVerb: clampVerb(src.enterVerb),
         jumpSpeed: clampJumpSpeed(src.jumpSpeed),
         gravity: clampGravity(src.gravity),
+        tune: clampTune(src.tune),
         objects: parseObjects(src.objects),
       };
       const cut = normalizeCutscene(src.cutscene);
@@ -4718,6 +4731,7 @@ export function normalizeDocument(raw) {
       enterVerb: clampVerb(raw.map?.enterVerb),
       jumpSpeed: clampJumpSpeed(raw.map?.jumpSpeed),
       gravity: clampGravity(raw.map?.gravity),
+      tune: clampTune(raw.map?.tune),
       objects: parseObjects(raw.map?.objects || raw.objects),
     };
     const cut = normalizeCutscene(raw.map?.cutscene);
