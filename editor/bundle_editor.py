@@ -14,6 +14,7 @@ JS_ORDER = [
     "js/roomGeom.js",
     "js/fontModel.js",
     "js/model.js",
+    "js/cutsceneModel.js",
   "js/math3d.js",
   "js/gizmo.js",
   "js/io.js",
@@ -22,6 +23,7 @@ JS_ORDER = [
     "js/layoutView.js",
     "js/overheadView.js",
     "js/previewView.js",
+    "js/cutsceneView.js",
     "js/animView.js",
     "js/itemView.js",
     "js/fontView.js",
@@ -80,6 +82,7 @@ def main() -> None:
       <button type="button" id="btn-mode-layout" class="active">Maps</button>
       <button type="button" id="btn-mode-anim">Enemies</button>
       <button type="button" id="btn-mode-items">Items</button>
+      <button type="button" id="btn-mode-cutscene">Cutscene</button>
       <button type="button" id="btn-mode-font">Font</button>
       <button type="button" id="btn-mode-build">Build</button>
     </div>
@@ -147,6 +150,7 @@ def main() -> None:
         <div id="item-mesh-list" class="palette-things item-grid"></div>
       </section>
       <section id="font-left" hidden></section>
+      <section id="cut-left" hidden></section>
     </aside>
 
     <section class="center">
@@ -175,6 +179,7 @@ def main() -> None:
         </div>
       </div>
       <p class="hint" id="hint"></p>
+      <div id="cut-transport" class="cut-transport" hidden></div>
       <div id="build-panel" class="build-panel" hidden></div>
       <div id="font-panel" class="font-panel" hidden></div>
     </section>

@@ -336,7 +336,7 @@ def unique_u8(vals: list[int], cap: int, what: str, name: str) -> tuple[list[int
 def cook(mesh: dict, name: str) -> dict:
     verts = list(mesh["verts"])
     lines = mesh["lines"]
-    if not verts or not lines:
+    if not (verts and lines) and not mesh.get("spheres"):
         raise SystemExit(f"item {name!r} has no geometry")
     # Each sphere origin is a vertex the mesh pipeline already transforms and projects; the
     # sphere routine reads its screen position. An origin on an existing vert reuses it,
@@ -523,7 +523,9 @@ def load_item_meshes() -> tuple[dict, list[str], dict]:
                     continue
                 if key in DOOR_MESH_KEY and not mesh["verts"]:
                     continue
-                items[key] = mesh if mesh["verts"] else items.get(key, {"verts": [], "lines": []})
+                # A sphere-only item has no verts; the cooker appends the sphere origins.
+                keep = mesh["verts"] or (mesh["spheres"] and key not in DOOR_MESH_KEY and key != "backpack")
+                items[key] = mesh if keep else items.get(key, {"verts": [], "lines": []})
     return items, custom, meta
 
 
@@ -543,7 +545,7 @@ def main() -> None:
     cooked: list[dict | None] = []
     for key in item_keys:
         mesh = items.get(key) or {"verts": [], "lines": []}
-        if not mesh.get("verts") or not mesh.get("lines"):
+        if not (mesh.get("verts") and mesh.get("lines")) and not mesh.get("spheres"):
             cooked.append(None)
             continue
         cooked.append(cook(mesh, key))

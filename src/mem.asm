@@ -707,7 +707,7 @@ RKT_HIT_R		= 1
 BARREL_CHAIN_MS		= 256		; gap so the previous burst is visible
 RKT_WRIST_L		= 5			; skeleton "Wrist L"
 RKT_WRIST_R		= 7			; skeleton "Wrist R"
-RKT_R			= $60			; screen-triangle half-extent 0.375
+RKT_R			= $60			; projectile sphere radius, 8.8 world units (0.375)
 RKT_VEL_ASR		= 5			; tip = view-vel >> 5
 VIEW_SPR_X0	= 24 + VIEW_COL * 8	; 88 — viewport (0,0) → VIC
 VIEW_SPR_Y0	= 50 + VIEW_ROW * 8	; 122

@@ -328,6 +328,7 @@ export class PreviewView {
   }
 
   #onPointer(e) {
+    if (this.opts.getCutscene?.()) return; // cutscene camera is driven by the timeline
     const room = this.opts.getRoom?.();
     const spawn = this.#editSpawn();
     const viewSpawn = this.opts.getSpawn?.() || null;
@@ -546,6 +547,7 @@ export class PreviewView {
   }
 
   hint() {
+    if (this.opts.getCutscene?.()) return "Cutscene camera at the timeline position";
     const room = this.opts.getRoom?.();
     if (this.#editSpawn()) return "Spawn view â€” drag L/R to set angle Â· U/D to move";
     if (this.stickyCam) return "Drag L/R to rotate Â· U/D to walk";
@@ -557,7 +559,9 @@ export class PreviewView {
   draw() {
     const ctx = this.ctx;
     const doc = this.opts.getDoc?.();
-    const room = this.opts.getRoom?.();
+    // Cutscene tab: { room, cam: {x,y,z,yaw,pitch}, actors: [{ obj: {x,y,z,scale}, key, yaw }] }.
+    const cut = this.opts.getCutscene?.() || null;
+    const room = cut ? cut.room : this.opts.getRoom?.();
     const spawn = this.opts.getSpawn?.() || null;
     this.#forgetSticky(room);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -565,7 +569,22 @@ export class PreviewView {
     ctx.fillStyle = room ? a8Hex(room.a8Bg ?? ROOM_BG_DEFAULT) : "#000000";
     ctx.fillRect(0, 0, PREVIEW_W, PREVIEW_H);
 
-    if (doc && room) {
+    if (doc && room && cut) {
+      if (cut.cam) {
+        const line = a8InkHex(room.a8Bg ?? ROOM_BG_DEFAULT);
+        const g = roomGeometry(room);
+        for (const e of g.edges) {
+          this.#stroke(ctx, cut.cam, g.verts[e.a], g.verts[e.b], line);
+        }
+        for (const act of cut.actors) {
+          const mesh = itemMeshFor(doc, act.key);
+          for (const seg of itemMeshWorldSegs(act.obj, mesh, act.yaw)) {
+            this.#stroke(ctx, cut.cam, seg.a, seg.b, line);
+          }
+          for (const s of itemSphereWorld(act.obj, mesh, act.yaw)) this.#sphere(ctx, cut.cam, s, line);
+        }
+      }
+    } else if (doc && room) {
       const cam = this.#cam(room, spawn);
       const line = a8InkHex(room.a8Bg ?? ROOM_BG_DEFAULT);
       const g = roomGeometry(room);

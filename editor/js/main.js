@@ -3,6 +3,7 @@ import {
   PALETTE_ORDER,
   KIND_ICON,
   ENEMY_TYPES,
+  ENEMY_FACINGS,
   enemyTypesByHp,
   enemiesByHp,
   SKEL_MAX_VERTS,
@@ -216,6 +217,25 @@ import { PreviewView } from "./previewView.js";
 import { AnimView } from "./animView.js";
 import { ItemView } from "./itemView.js";
 import { FontView } from "./fontView.js";
+import { CutsceneView } from "./cutsceneView.js";
+import {
+  CUT_ACTOR_MAX,
+  CUT_DATA_BUDGET,
+  CUT_DUR_MAX,
+  CUT_DUR_MIN,
+  CUT_FACING_CAMERA,
+  CUT_FACING_ITEM,
+  CUT_PATH_MAX,
+  bakeCutscene,
+  clampCutDuration,
+  createCutActor,
+  cutActorMoves,
+  cutSampleAt,
+  cutsceneBytes,
+  cutsceneIssues,
+  ensureCutscene,
+  yawByteToRad,
+} from "./cutsceneModel.js";
 import {
   FONT_COUNT,
   FONT_FIRST,
@@ -288,6 +308,16 @@ const collapsedRooms = new Set();
 let layoutSearch = "";
 /** Last room used for placement / parenting. */
 let lastRoomId = null;
+/** Cutscene tab: timeline cursor, playback, bake cache. Session only. */
+let cutTimeMs = 0;
+let cutPlaying = false;
+let cutLoop = true;
+let cutRaf = 0;
+let cutLastTs = 0;
+let cutBakeKey = "";
+let cutBakeVal = null;
+let cutSliderEl = null;
+let cutReadoutEl = null;
 
 const layoutView = new LayoutView(document.getElementById("view-canvas"), {
   stage: document.getElementById("map-stage"),
@@ -392,6 +422,7 @@ const previewView = new PreviewView(document.getElementById("preview-canvas"), {
   getRoom: () => previewRoom(),
   getSpawn: () => previewSpawn(),
   getEditSpawn: () => selectedSpawn(),
+  getCutscene: () => cutPreviewState(),
   getRoomsOnlyMode: () => roomsOnlyDraw,
   pistolImg: document.getElementById("preview-pistol-png"),
   onRotate: (yaw) => {
@@ -657,6 +688,546 @@ const fontView = new FontView({
   onUiChange: () => markUi(),
   onStatus: (msg, isError) => setStatus(msg, isError),
 });
+
+/* ---------------- Cutscene tab ---------------- */
+
+const cutView = new CutsceneView(document.getElementById("view-canvas"), {
+  stage: document.getElementById("map-stage"),
+  getDoc: () => doc,
+  getCutscene: () => cutCurrent(),
+  getRoom: () => cutRoom(),
+  getBaked: () => cutBaked(),
+  getTimeMs: () => cutTimeMs,
+  beginUndo,
+  endUndo,
+  onChange: () => {
+    markDirty();
+    previewView.draw();
+    renderInspector();
+    renderCutsceneLeft();
+  },
+  onSelect: () => {
+    renderInspector();
+    renderCutsceneLeft();
+  },
+  onViewChanged: () => markUi(),
+  onDelete: () => cutDeleteSelection(),
+  onFocus: () => cutView.focus(cutRoom()),
+});
+
+function cutCurrent() {
+  return activeMap(doc).cutscene || null;
+}
+
+function cutRoom() {
+  const cut = cutCurrent();
+  return cut?.roomId ? roomById(doc, cut.roomId) : null;
+}
+
+function cutBaked() {
+  const cut = cutCurrent();
+  if (!cut) return null;
+  const key = JSON.stringify(cut);
+  if (key !== cutBakeKey) {
+    cutBakeKey = key;
+    cutBakeVal = bakeCutscene(cut);
+  }
+  return cutBakeVal;
+}
+
+function cutDurMs() {
+  const cut = cutCurrent();
+  return cut ? Math.round(cut.duration * 1000) : 0;
+}
+
+function cutSelActor() {
+  return cutCurrent()?.actors.find((a) => a.id === cutView.sel.actor) || null;
+}
+
+/** What the game camera sees at the timeline cursor, for the Preview panel. */
+function cutPreviewState() {
+  if (editorMode !== "cutscene") return null;
+  const cut = cutCurrent();
+  const baked = cutBaked();
+  const out = { room: cutRoom(), cam: null, actors: [] };
+  if (!cut || !baked) return out;
+  for (const a of cut.actors) {
+    const b = baked.actors.find((o) => o.id === a.id);
+    if (!b) continue;
+    const s = cutSampleAt(b, cutTimeMs);
+    if (a.kind === "camera") out.cam = { x: s.x, y: s.y, z: s.z, yaw: yawByteToRad(s.yaw), pitch: 0 };
+    else out.actors.push({ obj: { x: s.x, y: s.y, z: s.z, scale: a.scale }, key: a.item, yaw: yawByteToRad(s.yaw) });
+  }
+  return out;
+}
+
+/** Mutate the cutscene with undo, then redraw everything. */
+function cutApply(fn) {
+  pushUndo();
+  fn(ensureCutscene(activeMap(doc)));
+  const cut = cutCurrent();
+  if (cut) {
+    for (const a of cut.actors) if (a.path.length) Object.assign(a, { x: a.path[0].x, y: a.path[0].y, z: a.path[0].z });
+    cutTimeMs = Math.min(cutTimeMs, cutDurMs());
+  }
+  markDirty();
+  refreshAll();
+}
+
+function cutSpawnPos(kind) {
+  const room = cutRoom();
+  if (!room) return { x: 128, y: kind === "camera" ? 4 : 64, z: 128 };
+  return {
+    x: Math.round(room.x + room.sx / 2),
+    y: Math.round(room.y + (kind === "camera" ? Math.min(4, room.sy) : room.sy / 2)),
+    z: Math.round(room.z + room.sz / 2),
+  };
+}
+
+function cutAddActor(kind) {
+  const cut = cutCurrent();
+  if (cut && cut.actors.length >= CUT_ACTOR_MAX) return;
+  if (kind === "camera" && cut?.actors.some((a) => a.kind === "camera")) return;
+  const keys = placeableItemKeys();
+  const item = keys.includes("planet") ? "planet" : keys[0];
+  const actor = createCutActor(kind, { ...cutSpawnPos(kind), item });
+  cutApply((c) => c.actors.push(actor));
+  cutView.setSelection(actor.id, -1);
+}
+
+function cutDeleteSelection() {
+  const cut = cutCurrent();
+  const a = cutSelActor();
+  if (!cut || !a) return;
+  const pt = cutView.sel.point;
+  if (pt >= 0 && a.path.length) {
+    cutApply(() => {
+      a.path.splice(pt, 1);
+      if (a.path.length < 2) {
+        if (a.path.length === 1) Object.assign(a, a.path[0]);
+        a.path = [];
+      }
+    });
+    cutView.setSelection(a.id, a.path.length ? Math.min(pt, a.path.length - 1) : -1);
+    return;
+  }
+  cutApply((c) => {
+    c.actors = c.actors.filter((o) => o.id !== a.id);
+    for (const o of c.actors) if (o.target === a.id) o.target = null;
+  });
+  cutView.setSelection(null, -1);
+}
+
+/** Append a point (afterIndex < 0) or insert one after afterIndex. An empty path becomes start + one point. */
+function cutAddPoint(a, afterIndex) {
+  cutApply(() => {
+    if (!a.path.length) {
+      const start = { x: a.x, y: a.y, z: a.z };
+      a.path = [start, { ...start, z: Math.min(255, start.z + 16) }];
+      return;
+    }
+    if (a.path.length >= CUT_PATH_MAX) return;
+    const i = afterIndex >= 0 ? afterIndex : a.path.length - 1;
+    const p = a.path[i];
+    const q = a.path[i + 1];
+    const prev = a.path[i - 1];
+    const base = q
+      ? { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2, z: (p.z + q.z) / 2 }
+      : prev
+        ? { x: 2 * p.x - prev.x, y: 2 * p.y - prev.y, z: 2 * p.z - prev.z }
+        : { x: p.x, y: p.y, z: p.z + 16 };
+    const clamp = (n) => Math.max(0, Math.min(255, Math.round(n)));
+    a.path.splice(i + 1, 0, { x: clamp(base.x), y: clamp(base.y), z: clamp(base.z) });
+  });
+  const made = afterIndex >= 0 ? afterIndex + 1 : a.path.length - 1;
+  cutView.setSelection(a.id, Math.max(0, Math.min(a.path.length - 1, made)));
+}
+
+function cutSyncTimeUi() {
+  if (cutSliderEl) cutSliderEl.value = String(Math.round(cutTimeMs));
+  if (cutReadoutEl) cutReadoutEl.textContent = `${(cutTimeMs / 1000).toFixed(2)} s`;
+  cutView.draw();
+  previewView.draw();
+}
+
+function stopCutPlay() {
+  cutPlaying = false;
+  cancelAnimationFrame(cutRaf);
+}
+
+function cutPlayStep(now) {
+  if (!cutPlaying) return;
+  const dur = cutDurMs();
+  cutTimeMs += now - cutLastTs;
+  cutLastTs = now;
+  if (cutTimeMs >= dur) {
+    if (cutLoop && dur > 0) cutTimeMs %= dur;
+    else {
+      cutTimeMs = dur;
+      cutPlaying = false;
+    }
+  }
+  cutSyncTimeUi();
+  if (cutPlaying) cutRaf = requestAnimationFrame(cutPlayStep);
+  else renderCutsceneTransport();
+}
+
+function toggleCutPlay() {
+  if (cutPlaying) {
+    stopCutPlay();
+    renderCutsceneTransport();
+    return;
+  }
+  if (cutTimeMs >= cutDurMs()) cutTimeMs = 0;
+  cutPlaying = true;
+  cutLastTs = performance.now();
+  cutRaf = requestAnimationFrame(cutPlayStep);
+  renderCutsceneTransport();
+}
+
+function renderCutsceneTransport() {
+  const root = document.getElementById("cut-transport");
+  if (!root) return;
+  root.replaceChildren();
+  const dur = cutDurMs();
+  const slider = document.createElement("input");
+  slider.type = "range";
+  slider.min = "0";
+  slider.max = String(Math.max(1, dur));
+  slider.step = "1";
+  slider.value = String(Math.round(Math.min(cutTimeMs, dur)));
+  slider.disabled = !dur;
+  slider.addEventListener("input", () => {
+    cutTimeMs = Number(slider.value);
+    cutSyncTimeUi();
+  });
+  const out = document.createElement("span");
+  out.className = "anim-frame-num";
+  out.textContent = `${(cutTimeMs / 1000).toFixed(2)} s`;
+  cutSliderEl = slider;
+  cutReadoutEl = out;
+  const play = document.createElement("button");
+  play.type = "button";
+  play.textContent = cutPlaying ? "Pause" : "Play";
+  play.disabled = !dur;
+  play.addEventListener("click", toggleCutPlay);
+  const loop = document.createElement("button");
+  loop.type = "button";
+  loop.className = "toggle";
+  loop.textContent = "Loop";
+  loop.classList.toggle("active", cutLoop);
+  loop.addEventListener("click", () => {
+    cutLoop = !cutLoop;
+    loop.classList.toggle("active", cutLoop);
+  });
+  const start = document.createElement("button");
+  start.type = "button";
+  start.textContent = "|<";
+  start.title = "Jump to start";
+  start.addEventListener("click", () => {
+    cutTimeMs = 0;
+    cutSyncTimeUi();
+  });
+  const row = document.createElement("div");
+  row.className = "toolbar-actions anim-transport-btns";
+  row.append(start, play, loop, out);
+  const wrap = document.createElement("div");
+  wrap.className = "anim-transport";
+  wrap.append(slider, row);
+  root.appendChild(wrap);
+}
+
+function cutRoomLabel(r, i) {
+  return r.name ? `${i + 1}. ${r.name}` : `Room ${i + 1}`;
+}
+
+function renderCutsceneLeft() {
+  const root = document.getElementById("cut-left");
+  if (!root) return;
+  root.replaceChildren();
+  const map = activeMap(doc);
+  const cut = map.cutscene || null;
+
+  const h = document.createElement("h2");
+  h.textContent = "Cutscene";
+  root.appendChild(h);
+
+  const lvl = document.createElement("select");
+  for (const name of LEVEL_NAMES) {
+    const o = document.createElement("option");
+    o.value = name;
+    o.textContent = doc.maps[name]?.name ? `${name} ${doc.maps[name].name}` : name;
+    lvl.appendChild(o);
+  }
+  lvl.value = doc.activeLevel;
+  lvl.addEventListener("change", () => {
+    stopCutPlay();
+    cutTimeMs = 0;
+    cutView.sel = { actor: null, point: -1 };
+    switchLevel(lvl.value);
+  });
+  root.appendChild(field("Map", lvl));
+
+  const rooms = roomsOf(doc);
+  const roomSel = document.createElement("select");
+  const none = document.createElement("option");
+  none.value = "";
+  none.textContent = "(no cutscene)";
+  roomSel.appendChild(none);
+  rooms.forEach((r, i) => {
+    const o = document.createElement("option");
+    o.value = r.id;
+    o.textContent = cutRoomLabel(r, i);
+    roomSel.appendChild(o);
+  });
+  roomSel.value = cut?.roomId && rooms.some((r) => r.id === cut.roomId) ? cut.roomId : "";
+  roomSel.title = "The room set aside for the cutscene. Build it in the Maps tab; leave it unreachable.";
+  roomSel.addEventListener("change", () => {
+    cutApply((c) => {
+      c.roomId = roomSel.value || null;
+    });
+    cutView.focus(cutRoom());
+  });
+  root.appendChild(field("Room", roomSel));
+
+  root.appendChild(
+    field(
+      "Seconds",
+      numInput(
+        cut?.duration ?? 3,
+        (v) => cutApply((c) => (c.duration = clampCutDuration(v))),
+        CUT_DUR_MIN,
+        CUT_DUR_MAX,
+        0.125
+      )
+    )
+  );
+
+  const add = document.createElement("div");
+  add.className = "btn-row";
+  const hasCam = !!cut?.actors.some((a) => a.kind === "camera");
+  const full = (cut?.actors.length ?? 0) >= CUT_ACTOR_MAX;
+  const bItem = document.createElement("button");
+  bItem.type = "button";
+  bItem.textContent = "+ Item";
+  bItem.disabled = full;
+  bItem.addEventListener("click", () => cutAddActor("item"));
+  const bCam = document.createElement("button");
+  bCam.type = "button";
+  bCam.textContent = "+ Camera";
+  bCam.disabled = full || hasCam;
+  bCam.addEventListener("click", () => cutAddActor("camera"));
+  const bDel = document.createElement("button");
+  bDel.type = "button";
+  bDel.className = "danger";
+  bDel.textContent = "Remove";
+  bDel.disabled = !cutSelActor();
+  bDel.addEventListener("click", () => {
+    cutView.sel.point = -1;
+    cutDeleteSelection();
+  });
+  add.append(bItem, bCam, bDel);
+  root.appendChild(add);
+
+  const h2 = document.createElement("h2");
+  h2.textContent = "Actors";
+  root.appendChild(h2);
+  const ul = document.createElement("ul");
+  ul.className = "object-list";
+  for (const a of cut?.actors || []) {
+    const li = document.createElement("li");
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = `${a.kind === "camera" ? "Camera" : itemLabel(a.item)}${cutActorMoves(a) ? "  (path)" : ""}`;
+    if (a.id === cutView.sel.actor) btn.className = "active";
+    btn.addEventListener("click", () => cutView.setSelection(a.id, -1));
+    li.appendChild(btn);
+    ul.appendChild(li);
+  }
+  root.appendChild(ul);
+
+  const info = document.createElement("div");
+  info.className = "cut-issues";
+  if (cut) {
+    const bytes = cutsceneBytes(cutBaked());
+    const line = document.createElement("p");
+    line.className = "muted";
+    line.textContent = `Data ${bytes} B of about ${CUT_DATA_BUDGET} B`;
+    info.appendChild(line);
+    for (const msg of cutsceneIssues(doc, map)) {
+      const p = document.createElement("p");
+      p.className = "cut-issue";
+      p.textContent = msg;
+      info.appendChild(p);
+    }
+  }
+  root.appendChild(info);
+}
+
+function cutSelectField(options, value, onPick, labelOf = (v) => v) {
+  const sel = document.createElement("select");
+  for (const v of options) {
+    const o = document.createElement("option");
+    o.value = String(v);
+    o.textContent = labelOf(v);
+    sel.appendChild(o);
+  }
+  sel.value = String(value);
+  sel.addEventListener("change", () => onPick(sel.value));
+  return sel;
+}
+
+function renderCutsceneInspector(root) {
+  const h = document.createElement("h2");
+  h.textContent = "Actor";
+  root.appendChild(h);
+  const cut = cutCurrent();
+  const a = cutSelActor();
+  if (!cut || !a) {
+    const p = document.createElement("p");
+    p.className = "muted";
+    p.textContent = cut ? "Select an actor in the list or the view." : "Pick a cutscene room, then add a camera and items.";
+    root.appendChild(p);
+    return;
+  }
+
+  if (a.kind === "item") {
+    root.appendChild(field("Item", cutSelectField(placeableItemKeys(), a.item, (v) => cutApply(() => (a.item = v)), itemLabel)));
+    root.appendChild(
+      field("Scale", cutSelectField(ITEM_SCALES, a.scale, (v) => cutApply(() => (a.scale = clampItemScale(Number(v)))), (v) => `${v}x`))
+    );
+    root.appendChild(
+      field(
+        "Facing",
+        cutSelectField(CUT_FACING_ITEM, a.facing, (v) => cutApply(() => (a.facing = v)), (v) => (v === "path" ? "along path" : "fixed"))
+      )
+    );
+    root.appendChild(
+      field(
+        "Heading",
+        cutSelectField(
+          ENEMY_FACINGS.map((_, i) => i),
+          a.rot,
+          (v) => cutApply(() => (a.rot = clampEnemyRot(Number(v)))),
+          (i) => ENEMY_FACINGS[i]
+        )
+      )
+    );
+  } else {
+    root.appendChild(
+      field(
+        "Facing",
+        cutSelectField(
+          CUT_FACING_CAMERA,
+          a.facing,
+          (v) => cutApply(() => (a.facing = v)),
+          (v) => (v === "path" ? "along path" : v === "target" ? "face item" : "fixed")
+        )
+      )
+    );
+    if (a.facing === "target") {
+      const items = cut.actors.filter((o) => o.kind === "item");
+      const sel = document.createElement("select");
+      const none = document.createElement("option");
+      none.value = "";
+      none.textContent = "(choose)";
+      sel.appendChild(none);
+      for (const o of items) {
+        const op = document.createElement("option");
+        op.value = o.id;
+        op.textContent = itemLabel(o.item);
+        sel.appendChild(op);
+      }
+      sel.value = items.some((o) => o.id === a.target) ? a.target : "";
+      sel.addEventListener("change", () => cutApply(() => (a.target = sel.value || null)));
+      root.appendChild(field("Look at", sel));
+    } else if (a.facing === "fixed") {
+      root.appendChild(
+        sliderField("Yaw", a.yaw, {
+          min: 0,
+          max: 255,
+          step: 1,
+          format: (v) => `${Math.round((v * 360) / 256)}°`,
+          onInput: (v) => {
+            a.yaw = v;
+            cutView.draw();
+            previewView.draw();
+          },
+          onChange: (v) => cutApply(() => (a.yaw = v)),
+        })
+      );
+    }
+  }
+
+  const pt = cutView.sel.point;
+  const moves = a.path.length > 0;
+  const hp = document.createElement("h2");
+  hp.textContent = moves ? `Path (${a.path.length} points)` : "Path";
+  root.appendChild(hp);
+  const axes = (target) =>
+    ["x", "y", "z"].map((k) => ({
+      axis: k,
+      value: target[k],
+      min: 0,
+      max: 255,
+      step: 1,
+      onChange: (v) => cutApply(() => (target[k] = Math.max(0, Math.min(255, Math.round(v))))),
+    }));
+  if (!moves) {
+    const p = document.createElement("p");
+    p.className = "muted";
+    p.textContent = "Stationary.";
+    root.appendChild(p);
+    root.appendChild(vec3Field("x y z", axes(a)));
+  } else {
+    const list = document.createElement("ul");
+    list.className = "object-list";
+    a.path.forEach((p, i) => {
+      const li = document.createElement("li");
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = `${i + 1}.  ${p.x}, ${p.y}, ${p.z}`;
+      if (i === pt) btn.className = "active";
+      btn.addEventListener("click", () => cutView.setSelection(a.id, i));
+      li.appendChild(btn);
+      list.appendChild(li);
+    });
+    root.appendChild(list);
+    const p = a.path[pt];
+    if (p) root.appendChild(vec3Field(`point ${pt + 1}`, axes(p)));
+  }
+  const row = document.createElement("div");
+  row.className = "btn-row";
+  const bAdd = document.createElement("button");
+  bAdd.type = "button";
+  bAdd.textContent = moves ? "Add point" : "Make path";
+  bAdd.disabled = a.path.length >= CUT_PATH_MAX;
+  bAdd.addEventListener("click", () => cutAddPoint(a, -1));
+  row.appendChild(bAdd);
+  if (moves) {
+    const bIns = document.createElement("button");
+    bIns.type = "button";
+    bIns.textContent = "Insert after";
+    bIns.disabled = pt < 0 || pt >= a.path.length - 1 || a.path.length >= CUT_PATH_MAX;
+    bIns.addEventListener("click", () => cutAddPoint(a, pt));
+    const bDel = document.createElement("button");
+    bDel.type = "button";
+    bDel.textContent = "Delete point";
+    bDel.disabled = pt < 0;
+    bDel.addEventListener("click", () => cutDeleteSelection());
+    const bClr = document.createElement("button");
+    bClr.type = "button";
+    bClr.textContent = "Clear path";
+    bClr.addEventListener("click", () => {
+      cutApply(() => {
+        a.path = [];
+      });
+      cutView.setSelection(a.id, -1);
+    });
+    row.append(bIns, bDel, bClr);
+  }
+  root.appendChild(row);
+}
 
 function setStatus(msg, isError = false) {
   statusEl.textContent = msg || "";
@@ -1289,6 +1860,7 @@ function setMode(mode) {
   document.getElementById("btn-mode-items")?.classList.toggle("active", mode === "items");
   document.getElementById("btn-mode-build")?.classList.toggle("active", mode === "build");
   document.getElementById("btn-mode-font")?.classList.toggle("active", mode === "font");
+  document.getElementById("btn-mode-cutscene")?.classList.toggle("active", mode === "cutscene");
   document.querySelector(".layout")?.classList.toggle("layout-build", mode === "build");
   const leftAside = document.querySelector(".left");
   if (leftAside) leftAside.hidden = mode === "build";
@@ -1320,6 +1892,10 @@ function setMode(mode) {
   if (hintEl) hintEl.hidden = mode === "build";
   const fontLeft = document.getElementById("font-left");
   if (fontLeft) fontLeft.hidden = mode !== "font";
+  const cutLeft = document.getElementById("cut-left");
+  if (cutLeft) cutLeft.hidden = mode !== "cutscene";
+  const cutTransport = document.getElementById("cut-transport");
+  if (cutTransport) cutTransport.hidden = mode !== "cutscene";
   document.getElementById("layout-left").hidden = mode !== "layout";
   document.querySelector(".left")?.classList.toggle("left-map", mode === "layout");
   document.getElementById("anim-left").hidden = mode !== "anim";
@@ -1331,7 +1907,7 @@ function setMode(mode) {
     if (btn) btn.disabled = mode !== "layout";
   }
   document.getElementById("overhead-panel").hidden = mode !== "layout";
-  document.getElementById("preview-panel").hidden = mode !== "layout";
+  document.getElementById("preview-panel").hidden = mode !== "layout" && mode !== "cutscene";
   if (mode !== "layout") clearPaletteDrag();
   updateCenterChrome();
   document.getElementById("hint").textContent =
@@ -1341,6 +1917,8 @@ function setMode(mode) {
           ? "LMB box-select verts · click vert/line to select · Shift add · gizmo moves · V add vert · L add line · Ctrl+C/V copy/paste · Del · F focus · MMB pan · Wheel / Alt+RMB zoom · Perspective: Alt+LMB / RMB orbit · Front/Right/Top: Alt+LMB / RMB pan · pan and zoom are shared by all views"
           : mode === "build"
               ? "Open the repo once · Reload after a build"
+              : mode === "cutscene"
+                ? "Click an actor or path point to select · gizmo moves it · Alt+LMB / RMB orbit · MMB pan · Wheel / Alt+RMB zoom · F frame room · Del removes the selected point or actor · scrub or Play the timeline; the Preview panel shows the camera"
               : mode === "font"
                 ? "LMB paint · RMB erase · drag a glyph into a grid · arrows shift · H/V flip · I invert · Del clear · 1-4 pick grid · Ctrl+C/V copy/paste glyph"
                 : animHintText();
@@ -1348,6 +1926,12 @@ function setMode(mode) {
   layoutView.enabled = mode === "layout";
   animView.enabled = mode === "anim";
   itemView.enabled = mode === "items";
+  cutView.enabled = mode === "cutscene";
+  if (mode !== "cutscene") stopCutPlay();
+  if (mode === "cutscene") {
+    renderCutsceneTransport();
+    requestAnimationFrame(() => cutView.resize());
+  }
   if (mode === "layout") layoutView.resize();
   else if (mode === "anim") {
     requestAnimationFrame(() => {
@@ -1923,7 +2507,9 @@ function updateCenterChrome() {
           ? "Build"
           : editorMode === "font"
             ? "Font"
-            : "Enemy";
+            : editorMode === "cutscene"
+              ? `Cutscene — ${doc.activeLevel}`
+              : "Enemy";
   if (statsEl) {
     statsEl.hidden = true;
     statsEl.textContent = "";
@@ -3713,7 +4299,7 @@ function renderInspector() {
     p.className = stats.over ? "error" : "muted";
     p.textContent = `${stats.nv} verts · ${stats.ne} lines · unique X ${stats.nx}/${ITEM_MAX_UNIQUE} · unique Z ${stats.nz}/${ITEM_MAX_UNIQUE} · ~${stats.bytes} B · page ${itemPagePlan(doc).pageOf[itemMeshKey] ?? 0}`;
     root.appendChild(p);
-    if (itemMeshKey !== "backpack" && !doc.items[itemMeshKey].verts.length) {
+    if (itemMeshKey !== "backpack" && !doc.items[itemMeshKey].verts.length && !doc.items[itemMeshKey].spheres?.length) {
       const f = document.createElement("p");
       f.className = "muted";
       f.textContent = DOOR_MESH_KEYS.includes(itemMeshKey)
@@ -3766,6 +4352,10 @@ function renderInspector() {
   }
   if (editorMode === "font") {
     renderFontInspector(root);
+    return;
+  }
+  if (editorMode === "cutscene") {
+    renderCutsceneInspector(root);
     return;
   }
   if (editorMode === "layout") {
@@ -4966,9 +5556,14 @@ function refreshPanels() {
   renderEnemyList();
   renderItemList();
   renderInspector();
+  if (editorMode === "cutscene") {
+    renderCutsceneLeft();
+    renderCutsceneTransport();
+  }
   syncSharewareFolderButtons();
   if (editorMode !== "build") overheadView.draw();
-  if (editorMode === "layout") previewView.draw();
+  if (editorMode === "layout" || editorMode === "cutscene") previewView.draw();
+  if (editorMode === "cutscene") cutView.draw();
   if (editorMode === "layout") layoutView.draw();
   if (editorMode === "anim") animView.draw();
   if (editorMode === "items") itemView.draw();
@@ -4980,6 +5575,7 @@ function refreshAll() {
   refreshPanels();
   if (editorMode === "layout") layoutView.draw();
   else if (editorMode === "items") itemView.draw();
+  else if (editorMode === "cutscene") cutView.draw();
   else if (editorMode !== "build" && editorMode !== "font") animView.draw();
 }
 
@@ -5010,6 +5606,9 @@ document.getElementById("btn-mode-build")?.addEventListener("click", () => {
 });
 document.getElementById("btn-mode-font")?.addEventListener("click", () => {
   setMode("font");
+});
+document.getElementById("btn-mode-cutscene")?.addEventListener("click", () => {
+  setMode("cutscene");
 });
 document.getElementById("btn-mdl-overlay").addEventListener("click", () => {
   setRefSpriteOn(!refSpriteOn);

@@ -440,7 +440,7 @@ export class LayoutView {
     const p = this.#eventPos(e);
     if (e.button === 1) {
       if (e.altKey) {
-        this.orbit = this.#beginOrbit(p);
+        this.orbit = this.#beginOrbit(p, true);
       } else {
         this.pan = this.#beginOrbit(p);
       }
@@ -461,7 +461,7 @@ export class LayoutView {
     if (e.button !== 0) return;
     if (e.altKey) {
       e.preventDefault();
-      this.orbit = this.#beginOrbit(p);
+      this.orbit = this.#beginOrbit(p, true);
       this.canvas.setPointerCapture(e.pointerId);
       return;
     }
@@ -548,14 +548,43 @@ export class LayoutView {
     };
   }
 
-  #beginOrbit(p) {
+  /** Center of the union AABB of the selected objects, or null when nothing (resolvable) is selected. */
+  #selectionCenter(doc) {
+    const ids = new Set(this.#selectedIds());
+    if (!ids.size) return null;
+    let min = null;
+    let max = null;
+    for (const o of activeMap(doc).objects) {
+      if (!ids.has(o.id)) continue;
+      const lo = { x: o.x, y: o.y, z: o.z };
+      const hi = { x: o.x + o.sx, y: o.y + o.sy, z: o.z + o.sz };
+      if (!min) {
+        min = lo;
+        max = hi;
+        continue;
+      }
+      min = { x: Math.min(min.x, lo.x), y: Math.min(min.y, lo.y), z: Math.min(min.z, lo.z) };
+      max = { x: Math.max(max.x, hi.x), y: Math.max(max.y, hi.y), z: Math.max(max.z, hi.z) };
+    }
+    if (!min) return null;
+    return { x: (min.x + max.x) / 2, y: (min.y + max.y) / 2, z: (min.z + max.z) / 2 };
+  }
+
+  /** `useSelection`: with something selected, pivot on it instead of whatever is under the cursor (Alt+LMB/MMB orbit). */
+  #beginOrbit(p, useSelection = false) {
     const cam = this.camera;
     const doc = this.opts.getDoc();
-    const hit = this.#pick(doc, p.x, p.y);
-    let obj = hit ? activeMap(doc).objects.find((o) => o.id === hit.id) || null : null;
-    if (!obj) obj = this.#closestRoomToCursor(doc, p.x, p.y);
+    const selCenter = useSelection ? this.#selectionCenter(doc) : null;
+    let obj = null;
+    if (!selCenter) {
+      const hit = this.#pick(doc, p.x, p.y);
+      obj = hit ? activeMap(doc).objects.find((o) => o.id === hit.id) || null : null;
+      if (!obj) obj = this.#closestRoomToCursor(doc, p.x, p.y);
+    }
     let target;
-    if (obj) {
+    if (selCenter) {
+      target = selCenter;
+    } else if (obj) {
       target = aabbCenter(obj);
     } else {
       const ray = screenRay(p.x, p.y, cam, this.cssW, this.cssH);

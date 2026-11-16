@@ -1,4 +1,5 @@
 import { fontBlank, normalizeFont } from "./fontModel.js";
+import { normalizeCutscene } from "./cutsceneModel.js";
 import {
   ROOM_SHAPES,
   clampRoomShape,
@@ -1513,8 +1514,9 @@ export function migrateItemMeshes(rawItems, fromVersion) {
   return out;
 }
 
+/** Drawable mesh: verts + lines, or just spheres (a sphere-only item has no verts; the cooker adds the origins). */
 export function itemMeshHasGeom(mesh) {
-  return !!(mesh && mesh.verts?.length && mesh.lines?.length);
+  return !!(mesh && ((mesh.verts?.length && mesh.lines?.length) || mesh.spheres?.length));
 }
 
 export function itemMeshFor(doc, type) {
@@ -3662,6 +3664,8 @@ export function objectModelVerts(doc, obj) {
         }
       }
     }
+    // Sphere-only items have no segments: the sphere centres stand in for the model.
+    for (const s of itemSphereWorld(obj, mesh, itemYawFor(doc, obj.pickup, obj.rot))) verts.push({ x: s.x, y: s.y, z: s.z });
     return verts;
   }
   if (isFigureObject(obj)) {
@@ -4180,6 +4184,13 @@ export function assignNearestElevatorTags(objects) {
   return changed;
 }
 
+/** Adds the map-level cutscene block when it holds anything (key order: after the map header, before objects is not needed). */
+function withCutscene(data, rawCut) {
+  const cut = normalizeCutscene(rawCut);
+  if (cut) data.cutscene = cut;
+  return data;
+}
+
 export function mapFileRecords(doc) {
   let tagsFilled = false;
   relinkAllDoors(doc);
@@ -4190,13 +4201,16 @@ export function mapFileRecords(doc) {
     if (assignNearestElevatorTags(objects)) tagsFilled = true;
     return {
       file: `${name.toLowerCase()}.json`,
-      data: {
-        name: clampName(map.name),
-        enterVerb: clampVerb(map.enterVerb),
-        jumpSpeed: clampJumpSpeed(map.jumpSpeed),
-        gravity: clampGravity(map.gravity),
-        objects,
-      },
+      data: withCutscene(
+        {
+          name: clampName(map.name),
+          enterVerb: clampVerb(map.enterVerb),
+          jumpSpeed: clampJumpSpeed(map.jumpSpeed),
+          gravity: clampGravity(map.gravity),
+          objects,
+        },
+        map.cutscene
+      ),
     };
   });
   records.tagsFilled = tagsFilled;
@@ -4527,6 +4541,7 @@ export function parseEditorState(raw) {
     raw.mode === "layout" ||
     raw.mode === "items" ||
     raw.mode === "font" ||
+    raw.mode === "cutscene" ||
     raw.mode === "build"
   ) {
     d.mode = raw.mode;
@@ -4694,6 +4709,8 @@ export function normalizeDocument(raw) {
         gravity: clampGravity(src.gravity),
         objects: parseObjects(src.objects),
       };
+      const cut = normalizeCutscene(src.cutscene);
+      if (cut) doc.maps[name].cutscene = cut;
     }
   } else {
     doc.maps.MAPA = {
@@ -4703,6 +4720,8 @@ export function normalizeDocument(raw) {
       gravity: clampGravity(raw.map?.gravity),
       objects: parseObjects(raw.map?.objects || raw.objects),
     };
+    const cut = normalizeCutscene(raw.map?.cutscene);
+    if (cut) doc.maps.MAPA.cutscene = cut;
   }
   const rawLevel = migrateLevelKey(raw.activeLevel);
   doc.activeLevel = LEVEL_NAMES.includes(rawLevel) ? rawLevel : "MAPA";

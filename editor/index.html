@@ -1814,6 +1814,26 @@ body.font-dragging * {
   cursor: grabbing !important;
 }
 
+/* Cutscene tab */
+.cut-transport {
+  flex: 0 0 auto;
+  margin-top: 0.5rem;
+}
+
+.cut-transport[hidden] {
+  display: none !important;
+}
+
+.cut-issues {
+  margin-top: 0.5rem;
+}
+
+.cut-issue {
+  margin: 0.2rem 0;
+  font-size: 0.8rem;
+  color: #e8a0a0;
+}
+
   </style>
 </head>
 <body>
@@ -1823,6 +1843,7 @@ body.font-dragging * {
       <button type="button" id="btn-mode-layout" class="active">Maps</button>
       <button type="button" id="btn-mode-anim">Enemies</button>
       <button type="button" id="btn-mode-items">Items</button>
+      <button type="button" id="btn-mode-cutscene">Cutscene</button>
       <button type="button" id="btn-mode-font">Font</button>
       <button type="button" id="btn-mode-build">Build</button>
     </div>
@@ -1890,6 +1911,7 @@ body.font-dragging * {
         <div id="item-mesh-list" class="palette-things item-grid"></div>
       </section>
       <section id="font-left" hidden></section>
+      <section id="cut-left" hidden></section>
     </aside>
 
     <section class="center">
@@ -1918,6 +1940,7 @@ body.font-dragging * {
         </div>
       </div>
       <p class="hint" id="hint"></p>
+      <div id="cut-transport" class="cut-transport" hidden></div>
       <div id="build-panel" class="build-panel" hidden></div>
       <div id="font-panel" class="font-panel" hidden></div>
     </section>
@@ -5677,8 +5700,9 @@ function migrateItemMeshes(rawItems, fromVersion) {
   return out;
 }
 
+/** Drawable mesh: verts + lines, or just spheres (a sphere-only item has no verts; the cooker adds the origins). */
 function itemMeshHasGeom(mesh) {
-  return !!(mesh && mesh.verts?.length && mesh.lines?.length);
+  return !!(mesh && ((mesh.verts?.length && mesh.lines?.length) || mesh.spheres?.length));
 }
 
 function itemMeshFor(doc, type) {
@@ -7826,6 +7850,8 @@ function objectModelVerts(doc, obj) {
         }
       }
     }
+    // Sphere-only items have no segments: the sphere centres stand in for the model.
+    for (const s of itemSphereWorld(obj, mesh, itemYawFor(doc, obj.pickup, obj.rot))) verts.push({ x: s.x, y: s.y, z: s.z });
     return verts;
   }
   if (isFigureObject(obj)) {
@@ -8344,6 +8370,13 @@ function assignNearestElevatorTags(objects) {
   return changed;
 }
 
+/** Adds the map-level cutscene block when it holds anything (key order: after the map header, before objects is not needed). */
+function withCutscene(data, rawCut) {
+  const cut = normalizeCutscene(rawCut);
+  if (cut) data.cutscene = cut;
+  return data;
+}
+
 function mapFileRecords(doc) {
   let tagsFilled = false;
   relinkAllDoors(doc);
@@ -8354,13 +8387,16 @@ function mapFileRecords(doc) {
     if (assignNearestElevatorTags(objects)) tagsFilled = true;
     return {
       file: `${name.toLowerCase()}.json`,
-      data: {
-        name: clampName(map.name),
-        enterVerb: clampVerb(map.enterVerb),
-        jumpSpeed: clampJumpSpeed(map.jumpSpeed),
-        gravity: clampGravity(map.gravity),
-        objects,
-      },
+      data: withCutscene(
+        {
+          name: clampName(map.name),
+          enterVerb: clampVerb(map.enterVerb),
+          jumpSpeed: clampJumpSpeed(map.jumpSpeed),
+          gravity: clampGravity(map.gravity),
+          objects,
+        },
+        map.cutscene
+      ),
     };
   });
   records.tagsFilled = tagsFilled;
@@ -8691,6 +8727,7 @@ function parseEditorState(raw) {
     raw.mode === "layout" ||
     raw.mode === "items" ||
     raw.mode === "font" ||
+    raw.mode === "cutscene" ||
     raw.mode === "build"
   ) {
     d.mode = raw.mode;
@@ -8858,6 +8895,8 @@ function normalizeDocument(raw) {
         gravity: clampGravity(src.gravity),
         objects: parseObjects(src.objects),
       };
+      const cut = normalizeCutscene(src.cutscene);
+      if (cut) doc.maps[name].cutscene = cut;
     }
   } else {
     doc.maps.MAPA = {
@@ -8867,6 +8906,8 @@ function normalizeDocument(raw) {
       gravity: clampGravity(raw.map?.gravity),
       objects: parseObjects(raw.map?.objects || raw.objects),
     };
+    const cut = normalizeCutscene(raw.map?.cutscene);
+    if (cut) doc.maps.MAPA.cutscene = cut;
   }
   const rawLevel = migrateLevelKey(raw.activeLevel);
   doc.activeLevel = LEVEL_NAMES.includes(rawLevel) ? rawLevel : "MAPA";
@@ -8933,6 +8974,364 @@ function normalizeDocument(raw) {
     doc.enemies = createAllCreatures().filter((e) => DOOM_SPRITE_PREFIX[e.name]);
   }
   return doc;
+}
+
+
+// ---- js/cutsceneModel.js ----
+/*
+ * Cutscene data (map.cutscene) and its bake. Pure: no DOM.
+ *
+ * map.cutscene = { roomId, duration, actors[] }
+ *   roomId    id of the room set aside for the cutscene (null = none)
+ *   duration  seconds, CUT_DUR_MIN..CUT_DUR_MAX
+ *   actors[]  { id, kind: "item"|"camera", x,y,z, path:[{x,y,z}], facing, ... }
+ *     item    item (key), scale (1/2/4/8), rot (octant, static facing), facing "fixed"|"path"
+ *     camera  yaw (0..255 game units, 256 = turn, 0 = +Z, 64 = +X), facing "fixed"|"path"|"target",
+ *             target (actor id). x,y,z is the EYE position, used as is (items draw at x,y,z plus
+ *             ITEM_WORLD_BIAS = 1 on X/Z, the camera has no bias). The game projector is yaw-only: no pitch.
+ *
+ * BAKE SPEC (tools/gencutscene.py implements the same; keep them in step):
+ *   ns        = ceil(durMs / CUT_STEP_MS) + 1 samples, sample i at t = i * CUT_STEP_MS ms,
+ *               durMs = round(duration * 1000), u_i = min(t_i / durMs, 1).
+ *   spline    >= 2 path points P0..Pn-1, uniform Catmull-Rom, phantom ends P-1 = 2P0 - P1, Pn = 2Pn-1 - Pn-2.
+ *             Segment k (0..n-2) uses P[k-1], P[k], P[k+1], P[k+2], local t in 0..1:
+ *               0.5 * (2 P1 + (-P0 + P2) t + (2 P0 - 5 P1 + 4 P2 - P3) t^2 + (-P0 + 3 P1 - 3 P2 + P3) t^3)
+ *             spline parameter s = k + t, s in 0..n-1.
+ *   speed     constant: arc-length table with CUT_ARC_SUB subdivisions per segment (chord lengths, 3D);
+ *             distance d = u * total; find table interval, linear s inside it.
+ *   position  spline(s), clamped to 0..255+255/256, rounded: floor(v * 256 + 0.5) / 256.
+ *   yaw       fixed  -> item rot * 32, camera yaw.
+ *             path   -> atan2(dx, dz) of the analytic derivative at s (ends: t = 0 / t = 1 of the end
+ *                       segment); degenerate horizontal tangent keeps the previous sample's yaw
+ *                       (first sample: the fixed yaw).
+ *             target -> atan2(dx, dz) from the camera to the target actor's unrounded position at the
+ *                       same sample. Same degenerate rule.
+ *             byte = floor(angle / (2 pi) * 256 + 0.5) mod 256.
+ *   ns per actor = full ns when the actor has a path or faces a moving target, else 1.
+ * Engine playback: i = t >> 7, frac = (t & 127) << 1, linear lerp of position and shortest-arc yaw.
+ */
+
+const CUT_STEP_MS = 128;
+const CUT_ARC_SUB = 32;
+const CUT_DUR_MIN = 0.5;
+const CUT_DUR_MAX = 16;
+const CUT_DUR_DEFAULT = 3;
+const CUT_ACTOR_MAX = 6;
+const CUT_PATH_MAX = 16;
+/** Approximate bytes available for the cutscene data after the overlay code (see the plan). */
+const CUT_DATA_BUDGET = 2000;
+const CUT_FACING_ITEM = ["fixed", "path"];
+const CUT_FACING_CAMERA = ["fixed", "path", "target"];
+
+const POS_MAX = WORLD_MAX + 255 / 256;
+
+function cutClampCoord(n) {
+  const v = Math.round(Number(n));
+  if (!Number.isFinite(v)) return WORLD_MIN;
+  return Math.max(WORLD_MIN, Math.min(WORLD_MAX, v));
+}
+
+function clampCutDuration(n) {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return CUT_DUR_DEFAULT;
+  return Math.min(CUT_DUR_MAX, Math.max(CUT_DUR_MIN, Math.round(v * 8) / 8));
+}
+
+function clampYawByte(n) {
+  const v = Math.round(Number(n));
+  if (!Number.isFinite(v)) return 0;
+  return ((v % 256) + 256) % 256;
+}
+
+function newCutscene() {
+  return { roomId: null, duration: CUT_DUR_DEFAULT, actors: [] };
+}
+
+/** A new actor. Items start at (x,y,z) with no path; the camera starts at an eye position. */
+function createCutActor(kind, opts = {}) {
+  const base = {
+    id: uid(),
+    kind,
+    x: cutClampCoord(opts.x ?? 128),
+    y: cutClampCoord(opts.y ?? 64),
+    z: cutClampCoord(opts.z ?? 128),
+    path: [],
+    facing: "fixed",
+  };
+  if (kind === "camera") return { ...base, yaw: 0, target: null };
+  return { ...base, item: clampPickupType(opts.item ?? "planet"), scale: 1, rot: 0 };
+}
+
+function normalizeActor(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const kind = raw.kind === "camera" ? "camera" : raw.kind === "item" ? "item" : null;
+  if (!kind) return null;
+  const a = createCutActor(kind, { x: raw.x, y: raw.y, z: raw.z, item: raw.item });
+  a.id = typeof raw.id === "string" && raw.id ? raw.id : a.id;
+  const allowed = kind === "camera" ? CUT_FACING_CAMERA : CUT_FACING_ITEM;
+  a.facing = allowed.includes(raw.facing) ? raw.facing : "fixed";
+  a.path = Array.isArray(raw.path)
+    ? raw.path.slice(0, CUT_PATH_MAX).map((p) => ({ x: cutClampCoord(p?.x), y: cutClampCoord(p?.y), z: cutClampCoord(p?.z) }))
+    : [];
+  if (kind === "camera") {
+    a.yaw = clampYawByte(raw.yaw);
+    a.target = typeof raw.target === "string" && raw.target ? raw.target : null;
+  } else {
+    a.scale = clampItemScale(raw.scale);
+    a.rot = clampEnemyRot(raw.rot);
+  }
+  return a;
+}
+
+/** Clean a map's cutscene block. null when it holds nothing (no room, no actors). */
+function normalizeCutscene(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const actors = (Array.isArray(raw.actors) ? raw.actors : []).map(normalizeActor).filter(Boolean).slice(0, CUT_ACTOR_MAX);
+  const roomId = typeof raw.roomId === "string" && raw.roomId ? raw.roomId : null;
+  if (!roomId && !actors.length) return null;
+  return { roomId, duration: clampCutDuration(raw.duration), actors };
+}
+
+/** The map's cutscene, created on first use (editing). */
+function ensureCutscene(map) {
+  if (!map.cutscene) map.cutscene = newCutscene();
+  return map.cutscene;
+}
+
+function cutActorLabel(a, index) {
+  if (a.kind === "camera") return "Camera";
+  return `${a.item}${index != null ? ` ${index + 1}` : ""}`;
+}
+
+/** The actor's start position: path[0] when it has a path, else its own x/y/z. */
+function cutActorStart(a) {
+  return a.path.length ? a.path[0] : { x: a.x, y: a.y, z: a.z };
+}
+
+function cutActorMoves(a) {
+  return a.path.length >= 2;
+}
+
+/* ---- Catmull-Rom ---- */
+
+function crPoint(P, k, t) {
+  const n = P.length;
+  const at = (i) => {
+    if (i < 0) return { x: 2 * P[0].x - P[1].x, y: 2 * P[0].y - P[1].y, z: 2 * P[0].z - P[1].z };
+    if (i >= n) {
+      return { x: 2 * P[n - 1].x - P[n - 2].x, y: 2 * P[n - 1].y - P[n - 2].y, z: 2 * P[n - 1].z - P[n - 2].z };
+    }
+    return P[i];
+  };
+  const p0 = at(k - 1);
+  const p1 = at(k);
+  const p2 = at(k + 1);
+  const p3 = at(k + 2);
+  const t2 = t * t;
+  const t3 = t2 * t;
+  const f = (a, b, c, d) => 0.5 * (2 * b + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t2 + (-a + 3 * b - 3 * c + d) * t3);
+  const g = (a, b, c, d) => 0.5 * (-a + c + 2 * (2 * a - 5 * b + 4 * c - d) * t + 3 * (-a + 3 * b - 3 * c + d) * t2);
+  return {
+    pos: { x: f(p0.x, p1.x, p2.x, p3.x), y: f(p0.y, p1.y, p2.y, p3.y), z: f(p0.z, p1.z, p2.z, p3.z) },
+    tan: { x: g(p0.x, p1.x, p2.x, p3.x), y: g(p0.y, p1.y, p2.y, p3.y), z: g(p0.z, p1.z, p2.z, p3.z) },
+  };
+}
+
+/** Evaluate at spline parameter s in 0..n-1. */
+function crAt(P, s) {
+  const n = P.length;
+  let k = Math.floor(s);
+  if (k >= n - 1) k = n - 2;
+  if (k < 0) k = 0;
+  return crPoint(P, k, s - k);
+}
+
+/** Arc-length table: { s[], len[], total } sampled CUT_ARC_SUB times per segment. */
+function arcTable(P) {
+  const n = P.length;
+  const steps = (n - 1) * CUT_ARC_SUB;
+  const s = [];
+  const len = [];
+  let prev = null;
+  let acc = 0;
+  for (let j = 0; j <= steps; j++) {
+    const sj = j / CUT_ARC_SUB;
+    const p = crAt(P, sj).pos;
+    if (prev) acc += Math.hypot(p.x - prev.x, p.y - prev.y, p.z - prev.z);
+    s.push(sj);
+    len.push(acc);
+    prev = p;
+  }
+  return { s, len, total: acc };
+}
+
+function sAtU(table, u) {
+  const d = u * table.total;
+  const { len } = table;
+  let j = 0;
+  while (j < len.length - 2 && len[j + 1] < d) j++;
+  const span = len[j + 1] - len[j];
+  const f = span > 0 ? Math.min(1, Math.max(0, (d - len[j]) / span)) : 0;
+  return (j + f) / CUT_ARC_SUB;
+}
+
+function q256(v) {
+  const c = Math.max(0, Math.min(POS_MAX, v));
+  return Math.floor(c * 256 + 0.5) / 256;
+}
+
+function yawByteOf(dx, dz) {
+  const a = Math.atan2(dx, dz);
+  const b = Math.floor((a / (Math.PI * 2)) * 256 + 0.5);
+  return ((b % 256) + 256) % 256;
+}
+
+function cutSampleCount(durMs) {
+  return Math.ceil(durMs / CUT_STEP_MS) + 1;
+}
+
+function fixedYaw(a) {
+  return a.kind === "camera" ? clampYawByte(a.yaw) : clampEnemyRot(a.rot) * 32;
+}
+
+/** Unrounded position + tangent of an actor at sample time index. */
+function rawSamples(a, ns, durMs) {
+  const out = [];
+  if (!cutActorMoves(a)) {
+    const p = { x: a.path.length ? a.path[0].x : a.x, y: a.path.length ? a.path[0].y : a.y, z: a.path.length ? a.path[0].z : a.z };
+    for (let i = 0; i < ns; i++) out.push({ pos: p, tan: null });
+    return out;
+  }
+  const table = arcTable(a.path);
+  for (let i = 0; i < ns; i++) {
+    const u = Math.min((i * CUT_STEP_MS) / durMs, 1);
+    out.push(crAt(a.path, sAtU(table, u)));
+  }
+  return out;
+}
+
+function derivedYaws(a, raws, targetRaws) {
+  const n = raws.length;
+  const yaws = [];
+  let prev = fixedYaw(a);
+  for (let i = 0; i < n; i++) {
+    let dx = 0;
+    let dz = 0;
+    let use = false;
+    if (a.facing === "path" && raws[i].tan) {
+      dx = raws[i].tan.x;
+      dz = raws[i].tan.z;
+      use = true;
+    } else if (a.facing === "target" && targetRaws) {
+      const tr = targetRaws[Math.min(i, targetRaws.length - 1)];
+      dx = tr.pos.x - raws[i].pos.x;
+      dz = tr.pos.z - raws[i].pos.z;
+      use = true;
+    }
+    if (use && (Math.abs(dx) > 1e-9 || Math.abs(dz) > 1e-9)) prev = yawByteOf(dx, dz);
+    else if (!use) prev = fixedYaw(a);
+    yaws.push(prev);
+  }
+  return yaws;
+}
+
+/**
+ * Bake a cutscene. Returns { durMs, step, ns, actors: [{ id, kind, item, scale, ns, x[], y[], z[], yaw[] }] }
+ * (positions already rounded to 1/256, yaw bytes 0..255). Bad references fall back to fixed facing.
+ */
+function bakeCutscene(cut) {
+  const durMs = Math.round(clampCutDuration(cut?.duration) * 1000);
+  const ns = cutSampleCount(durMs);
+  const actors = cut?.actors || [];
+  const byId = new Map(actors.map((a) => [a.id, a]));
+  const raws = new Map();
+  const rawFor = (a) => {
+    if (!raws.has(a.id)) raws.set(a.id, rawSamples(a, ns, durMs));
+    return raws.get(a.id);
+  };
+  const out = [];
+  for (const a of actors) {
+    const own = rawFor(a);
+    let target = null;
+    let targetRaws = null;
+    if (a.kind === "camera" && a.facing === "target") {
+      target = byId.get(a.target);
+      if (target && target !== a && target.kind === "item") targetRaws = rawFor(target);
+    }
+    const full = cutActorMoves(a) || (targetRaws && cutActorMoves(target));
+    const cnt = full ? ns : 1;
+    const useRaw = own.slice(0, cnt);
+    const yaws = derivedYaws(a, own.slice(0, cnt), targetRaws);
+    out.push({
+      id: a.id,
+      kind: a.kind,
+      item: a.kind === "item" ? a.item : null,
+      scale: a.kind === "item" ? a.scale : 1,
+      ns: cnt,
+      x: useRaw.map((r) => q256(r.pos.x)),
+      y: useRaw.map((r) => q256(r.pos.y)),
+      z: useRaw.map((r) => q256(r.pos.z)),
+      yaw: yaws,
+    });
+  }
+  return { durMs, step: CUT_STEP_MS, ns, actors: out };
+}
+
+/** Engine-style playback of one baked actor at tMs: lerp position, shortest-arc lerp of yaw. */
+function cutSampleAt(baked, tMs) {
+  const last = baked.ns - 1;
+  if (last <= 0) return { x: baked.x[0], y: baked.y[0], z: baked.z[0], yaw: baked.yaw[0] };
+  const t = Math.max(0, tMs);
+  let i = Math.floor(t / CUT_STEP_MS);
+  if (i >= last) return { x: baked.x[last], y: baked.y[last], z: baked.z[last], yaw: baked.yaw[last] };
+  const f = (t % CUT_STEP_MS) / CUT_STEP_MS;
+  const lerp = (arr) => arr[i] + (arr[i + 1] - arr[i]) * f;
+  const dy = ((((baked.yaw[i + 1] - baked.yaw[i]) % 256) + 384) % 256) - 128;
+  const yaw = (((baked.yaw[i] + dy * f) % 256) + 256) % 256;
+  return { x: lerp(baked.x), y: lerp(baked.y), z: lerp(baked.z), yaw };
+}
+
+/** Bytes of the cooked data block: header 4, per actor 5 + 7 per sample (see the plan's binary layout). */
+function cutsceneBytes(baked) {
+  let n = 4;
+  for (const a of baked.actors) n += 5 + 7 * a.ns;
+  return n;
+}
+
+function yawByteToRad(b) {
+  return (b / 256) * Math.PI * 2;
+}
+
+/** Human-readable problems with the active map's cutscene (empty = fine). */
+function cutsceneIssues(doc, map = activeMap(doc)) {
+  const cut = map.cutscene;
+  if (!cut) return [];
+  const issues = [];
+  const room = cut.roomId ? roomById(doc, cut.roomId) : null;
+  if (!cut.roomId) issues.push("No cutscene room chosen.");
+  else if (!room) issues.push("The cutscene room no longer exists.");
+  const spawn = map.objects.find((o) => o.kind === "spawn" && o.enabled !== false) || map.objects.find((o) => o.kind === "spawn");
+  if (room && spawn && spawn.roomId === room.id) issues.push("The cutscene room is the spawn room.");
+  if (!spawn) issues.push("The map has no spawn to drop into after the cutscene.");
+  const cams = cut.actors.filter((a) => a.kind === "camera");
+  if (!cams.length) issues.push("No camera.");
+  if (cams.length > 1) issues.push("More than one camera.");
+  if (cut.actors.length > CUT_ACTOR_MAX) issues.push(`More than ${CUT_ACTOR_MAX} actors.`);
+  for (const a of cut.actors) {
+    const name = cutActorLabel(a);
+    if (a.kind === "item" && !itemMeshHasGeom(itemMeshFor(doc, a.item))) issues.push(`${name}: item has no mesh.`);
+    if (a.path.length === 1) issues.push(`${name}: a path needs at least 2 points.`);
+    if (a.kind === "camera" && a.facing === "target") {
+      const t = cut.actors.find((o) => o.id === a.target);
+      if (!t) issues.push("Camera: no target chosen.");
+      else if (t.kind !== "item") issues.push("Camera: target must be an item.");
+    }
+  }
+  if (!issues.length || cams.length) {
+    const bytes = cutsceneBytes(bakeCutscene(cut));
+    if (bytes > CUT_DATA_BUDGET) issues.push(`Cutscene data is ${bytes} B (budget about ${CUT_DATA_BUDGET} B).`);
+  }
+  return issues;
 }
 
 
@@ -10714,7 +11113,7 @@ class LayoutView {
     const p = this.#eventPos(e);
     if (e.button === 1) {
       if (e.altKey) {
-        this.orbit = this.#beginOrbit(p);
+        this.orbit = this.#beginOrbit(p, true);
       } else {
         this.pan = this.#beginOrbit(p);
       }
@@ -10735,7 +11134,7 @@ class LayoutView {
     if (e.button !== 0) return;
     if (e.altKey) {
       e.preventDefault();
-      this.orbit = this.#beginOrbit(p);
+      this.orbit = this.#beginOrbit(p, true);
       this.canvas.setPointerCapture(e.pointerId);
       return;
     }
@@ -10822,14 +11221,43 @@ class LayoutView {
     };
   }
 
-  #beginOrbit(p) {
+  /** Center of the union AABB of the selected objects, or null when nothing (resolvable) is selected. */
+  #selectionCenter(doc) {
+    const ids = new Set(this.#selectedIds());
+    if (!ids.size) return null;
+    let min = null;
+    let max = null;
+    for (const o of activeMap(doc).objects) {
+      if (!ids.has(o.id)) continue;
+      const lo = { x: o.x, y: o.y, z: o.z };
+      const hi = { x: o.x + o.sx, y: o.y + o.sy, z: o.z + o.sz };
+      if (!min) {
+        min = lo;
+        max = hi;
+        continue;
+      }
+      min = { x: Math.min(min.x, lo.x), y: Math.min(min.y, lo.y), z: Math.min(min.z, lo.z) };
+      max = { x: Math.max(max.x, hi.x), y: Math.max(max.y, hi.y), z: Math.max(max.z, hi.z) };
+    }
+    if (!min) return null;
+    return { x: (min.x + max.x) / 2, y: (min.y + max.y) / 2, z: (min.z + max.z) / 2 };
+  }
+
+  /** `useSelection`: with something selected, pivot on it instead of whatever is under the cursor (Alt+LMB/MMB orbit). */
+  #beginOrbit(p, useSelection = false) {
     const cam = this.camera;
     const doc = this.opts.getDoc();
-    const hit = this.#pick(doc, p.x, p.y);
-    let obj = hit ? activeMap(doc).objects.find((o) => o.id === hit.id) || null : null;
-    if (!obj) obj = this.#closestRoomToCursor(doc, p.x, p.y);
+    const selCenter = useSelection ? this.#selectionCenter(doc) : null;
+    let obj = null;
+    if (!selCenter) {
+      const hit = this.#pick(doc, p.x, p.y);
+      obj = hit ? activeMap(doc).objects.find((o) => o.id === hit.id) || null : null;
+      if (!obj) obj = this.#closestRoomToCursor(doc, p.x, p.y);
+    }
     let target;
-    if (obj) {
+    if (selCenter) {
+      target = selCenter;
+    } else if (obj) {
       target = aabbCenter(obj);
     } else {
       const ray = screenRay(p.x, p.y, cam, this.cssW, this.cssH);
@@ -12881,6 +13309,7 @@ class PreviewView {
   }
 
   #onPointer(e) {
+    if (this.opts.getCutscene?.()) return; // cutscene camera is driven by the timeline
     const room = this.opts.getRoom?.();
     const spawn = this.#editSpawn();
     const viewSpawn = this.opts.getSpawn?.() || null;
@@ -13099,6 +13528,7 @@ class PreviewView {
   }
 
   hint() {
+    if (this.opts.getCutscene?.()) return "Cutscene camera at the timeline position";
     const room = this.opts.getRoom?.();
     if (this.#editSpawn()) return "Spawn view â€” drag L/R to set angle Â· U/D to move";
     if (this.stickyCam) return "Drag L/R to rotate Â· U/D to walk";
@@ -13110,7 +13540,9 @@ class PreviewView {
   draw() {
     const ctx = this.ctx;
     const doc = this.opts.getDoc?.();
-    const room = this.opts.getRoom?.();
+    // Cutscene tab: { room, cam: {x,y,z,yaw,pitch}, actors: [{ obj: {x,y,z,scale}, key, yaw }] }.
+    const cut = this.opts.getCutscene?.() || null;
+    const room = cut ? cut.room : this.opts.getRoom?.();
     const spawn = this.opts.getSpawn?.() || null;
     this.#forgetSticky(room);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -13118,7 +13550,22 @@ class PreviewView {
     ctx.fillStyle = room ? a8Hex(room.a8Bg ?? ROOM_BG_DEFAULT) : "#000000";
     ctx.fillRect(0, 0, PREVIEW_W, PREVIEW_H);
 
-    if (doc && room) {
+    if (doc && room && cut) {
+      if (cut.cam) {
+        const line = a8InkHex(room.a8Bg ?? ROOM_BG_DEFAULT);
+        const g = roomGeometry(room);
+        for (const e of g.edges) {
+          this.#stroke(ctx, cut.cam, g.verts[e.a], g.verts[e.b], line);
+        }
+        for (const act of cut.actors) {
+          const mesh = itemMeshFor(doc, act.key);
+          for (const seg of itemMeshWorldSegs(act.obj, mesh, act.yaw)) {
+            this.#stroke(ctx, cut.cam, seg.a, seg.b, line);
+          }
+          for (const s of itemSphereWorld(act.obj, mesh, act.yaw)) this.#sphere(ctx, cut.cam, s, line);
+        }
+      }
+    } else if (doc && room) {
       const cam = this.#cam(room, spawn);
       const line = a8InkHex(room.a8Bg ?? ROOM_BG_DEFAULT);
       const g = roomGeometry(room);
@@ -13142,6 +13589,470 @@ class PreviewView {
     this.#present();
     const hint = document.getElementById("preview-hint");
     if (hint) hint.textContent = this.hint();
+  }
+}
+
+
+// ---- js/cutsceneView.js ----
+const CUT_ZOOM_K = 0.008;
+const CUT_DIST_MIN = 20;
+const CUT_DIST_MAX = 1200;
+const CUT_HIT_PX = 10;
+const CUT_COL_ITEM = "#c8ccd4";
+const CUT_COL_CAMERA = "#f2d36b";
+const CUT_COL_PATH = "#3f7f8a";
+const CUT_COL_SEL = "#d4a017";
+const CUT_COL_TARGET = "#c8603c";
+const CUT_CAM_LEN = 10;
+// Game view: 192x128 at focal 100 -> half extents 0.96 / 0.64 of the view depth.
+const CUT_CAM_HW = 0.96;
+const CUT_CAM_HH = 0.64;
+
+function cutViewClamp(n) {
+  return Math.max(WORLD_MIN, Math.min(WORLD_MAX, Math.round(n)));
+}
+
+/**
+ * Perspective orbit editor for the Cutscene tab. Draws on the shared #view-canvas.
+ * The cutscene state lives in the map; this class edits it through opts callbacks.
+ *
+ * opts: stage, getDoc(), getCutscene() (map.cutscene or null), getBaked() (bakeCutscene result),
+ *   getTimeMs(), beginUndo(), endUndo(), onChange() (data edited), onSelect(), onViewChanged(),
+ *   onDelete() (Delete key on the canvas).
+ */
+class CutsceneView {
+  constructor(canvas, opts) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext("2d");
+    this.opts = opts;
+    this.orbit = { yaw: 0.6, pitch: 0.45, dist: 300, target: { x: 128, y: 40, z: 128 } };
+    /** actor: id | null; point: path index, or -1 for the actor itself. */
+    this.sel = { actor: null, point: -1 };
+    this.drag = null;
+    this.hoverGizmo = null;
+    this.hoverAnchor = null;
+    this.enabled = false;
+    this._ro = new ResizeObserver(() => this.resize());
+    this._ro.observe(opts.stage || canvas.parentElement);
+
+    canvas.addEventListener("pointerdown", (e) => this.#onDown(e));
+    canvas.addEventListener("pointermove", (e) => this.#onMove(e));
+    canvas.addEventListener("pointerup", (e) => this.#onUp(e));
+    canvas.addEventListener("pointerleave", (e) => this.#onUp(e));
+    canvas.addEventListener("wheel", (e) => this.#onWheel(e), { passive: false });
+    canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+    canvas.addEventListener("keydown", (e) => this.#onKey(e));
+    canvas.addEventListener("mousedown", (e) => {
+      if (e.button === 1) e.preventDefault();
+    });
+    canvas.addEventListener("auxclick", (e) => {
+      if (e.button === 1) e.preventDefault();
+    });
+  }
+
+  resize() {
+    if (!this.enabled) return;
+    const stage = this.opts.stage || this.canvas.parentElement;
+    const rect = stage.getBoundingClientRect();
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const w = Math.max(64, Math.floor(rect.width));
+    const h = Math.max(64, Math.floor(rect.height));
+    this.canvas.width = Math.floor(w * dpr);
+    this.canvas.height = Math.floor(h * dpr);
+    this.canvas.style.width = `${w}px`;
+    this.canvas.style.height = `${h}px`;
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.cssW = w;
+    this.cssH = h;
+    this.draw();
+  }
+
+  setSelection(actor, point = -1) {
+    this.sel = { actor, point };
+    this.opts.onSelect?.();
+    this.draw();
+  }
+
+  /** Frame the world cube (0..255) or the given room. */
+  focus(room = null) {
+    let c = { x: 128, y: 40, z: 128 };
+    let size = 300;
+    if (room) {
+      c = { x: room.x + room.sx / 2, y: room.y + room.sy / 2, z: room.z + room.sz / 2 };
+      size = Math.max(60, Math.hypot(room.sx, room.sy, room.sz) * 1.1);
+    }
+    this.orbit.target = c;
+    this.orbit.dist = Math.max(CUT_DIST_MIN, Math.min(CUT_DIST_MAX, size));
+    this.opts.onViewChanged?.();
+    this.draw();
+  }
+
+  #cam() {
+    const { yaw, pitch, dist, target } = this.orbit;
+    const { forward } = lookVectors(yaw, pitch);
+    return {
+      x: target.x - forward.x * dist,
+      y: target.y - forward.y * dist,
+      z: target.z - forward.z * dist,
+      yaw,
+      pitch,
+    };
+  }
+
+  #eventPos(e) {
+    const rect = this.canvas.getBoundingClientRect();
+    return {
+      x: ((e.clientX - rect.left) / rect.width) * this.cssW,
+      y: ((e.clientY - rect.top) / rect.height) * this.cssH,
+    };
+  }
+
+  #cut() {
+    return this.opts.getCutscene?.() || null;
+  }
+
+  #actor(id) {
+    return this.#cut()?.actors.find((a) => a.id === id) || null;
+  }
+
+  /** The gizmo anchor: the selected path point, or a stationary selected actor. */
+  #selAnchor() {
+    const a = this.#actor(this.sel.actor);
+    if (!a) return null;
+    if (a.path.length) {
+      const p = a.path[this.sel.point];
+      return p ? { a, point: this.sel.point, v: { x: p.x, y: p.y, z: p.z } } : null;
+    }
+    return { a, point: -1, v: { x: a.x, y: a.y, z: a.z } };
+  }
+
+  /** Everything pickable: path points, plus each actor's position at the timeline cursor. */
+  #anchors() {
+    const cut = this.#cut();
+    if (!cut) return [];
+    const baked = this.opts.getBaked?.();
+    const t = this.opts.getTimeMs?.() ?? 0;
+    const out = [];
+    for (const a of cut.actors) {
+      a.path.forEach((p, i) => out.push({ actor: a.id, point: i, pos: p }));
+      const b = baked?.actors.find((o) => o.id === a.id);
+      const s = b ? cutSampleAt(b, t) : cutActorStart(a);
+      out.push({ actor: a.id, point: -1, pos: { x: s.x, y: s.y, z: s.z } });
+    }
+    return out;
+  }
+
+  #hitAnchor(mx, my) {
+    const cam = this.#cam();
+    let best = null;
+    let bestD = CUT_HIT_PX;
+    for (const an of this.#anchors()) {
+      const p = projectPoint(an.pos, cam, this.cssW, this.cssH);
+      if (!p.ok) continue;
+      const d = Math.hypot(mx - p.sx, my - p.sy);
+      // Path points beat the time marker when they overlap.
+      if (d < bestD || (an.point >= 0 && d <= bestD && best && best.point < 0)) {
+        bestD = d;
+        best = an;
+      }
+    }
+    return best;
+  }
+
+  zoomBy(factor) {
+    this.orbit.dist = Math.max(CUT_DIST_MIN, Math.min(CUT_DIST_MAX, this.orbit.dist * factor));
+    this.opts.onViewChanged?.();
+    this.draw();
+  }
+
+  #onWheel(e) {
+    if (!this.enabled) return;
+    e.preventDefault();
+    this.zoomBy(e.deltaY > 0 ? 1.1 : 1 / 1.1);
+  }
+
+  #onKey(e) {
+    if (!this.enabled) return;
+    if (e.key === "Delete" || e.key === "Backspace") {
+      e.preventDefault();
+      this.opts.onDelete?.();
+    } else if (e.key === "f" || e.key === "F") {
+      this.opts.onFocus?.();
+    }
+  }
+
+  #onDown(e) {
+    if (!this.enabled) return;
+    this.canvas.focus();
+    const p = this.#eventPos(e);
+    const grab = (kind) => {
+      this.drag = { kind, last: p };
+      this.canvas.setPointerCapture(e.pointerId);
+    };
+    if (e.button === 2 && e.altKey) return grab("zoom");
+    if (e.button === 1) return grab("pan");
+    if (e.button === 2) return grab("orbit");
+    if (e.button !== 0) return;
+    if (e.altKey) {
+      e.preventDefault();
+      return grab("orbit");
+    }
+    const anchor = this.#selAnchor();
+    if (anchor) {
+      const hit = hitTranslateGizmo(anchor.v, this.#cam(), this.cssW, this.cssH, p.x, p.y);
+      if (hit) {
+        this.opts.beginUndo?.();
+        this.drag = {
+          kind: hit.kind,
+          axis: hit.axis,
+          plane: hit.plane,
+          planeN: hit.planeN,
+          grab: hit.world,
+          gizmoAxisLen: hit.gizmoAxisLen ?? GIZMO_FALLBACK_LEN,
+          orig: { ...anchor.v },
+          actor: anchor.a.id,
+          point: anchor.point,
+          start: p,
+        };
+        this.canvas.setPointerCapture(e.pointerId);
+        return;
+      }
+    }
+    const an = this.#hitAnchor(p.x, p.y);
+    if (an) this.setSelection(an.actor, an.point);
+    else this.setSelection(null, -1);
+    this.drag = { kind: "select" };
+    this.canvas.setPointerCapture(e.pointerId);
+  }
+
+  /** Move the dragged anchor to `next`, keeping a path actor's x/y/z in step with point 0. */
+  #applyPos(next) {
+    const a = this.#actor(this.drag.actor);
+    if (!a) return;
+    const v = { x: cutViewClamp(next.x), y: cutViewClamp(next.y), z: cutViewClamp(next.z) };
+    if (this.drag.point >= 0) {
+      Object.assign(a.path[this.drag.point], v);
+      if (this.drag.point === 0) Object.assign(a, v);
+    } else Object.assign(a, v);
+    this.opts.onChange?.();
+    this.draw();
+  }
+
+  #onMove(e) {
+    if (!this.enabled) return;
+    const p = this.#eventPos(e);
+    const d = this.drag;
+    if (!d) {
+      const anchor = this.#selAnchor();
+      this.hoverGizmo = anchor ? hitTranslateGizmo(anchor.v, this.#cam(), this.cssW, this.cssH, p.x, p.y) : null;
+      this.hoverAnchor = this.hoverGizmo ? null : this.#hitAnchor(p.x, p.y);
+      this.draw();
+      return;
+    }
+    if (d.kind === "orbit") {
+      const dx = p.x - d.last.x;
+      const dy = p.y - d.last.y;
+      d.last = p;
+      this.orbit.yaw += dx * 0.01;
+      this.orbit.pitch = Math.max(-1.4, Math.min(1.4, this.orbit.pitch + dy * 0.01));
+      this.draw();
+    } else if (d.kind === "pan") {
+      const dx = p.x - d.last.x;
+      const dy = p.y - d.last.y;
+      d.last = p;
+      const scale = this.orbit.dist / (Math.min(this.cssW, this.cssH) * 0.9);
+      const { right, up } = lookVectors(this.orbit.yaw, this.orbit.pitch);
+      const t = this.orbit.target;
+      t.x += (-right.x * dx + up.x * dy) * scale;
+      t.y += (-right.y * dx + up.y * dy) * scale;
+      t.z += (-right.z * dx + up.z * dy) * scale;
+      this.draw();
+    } else if (d.kind === "zoom") {
+      const delta = p.x - d.last.x + (p.y - d.last.y);
+      d.last = p;
+      if (delta) this.zoomBy(Math.exp(-delta * CUT_ZOOM_K));
+    } else if (d.kind === "axis") {
+      const delta = gizmoAxisDragDelta(p, d.grab, d.axis, d.start, d.gizmoAxisLen, this.#cam(), this.cssW, this.cssH, true);
+      if (delta == null) return;
+      this.#applyPos({ ...d.orig, [d.axis]: d.orig[d.axis] + delta });
+    } else if (d.kind === "plane") {
+      const ray = screenRay(p.x, p.y, this.#cam(), this.cssW, this.cssH);
+      const hit = intersectPlane(ray.origin, ray.dir, d.grab, d.planeN);
+      if (!hit) return;
+      let dx = Math.round(hit.point.x - d.grab.x);
+      let dy = Math.round(hit.point.y - d.grab.y);
+      let dz = Math.round(hit.point.z - d.grab.z);
+      if (d.plane === "xy") dz = 0;
+      else if (d.plane === "xz") dy = 0;
+      else if (d.plane === "yz") dx = 0;
+      this.#applyPos({ x: d.orig.x + dx, y: d.orig.y + dy, z: d.orig.z + dz });
+    }
+  }
+
+  #onUp(e) {
+    if (!this.enabled) return;
+    const kind = this.drag?.kind;
+    if (kind === "axis" || kind === "plane") this.opts.endUndo?.();
+    this.drag = null;
+    if (kind === "orbit" || kind === "zoom" || kind === "pan") this.opts.onViewChanged?.();
+    try {
+      this.canvas.releasePointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+    this.draw();
+  }
+
+  #seg(ctx, cam, a, b, col, width = 1) {
+    const s = projectLine(a, b, cam, this.cssW, this.cssH);
+    if (!s) return;
+    ctx.strokeStyle = col;
+    ctx.lineWidth = width;
+    ctx.beginPath();
+    ctx.moveTo(s.ax, s.ay);
+    ctx.lineTo(s.bx, s.by);
+    ctx.stroke();
+  }
+
+  #dot(ctx, cam, pos, r, fill, stroke = null) {
+    const p = projectPoint(pos, cam, this.cssW, this.cssH);
+    if (!p.ok) return;
+    ctx.fillStyle = fill;
+    ctx.beginPath();
+    ctx.arc(p.sx, p.sy, r, 0, Math.PI * 2);
+    ctx.fill();
+    if (stroke) {
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+  }
+
+  #sphere(ctx, cam, s, col) {
+    const p = projectPoint(s, cam, this.cssW, this.cssH);
+    if (!p.ok) return;
+    const focal = Math.min(this.cssW, this.cssH) * 0.9;
+    const R = (s.r * focal) / p.z;
+    if (R < 1) return;
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 1.25;
+    ctx.beginPath();
+    ctx.arc(p.sx, p.sy, R, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  #drawCameraGlyph(ctx, cam, pos, yawByte, col, width) {
+    const yaw = yawByteToRad(yawByte);
+    const { forward, right, up } = lookVectors(yaw, 0);
+    const c = { x: pos.x + forward.x * CUT_CAM_LEN, y: pos.y + forward.y * CUT_CAM_LEN, z: pos.z + forward.z * CUT_CAM_LEN };
+    const corner = (sx, sy) => ({
+      x: c.x + right.x * sx * CUT_CAM_HW * CUT_CAM_LEN + up.x * sy * CUT_CAM_HH * CUT_CAM_LEN,
+      y: c.y + right.y * sx * CUT_CAM_HW * CUT_CAM_LEN + up.y * sy * CUT_CAM_HH * CUT_CAM_LEN,
+      z: c.z + right.z * sx * CUT_CAM_HW * CUT_CAM_LEN + up.z * sy * CUT_CAM_HH * CUT_CAM_LEN,
+    });
+    const k = [corner(-1, 1), corner(1, 1), corner(1, -1), corner(-1, -1)];
+    for (let i = 0; i < 4; i++) {
+      this.#seg(ctx, cam, pos, k[i], col, width);
+      this.#seg(ctx, cam, k[i], k[(i + 1) % 4], col, width);
+    }
+  }
+
+  draw() {
+    if (!this.enabled) return;
+    const ctx = this.ctx;
+    const w = this.cssW;
+    const h = this.cssH;
+    if (!w || !h) return;
+    ctx.fillStyle = "#0a0a0c";
+    ctx.fillRect(0, 0, w, h);
+    const cam = this.#cam();
+    const doc = this.opts.getDoc();
+    const cut = this.#cut();
+
+    // World cube 0..255 (floor grid every 32).
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 256; i += 32) {
+      this.#seg(ctx, cam, { x: i, y: 0, z: 0 }, { x: i, y: 0, z: 256 }, "#2c3340");
+      this.#seg(ctx, cam, { x: 0, y: 0, z: i }, { x: 256, y: 0, z: i }, "#2c3340");
+    }
+    this.#seg(ctx, cam, { x: 0, y: 0, z: 0 }, { x: 40, y: 0, z: 0 }, "#a66", 2);
+    this.#seg(ctx, cam, { x: 0, y: 0, z: 0 }, { x: 0, y: 40, z: 0 }, "#6a6", 2);
+    this.#seg(ctx, cam, { x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 40 }, "#66a", 2);
+
+    const room = this.opts.getRoom?.();
+    if (room) {
+      const g = roomGeometry(room);
+      for (const e of g.edges) this.#seg(ctx, cam, g.verts[e.a], g.verts[e.b], "#6b7488", 1.25);
+    }
+    if (!cut) {
+      ctx.fillStyle = "#8b91a0";
+      ctx.font = "12px Segoe UI, sans-serif";
+      ctx.fillText("Pick a cutscene room, then add actors.", 12, 20);
+      this.opts.onDrawn?.();
+      return;
+    }
+
+    const baked = this.opts.getBaked?.();
+    const t = this.opts.getTimeMs?.() ?? 0;
+    const poses = new Map();
+    for (const a of cut.actors) {
+      const b = baked?.actors.find((o) => o.id === a.id);
+      poses.set(a.id, b ? cutSampleAt(b, t) : { ...cutActorStart(a), yaw: 0 });
+    }
+
+    for (const a of cut.actors) {
+      const isSel = a.id === this.sel.actor;
+      const b = baked?.actors.find((o) => o.id === a.id);
+      if (b && b.ns > 1) {
+        for (let i = 0; i + 1 < b.ns; i++) {
+          this.#seg(
+            ctx,
+            cam,
+            { x: b.x[i], y: b.y[i], z: b.z[i] },
+            { x: b.x[i + 1], y: b.y[i + 1], z: b.z[i + 1] },
+            isSel ? CUT_COL_PATH : "#2d4a50",
+            isSel ? 2 : 1.25
+          );
+        }
+      }
+      a.path.forEach((p, i) => {
+        const sel = isSel && this.sel.point === i;
+        const hov = this.hoverAnchor?.actor === a.id && this.hoverAnchor.point === i;
+        this.#dot(ctx, cam, p, sel ? 5.5 : 4, sel ? CUT_COL_SEL : hov ? "#fff" : isSel ? "#7fd0da" : "#4f8f98");
+      });
+      const pose = poses.get(a.id);
+      if (a.kind === "camera") {
+        this.#drawCameraGlyph(ctx, cam, pose, pose.yaw, isSel ? "#fff" : CUT_COL_CAMERA, isSel ? 2 : 1.25);
+        if (a.facing === "target") {
+          const tp = poses.get(a.target);
+          if (tp) {
+            ctx.setLineDash([4, 3]);
+            this.#seg(ctx, cam, pose, tp, CUT_COL_TARGET, 1);
+            ctx.setLineDash([]);
+          }
+        }
+      } else {
+        const obj = { x: pose.x, y: pose.y, z: pose.z, scale: a.scale };
+        const yaw = yawByteToRad(pose.yaw);
+        const mesh = itemMeshFor(doc, a.item);
+        const col = isSel ? "#fff" : CUT_COL_ITEM;
+        for (const s of itemMeshWorldSegs(obj, mesh, yaw)) this.#seg(ctx, cam, s.a, s.b, col, isSel ? 2 : 1.25);
+        for (const s of itemSphereWorld(obj, mesh, yaw)) this.#sphere(ctx, cam, s, col);
+        // Facing tick so a mesh-less or symmetric item still shows its heading.
+        const { forward } = lookVectors(yaw, 0);
+        this.#seg(ctx, cam, pose, { x: pose.x + forward.x * 6, y: pose.y, z: pose.z + forward.z * 6 }, "#d4a017", 1);
+      }
+      const hov = this.hoverAnchor?.actor === a.id && this.hoverAnchor.point < 0;
+      this.#dot(ctx, cam, pose, hov ? 4 : 2.5, hov ? "#fff" : isSel && this.sel.point < 0 ? CUT_COL_SEL : "#8b91a0");
+    }
+
+    const anchor = this.#selAnchor();
+    if (anchor) drawTranslateGizmo(ctx, anchor.v, cam, w, h, { hoverGizmo: this.hoverGizmo, drag: this.drag });
+
+    ctx.fillStyle = "#8b91a0";
+    ctx.font = "11px Segoe UI, sans-serif";
+    ctx.fillText(`${(t / 1000).toFixed(2)} s / ${(cut.duration || 0).toFixed(2)} s`, 8, 16);
+    this.opts.onDrawn?.();
   }
 }
 
@@ -17330,6 +18241,16 @@ const collapsedRooms = new Set();
 let layoutSearch = "";
 /** Last room used for placement / parenting. */
 let lastRoomId = null;
+/** Cutscene tab: timeline cursor, playback, bake cache. Session only. */
+let cutTimeMs = 0;
+let cutPlaying = false;
+let cutLoop = true;
+let cutRaf = 0;
+let cutLastTs = 0;
+let cutBakeKey = "";
+let cutBakeVal = null;
+let cutSliderEl = null;
+let cutReadoutEl = null;
 
 const layoutView = new LayoutView(document.getElementById("view-canvas"), {
   stage: document.getElementById("map-stage"),
@@ -17434,6 +18355,7 @@ const previewView = new PreviewView(document.getElementById("preview-canvas"), {
   getRoom: () => previewRoom(),
   getSpawn: () => previewSpawn(),
   getEditSpawn: () => selectedSpawn(),
+  getCutscene: () => cutPreviewState(),
   getRoomsOnlyMode: () => roomsOnlyDraw,
   pistolImg: document.getElementById("preview-pistol-png"),
   onRotate: (yaw) => {
@@ -17699,6 +18621,546 @@ const fontView = new FontView({
   onUiChange: () => markUi(),
   onStatus: (msg, isError) => setStatus(msg, isError),
 });
+
+/* ---------------- Cutscene tab ---------------- */
+
+const cutView = new CutsceneView(document.getElementById("view-canvas"), {
+  stage: document.getElementById("map-stage"),
+  getDoc: () => doc,
+  getCutscene: () => cutCurrent(),
+  getRoom: () => cutRoom(),
+  getBaked: () => cutBaked(),
+  getTimeMs: () => cutTimeMs,
+  beginUndo,
+  endUndo,
+  onChange: () => {
+    markDirty();
+    previewView.draw();
+    renderInspector();
+    renderCutsceneLeft();
+  },
+  onSelect: () => {
+    renderInspector();
+    renderCutsceneLeft();
+  },
+  onViewChanged: () => markUi(),
+  onDelete: () => cutDeleteSelection(),
+  onFocus: () => cutView.focus(cutRoom()),
+});
+
+function cutCurrent() {
+  return activeMap(doc).cutscene || null;
+}
+
+function cutRoom() {
+  const cut = cutCurrent();
+  return cut?.roomId ? roomById(doc, cut.roomId) : null;
+}
+
+function cutBaked() {
+  const cut = cutCurrent();
+  if (!cut) return null;
+  const key = JSON.stringify(cut);
+  if (key !== cutBakeKey) {
+    cutBakeKey = key;
+    cutBakeVal = bakeCutscene(cut);
+  }
+  return cutBakeVal;
+}
+
+function cutDurMs() {
+  const cut = cutCurrent();
+  return cut ? Math.round(cut.duration * 1000) : 0;
+}
+
+function cutSelActor() {
+  return cutCurrent()?.actors.find((a) => a.id === cutView.sel.actor) || null;
+}
+
+/** What the game camera sees at the timeline cursor, for the Preview panel. */
+function cutPreviewState() {
+  if (editorMode !== "cutscene") return null;
+  const cut = cutCurrent();
+  const baked = cutBaked();
+  const out = { room: cutRoom(), cam: null, actors: [] };
+  if (!cut || !baked) return out;
+  for (const a of cut.actors) {
+    const b = baked.actors.find((o) => o.id === a.id);
+    if (!b) continue;
+    const s = cutSampleAt(b, cutTimeMs);
+    if (a.kind === "camera") out.cam = { x: s.x, y: s.y, z: s.z, yaw: yawByteToRad(s.yaw), pitch: 0 };
+    else out.actors.push({ obj: { x: s.x, y: s.y, z: s.z, scale: a.scale }, key: a.item, yaw: yawByteToRad(s.yaw) });
+  }
+  return out;
+}
+
+/** Mutate the cutscene with undo, then redraw everything. */
+function cutApply(fn) {
+  pushUndo();
+  fn(ensureCutscene(activeMap(doc)));
+  const cut = cutCurrent();
+  if (cut) {
+    for (const a of cut.actors) if (a.path.length) Object.assign(a, { x: a.path[0].x, y: a.path[0].y, z: a.path[0].z });
+    cutTimeMs = Math.min(cutTimeMs, cutDurMs());
+  }
+  markDirty();
+  refreshAll();
+}
+
+function cutSpawnPos(kind) {
+  const room = cutRoom();
+  if (!room) return { x: 128, y: kind === "camera" ? 4 : 64, z: 128 };
+  return {
+    x: Math.round(room.x + room.sx / 2),
+    y: Math.round(room.y + (kind === "camera" ? Math.min(4, room.sy) : room.sy / 2)),
+    z: Math.round(room.z + room.sz / 2),
+  };
+}
+
+function cutAddActor(kind) {
+  const cut = cutCurrent();
+  if (cut && cut.actors.length >= CUT_ACTOR_MAX) return;
+  if (kind === "camera" && cut?.actors.some((a) => a.kind === "camera")) return;
+  const keys = placeableItemKeys();
+  const item = keys.includes("planet") ? "planet" : keys[0];
+  const actor = createCutActor(kind, { ...cutSpawnPos(kind), item });
+  cutApply((c) => c.actors.push(actor));
+  cutView.setSelection(actor.id, -1);
+}
+
+function cutDeleteSelection() {
+  const cut = cutCurrent();
+  const a = cutSelActor();
+  if (!cut || !a) return;
+  const pt = cutView.sel.point;
+  if (pt >= 0 && a.path.length) {
+    cutApply(() => {
+      a.path.splice(pt, 1);
+      if (a.path.length < 2) {
+        if (a.path.length === 1) Object.assign(a, a.path[0]);
+        a.path = [];
+      }
+    });
+    cutView.setSelection(a.id, a.path.length ? Math.min(pt, a.path.length - 1) : -1);
+    return;
+  }
+  cutApply((c) => {
+    c.actors = c.actors.filter((o) => o.id !== a.id);
+    for (const o of c.actors) if (o.target === a.id) o.target = null;
+  });
+  cutView.setSelection(null, -1);
+}
+
+/** Append a point (afterIndex < 0) or insert one after afterIndex. An empty path becomes start + one point. */
+function cutAddPoint(a, afterIndex) {
+  cutApply(() => {
+    if (!a.path.length) {
+      const start = { x: a.x, y: a.y, z: a.z };
+      a.path = [start, { ...start, z: Math.min(255, start.z + 16) }];
+      return;
+    }
+    if (a.path.length >= CUT_PATH_MAX) return;
+    const i = afterIndex >= 0 ? afterIndex : a.path.length - 1;
+    const p = a.path[i];
+    const q = a.path[i + 1];
+    const prev = a.path[i - 1];
+    const base = q
+      ? { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2, z: (p.z + q.z) / 2 }
+      : prev
+        ? { x: 2 * p.x - prev.x, y: 2 * p.y - prev.y, z: 2 * p.z - prev.z }
+        : { x: p.x, y: p.y, z: p.z + 16 };
+    const clamp = (n) => Math.max(0, Math.min(255, Math.round(n)));
+    a.path.splice(i + 1, 0, { x: clamp(base.x), y: clamp(base.y), z: clamp(base.z) });
+  });
+  const made = afterIndex >= 0 ? afterIndex + 1 : a.path.length - 1;
+  cutView.setSelection(a.id, Math.max(0, Math.min(a.path.length - 1, made)));
+}
+
+function cutSyncTimeUi() {
+  if (cutSliderEl) cutSliderEl.value = String(Math.round(cutTimeMs));
+  if (cutReadoutEl) cutReadoutEl.textContent = `${(cutTimeMs / 1000).toFixed(2)} s`;
+  cutView.draw();
+  previewView.draw();
+}
+
+function stopCutPlay() {
+  cutPlaying = false;
+  cancelAnimationFrame(cutRaf);
+}
+
+function cutPlayStep(now) {
+  if (!cutPlaying) return;
+  const dur = cutDurMs();
+  cutTimeMs += now - cutLastTs;
+  cutLastTs = now;
+  if (cutTimeMs >= dur) {
+    if (cutLoop && dur > 0) cutTimeMs %= dur;
+    else {
+      cutTimeMs = dur;
+      cutPlaying = false;
+    }
+  }
+  cutSyncTimeUi();
+  if (cutPlaying) cutRaf = requestAnimationFrame(cutPlayStep);
+  else renderCutsceneTransport();
+}
+
+function toggleCutPlay() {
+  if (cutPlaying) {
+    stopCutPlay();
+    renderCutsceneTransport();
+    return;
+  }
+  if (cutTimeMs >= cutDurMs()) cutTimeMs = 0;
+  cutPlaying = true;
+  cutLastTs = performance.now();
+  cutRaf = requestAnimationFrame(cutPlayStep);
+  renderCutsceneTransport();
+}
+
+function renderCutsceneTransport() {
+  const root = document.getElementById("cut-transport");
+  if (!root) return;
+  root.replaceChildren();
+  const dur = cutDurMs();
+  const slider = document.createElement("input");
+  slider.type = "range";
+  slider.min = "0";
+  slider.max = String(Math.max(1, dur));
+  slider.step = "1";
+  slider.value = String(Math.round(Math.min(cutTimeMs, dur)));
+  slider.disabled = !dur;
+  slider.addEventListener("input", () => {
+    cutTimeMs = Number(slider.value);
+    cutSyncTimeUi();
+  });
+  const out = document.createElement("span");
+  out.className = "anim-frame-num";
+  out.textContent = `${(cutTimeMs / 1000).toFixed(2)} s`;
+  cutSliderEl = slider;
+  cutReadoutEl = out;
+  const play = document.createElement("button");
+  play.type = "button";
+  play.textContent = cutPlaying ? "Pause" : "Play";
+  play.disabled = !dur;
+  play.addEventListener("click", toggleCutPlay);
+  const loop = document.createElement("button");
+  loop.type = "button";
+  loop.className = "toggle";
+  loop.textContent = "Loop";
+  loop.classList.toggle("active", cutLoop);
+  loop.addEventListener("click", () => {
+    cutLoop = !cutLoop;
+    loop.classList.toggle("active", cutLoop);
+  });
+  const start = document.createElement("button");
+  start.type = "button";
+  start.textContent = "|<";
+  start.title = "Jump to start";
+  start.addEventListener("click", () => {
+    cutTimeMs = 0;
+    cutSyncTimeUi();
+  });
+  const row = document.createElement("div");
+  row.className = "toolbar-actions anim-transport-btns";
+  row.append(start, play, loop, out);
+  const wrap = document.createElement("div");
+  wrap.className = "anim-transport";
+  wrap.append(slider, row);
+  root.appendChild(wrap);
+}
+
+function cutRoomLabel(r, i) {
+  return r.name ? `${i + 1}. ${r.name}` : `Room ${i + 1}`;
+}
+
+function renderCutsceneLeft() {
+  const root = document.getElementById("cut-left");
+  if (!root) return;
+  root.replaceChildren();
+  const map = activeMap(doc);
+  const cut = map.cutscene || null;
+
+  const h = document.createElement("h2");
+  h.textContent = "Cutscene";
+  root.appendChild(h);
+
+  const lvl = document.createElement("select");
+  for (const name of LEVEL_NAMES) {
+    const o = document.createElement("option");
+    o.value = name;
+    o.textContent = doc.maps[name]?.name ? `${name} ${doc.maps[name].name}` : name;
+    lvl.appendChild(o);
+  }
+  lvl.value = doc.activeLevel;
+  lvl.addEventListener("change", () => {
+    stopCutPlay();
+    cutTimeMs = 0;
+    cutView.sel = { actor: null, point: -1 };
+    switchLevel(lvl.value);
+  });
+  root.appendChild(field("Map", lvl));
+
+  const rooms = roomsOf(doc);
+  const roomSel = document.createElement("select");
+  const none = document.createElement("option");
+  none.value = "";
+  none.textContent = "(no cutscene)";
+  roomSel.appendChild(none);
+  rooms.forEach((r, i) => {
+    const o = document.createElement("option");
+    o.value = r.id;
+    o.textContent = cutRoomLabel(r, i);
+    roomSel.appendChild(o);
+  });
+  roomSel.value = cut?.roomId && rooms.some((r) => r.id === cut.roomId) ? cut.roomId : "";
+  roomSel.title = "The room set aside for the cutscene. Build it in the Maps tab; leave it unreachable.";
+  roomSel.addEventListener("change", () => {
+    cutApply((c) => {
+      c.roomId = roomSel.value || null;
+    });
+    cutView.focus(cutRoom());
+  });
+  root.appendChild(field("Room", roomSel));
+
+  root.appendChild(
+    field(
+      "Seconds",
+      numInput(
+        cut?.duration ?? 3,
+        (v) => cutApply((c) => (c.duration = clampCutDuration(v))),
+        CUT_DUR_MIN,
+        CUT_DUR_MAX,
+        0.125
+      )
+    )
+  );
+
+  const add = document.createElement("div");
+  add.className = "btn-row";
+  const hasCam = !!cut?.actors.some((a) => a.kind === "camera");
+  const full = (cut?.actors.length ?? 0) >= CUT_ACTOR_MAX;
+  const bItem = document.createElement("button");
+  bItem.type = "button";
+  bItem.textContent = "+ Item";
+  bItem.disabled = full;
+  bItem.addEventListener("click", () => cutAddActor("item"));
+  const bCam = document.createElement("button");
+  bCam.type = "button";
+  bCam.textContent = "+ Camera";
+  bCam.disabled = full || hasCam;
+  bCam.addEventListener("click", () => cutAddActor("camera"));
+  const bDel = document.createElement("button");
+  bDel.type = "button";
+  bDel.className = "danger";
+  bDel.textContent = "Remove";
+  bDel.disabled = !cutSelActor();
+  bDel.addEventListener("click", () => {
+    cutView.sel.point = -1;
+    cutDeleteSelection();
+  });
+  add.append(bItem, bCam, bDel);
+  root.appendChild(add);
+
+  const h2 = document.createElement("h2");
+  h2.textContent = "Actors";
+  root.appendChild(h2);
+  const ul = document.createElement("ul");
+  ul.className = "object-list";
+  for (const a of cut?.actors || []) {
+    const li = document.createElement("li");
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = `${a.kind === "camera" ? "Camera" : itemLabel(a.item)}${cutActorMoves(a) ? "  (path)" : ""}`;
+    if (a.id === cutView.sel.actor) btn.className = "active";
+    btn.addEventListener("click", () => cutView.setSelection(a.id, -1));
+    li.appendChild(btn);
+    ul.appendChild(li);
+  }
+  root.appendChild(ul);
+
+  const info = document.createElement("div");
+  info.className = "cut-issues";
+  if (cut) {
+    const bytes = cutsceneBytes(cutBaked());
+    const line = document.createElement("p");
+    line.className = "muted";
+    line.textContent = `Data ${bytes} B of about ${CUT_DATA_BUDGET} B`;
+    info.appendChild(line);
+    for (const msg of cutsceneIssues(doc, map)) {
+      const p = document.createElement("p");
+      p.className = "cut-issue";
+      p.textContent = msg;
+      info.appendChild(p);
+    }
+  }
+  root.appendChild(info);
+}
+
+function cutSelectField(options, value, onPick, labelOf = (v) => v) {
+  const sel = document.createElement("select");
+  for (const v of options) {
+    const o = document.createElement("option");
+    o.value = String(v);
+    o.textContent = labelOf(v);
+    sel.appendChild(o);
+  }
+  sel.value = String(value);
+  sel.addEventListener("change", () => onPick(sel.value));
+  return sel;
+}
+
+function renderCutsceneInspector(root) {
+  const h = document.createElement("h2");
+  h.textContent = "Actor";
+  root.appendChild(h);
+  const cut = cutCurrent();
+  const a = cutSelActor();
+  if (!cut || !a) {
+    const p = document.createElement("p");
+    p.className = "muted";
+    p.textContent = cut ? "Select an actor in the list or the view." : "Pick a cutscene room, then add a camera and items.";
+    root.appendChild(p);
+    return;
+  }
+
+  if (a.kind === "item") {
+    root.appendChild(field("Item", cutSelectField(placeableItemKeys(), a.item, (v) => cutApply(() => (a.item = v)), itemLabel)));
+    root.appendChild(
+      field("Scale", cutSelectField(ITEM_SCALES, a.scale, (v) => cutApply(() => (a.scale = clampItemScale(Number(v)))), (v) => `${v}x`))
+    );
+    root.appendChild(
+      field(
+        "Facing",
+        cutSelectField(CUT_FACING_ITEM, a.facing, (v) => cutApply(() => (a.facing = v)), (v) => (v === "path" ? "along path" : "fixed"))
+      )
+    );
+    root.appendChild(
+      field(
+        "Heading",
+        cutSelectField(
+          ENEMY_FACINGS.map((_, i) => i),
+          a.rot,
+          (v) => cutApply(() => (a.rot = clampEnemyRot(Number(v)))),
+          (i) => ENEMY_FACINGS[i]
+        )
+      )
+    );
+  } else {
+    root.appendChild(
+      field(
+        "Facing",
+        cutSelectField(
+          CUT_FACING_CAMERA,
+          a.facing,
+          (v) => cutApply(() => (a.facing = v)),
+          (v) => (v === "path" ? "along path" : v === "target" ? "face item" : "fixed")
+        )
+      )
+    );
+    if (a.facing === "target") {
+      const items = cut.actors.filter((o) => o.kind === "item");
+      const sel = document.createElement("select");
+      const none = document.createElement("option");
+      none.value = "";
+      none.textContent = "(choose)";
+      sel.appendChild(none);
+      for (const o of items) {
+        const op = document.createElement("option");
+        op.value = o.id;
+        op.textContent = itemLabel(o.item);
+        sel.appendChild(op);
+      }
+      sel.value = items.some((o) => o.id === a.target) ? a.target : "";
+      sel.addEventListener("change", () => cutApply(() => (a.target = sel.value || null)));
+      root.appendChild(field("Look at", sel));
+    } else if (a.facing === "fixed") {
+      root.appendChild(
+        sliderField("Yaw", a.yaw, {
+          min: 0,
+          max: 255,
+          step: 1,
+          format: (v) => `${Math.round((v * 360) / 256)}°`,
+          onInput: (v) => {
+            a.yaw = v;
+            cutView.draw();
+            previewView.draw();
+          },
+          onChange: (v) => cutApply(() => (a.yaw = v)),
+        })
+      );
+    }
+  }
+
+  const pt = cutView.sel.point;
+  const moves = a.path.length > 0;
+  const hp = document.createElement("h2");
+  hp.textContent = moves ? `Path (${a.path.length} points)` : "Path";
+  root.appendChild(hp);
+  const axes = (target) =>
+    ["x", "y", "z"].map((k) => ({
+      axis: k,
+      value: target[k],
+      min: 0,
+      max: 255,
+      step: 1,
+      onChange: (v) => cutApply(() => (target[k] = Math.max(0, Math.min(255, Math.round(v))))),
+    }));
+  if (!moves) {
+    const p = document.createElement("p");
+    p.className = "muted";
+    p.textContent = "Stationary.";
+    root.appendChild(p);
+    root.appendChild(vec3Field("x y z", axes(a)));
+  } else {
+    const list = document.createElement("ul");
+    list.className = "object-list";
+    a.path.forEach((p, i) => {
+      const li = document.createElement("li");
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = `${i + 1}.  ${p.x}, ${p.y}, ${p.z}`;
+      if (i === pt) btn.className = "active";
+      btn.addEventListener("click", () => cutView.setSelection(a.id, i));
+      li.appendChild(btn);
+      list.appendChild(li);
+    });
+    root.appendChild(list);
+    const p = a.path[pt];
+    if (p) root.appendChild(vec3Field(`point ${pt + 1}`, axes(p)));
+  }
+  const row = document.createElement("div");
+  row.className = "btn-row";
+  const bAdd = document.createElement("button");
+  bAdd.type = "button";
+  bAdd.textContent = moves ? "Add point" : "Make path";
+  bAdd.disabled = a.path.length >= CUT_PATH_MAX;
+  bAdd.addEventListener("click", () => cutAddPoint(a, -1));
+  row.appendChild(bAdd);
+  if (moves) {
+    const bIns = document.createElement("button");
+    bIns.type = "button";
+    bIns.textContent = "Insert after";
+    bIns.disabled = pt < 0 || pt >= a.path.length - 1 || a.path.length >= CUT_PATH_MAX;
+    bIns.addEventListener("click", () => cutAddPoint(a, pt));
+    const bDel = document.createElement("button");
+    bDel.type = "button";
+    bDel.textContent = "Delete point";
+    bDel.disabled = pt < 0;
+    bDel.addEventListener("click", () => cutDeleteSelection());
+    const bClr = document.createElement("button");
+    bClr.type = "button";
+    bClr.textContent = "Clear path";
+    bClr.addEventListener("click", () => {
+      cutApply(() => {
+        a.path = [];
+      });
+      cutView.setSelection(a.id, -1);
+    });
+    row.append(bIns, bDel, bClr);
+  }
+  root.appendChild(row);
+}
 
 function setStatus(msg, isError = false) {
   statusEl.textContent = msg || "";
@@ -18331,6 +19793,7 @@ function setMode(mode) {
   document.getElementById("btn-mode-items")?.classList.toggle("active", mode === "items");
   document.getElementById("btn-mode-build")?.classList.toggle("active", mode === "build");
   document.getElementById("btn-mode-font")?.classList.toggle("active", mode === "font");
+  document.getElementById("btn-mode-cutscene")?.classList.toggle("active", mode === "cutscene");
   document.querySelector(".layout")?.classList.toggle("layout-build", mode === "build");
   const leftAside = document.querySelector(".left");
   if (leftAside) leftAside.hidden = mode === "build";
@@ -18362,6 +19825,10 @@ function setMode(mode) {
   if (hintEl) hintEl.hidden = mode === "build";
   const fontLeft = document.getElementById("font-left");
   if (fontLeft) fontLeft.hidden = mode !== "font";
+  const cutLeft = document.getElementById("cut-left");
+  if (cutLeft) cutLeft.hidden = mode !== "cutscene";
+  const cutTransport = document.getElementById("cut-transport");
+  if (cutTransport) cutTransport.hidden = mode !== "cutscene";
   document.getElementById("layout-left").hidden = mode !== "layout";
   document.querySelector(".left")?.classList.toggle("left-map", mode === "layout");
   document.getElementById("anim-left").hidden = mode !== "anim";
@@ -18373,7 +19840,7 @@ function setMode(mode) {
     if (btn) btn.disabled = mode !== "layout";
   }
   document.getElementById("overhead-panel").hidden = mode !== "layout";
-  document.getElementById("preview-panel").hidden = mode !== "layout";
+  document.getElementById("preview-panel").hidden = mode !== "layout" && mode !== "cutscene";
   if (mode !== "layout") clearPaletteDrag();
   updateCenterChrome();
   document.getElementById("hint").textContent =
@@ -18383,6 +19850,8 @@ function setMode(mode) {
           ? "LMB box-select verts · click vert/line to select · Shift add · gizmo moves · V add vert · L add line · Ctrl+C/V copy/paste · Del · F focus · MMB pan · Wheel / Alt+RMB zoom · Perspective: Alt+LMB / RMB orbit · Front/Right/Top: Alt+LMB / RMB pan · pan and zoom are shared by all views"
           : mode === "build"
               ? "Open the repo once · Reload after a build"
+              : mode === "cutscene"
+                ? "Click an actor or path point to select · gizmo moves it · Alt+LMB / RMB orbit · MMB pan · Wheel / Alt+RMB zoom · F frame room · Del removes the selected point or actor · scrub or Play the timeline; the Preview panel shows the camera"
               : mode === "font"
                 ? "LMB paint · RMB erase · drag a glyph into a grid · arrows shift · H/V flip · I invert · Del clear · 1-4 pick grid · Ctrl+C/V copy/paste glyph"
                 : animHintText();
@@ -18390,6 +19859,12 @@ function setMode(mode) {
   layoutView.enabled = mode === "layout";
   animView.enabled = mode === "anim";
   itemView.enabled = mode === "items";
+  cutView.enabled = mode === "cutscene";
+  if (mode !== "cutscene") stopCutPlay();
+  if (mode === "cutscene") {
+    renderCutsceneTransport();
+    requestAnimationFrame(() => cutView.resize());
+  }
   if (mode === "layout") layoutView.resize();
   else if (mode === "anim") {
     requestAnimationFrame(() => {
@@ -18965,7 +20440,9 @@ function updateCenterChrome() {
           ? "Build"
           : editorMode === "font"
             ? "Font"
-            : "Enemy";
+            : editorMode === "cutscene"
+              ? `Cutscene — ${doc.activeLevel}`
+              : "Enemy";
   if (statsEl) {
     statsEl.hidden = true;
     statsEl.textContent = "";
@@ -20755,7 +22232,7 @@ function renderInspector() {
     p.className = stats.over ? "error" : "muted";
     p.textContent = `${stats.nv} verts · ${stats.ne} lines · unique X ${stats.nx}/${ITEM_MAX_UNIQUE} · unique Z ${stats.nz}/${ITEM_MAX_UNIQUE} · ~${stats.bytes} B · page ${itemPagePlan(doc).pageOf[itemMeshKey] ?? 0}`;
     root.appendChild(p);
-    if (itemMeshKey !== "backpack" && !doc.items[itemMeshKey].verts.length) {
+    if (itemMeshKey !== "backpack" && !doc.items[itemMeshKey].verts.length && !doc.items[itemMeshKey].spheres?.length) {
       const f = document.createElement("p");
       f.className = "muted";
       f.textContent = DOOR_MESH_KEYS.includes(itemMeshKey)
@@ -20808,6 +22285,10 @@ function renderInspector() {
   }
   if (editorMode === "font") {
     renderFontInspector(root);
+    return;
+  }
+  if (editorMode === "cutscene") {
+    renderCutsceneInspector(root);
     return;
   }
   if (editorMode === "layout") {
@@ -22008,9 +23489,14 @@ function refreshPanels() {
   renderEnemyList();
   renderItemList();
   renderInspector();
+  if (editorMode === "cutscene") {
+    renderCutsceneLeft();
+    renderCutsceneTransport();
+  }
   syncSharewareFolderButtons();
   if (editorMode !== "build") overheadView.draw();
-  if (editorMode === "layout") previewView.draw();
+  if (editorMode === "layout" || editorMode === "cutscene") previewView.draw();
+  if (editorMode === "cutscene") cutView.draw();
   if (editorMode === "layout") layoutView.draw();
   if (editorMode === "anim") animView.draw();
   if (editorMode === "items") itemView.draw();
@@ -22022,6 +23508,7 @@ function refreshAll() {
   refreshPanels();
   if (editorMode === "layout") layoutView.draw();
   else if (editorMode === "items") itemView.draw();
+  else if (editorMode === "cutscene") cutView.draw();
   else if (editorMode !== "build" && editorMode !== "font") animView.draw();
 }
 
@@ -22052,6 +23539,9 @@ document.getElementById("btn-mode-build")?.addEventListener("click", () => {
 });
 document.getElementById("btn-mode-font")?.addEventListener("click", () => {
   setMode("font");
+});
+document.getElementById("btn-mode-cutscene")?.addEventListener("click", () => {
+  setMode("cutscene");
 });
 document.getElementById("btn-mdl-overlay").addEventListener("click", () => {
   setRefSpriteOn(!refSpriteOn);

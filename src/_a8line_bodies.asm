@@ -2,7 +2,7 @@
 ; Four masks, chained C (set on entry, kept by every step), countdown in X.
 ; colptr = page + column byte (4..27). Y = row offset in the page, (y & 7) << 5.
 ; A row is 32 on Y and the page byte follows a wrap. Four pixels then inc colptr.
-; Each body starts lda (colptr),y / ora #mask: rocket.asm patches the ora opcode.
+; Each body starts lda (colptr),y / ora #mask.
 ; ---- X major +Y ----
 esdn_l	!byte <esd0,<esd1,<esd2,<esd3
 esdn_h	!byte >esd0,>esd1,>esd2,>esd3

@@ -96,7 +96,7 @@ def emit_a8() -> None:
         "; Four masks, chained C (set on entry, kept by every step), countdown in X.\n",
         "; colptr = page + column byte (4..27). Y = row offset in the page, (y & 7) << 5.\n",
         "; A row is 32 on Y and the page byte follows a wrap. Four pixels then inc colptr.\n",
-        "; Each body starts lda (colptr),y / ora #mask: rocket.asm patches the ora opcode.\n",
+        "; Each body starts lda (colptr),y / ora #mask.\n",
         "; ---- X major +Y ----\n",
         a8_table("esdn", "esd"),
         shallow("esd", True),

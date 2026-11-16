@@ -138,11 +138,14 @@ stroke_mesh
 }
 ; Projected mesh (mesh_project done, edge pointers / mesh_ne still set) -> strokes.
 stroke_clip
+	lda mesh_ne				; sphere-only item: no edges (mesh_clip is a do-while)
+	beq .sc_done
 	jsr mesh_clip			; strokes each edge as it accepts it
 !if PROFILE = 1 {
 	ldy #PROF_CLIP
 	jsr prof_add_bucket
 }
+.sc_done
 	lda #$ff
 	sta mesh_vmask
 	rts

@@ -46,3 +46,10 @@
 ## Patrol
 * Enemies have a **Patrol** checkbox. When set, an idle enemy picks a random cardinal, walks at least 6 units if that ray is clear of walls, then idles 1–2 seconds and repeats. Failed rays stay idle and retry next frame.
 * There are no placeable patrol-point markers.
+
+## Cutscenes
+* The **Cutscene** tab edits one cutscene per map (`map.cutscene` in `maps/map<x>.json`), played when you arrive on that map, before the "docking at" card. After `duration` seconds the game drops into the spawn room.
+* The cutscene happens in an ordinary **room set aside** in the Maps tab (pick it in the tab's Room list; make it big, leave it without doorways, give it a background colour). It must not be the spawn room.
+* **Actors** are not map objects: they live in the cutscene block, so they never count against the thing/room limits. Max 6 actors, exactly one **camera**, items are any placeable item (first example: a planet, a ship, a camera).
+* An actor with no path is stationary. A path of 2-16 points is a **Catmull-Rom spline** through the points, travelled at constant speed over the whole duration. Items face **fixed** (Heading octant) or **along path**. The camera faces **fixed** (yaw), **along path**, or **face item** (another actor, horizontal only: the game projector has no pitch). Camera x/y/z is the eye position.
+* Coordinates are whole units 0..255 like everything else. The editor bakes the cutscene to samples every 128 ms (`CUT_STEP_MS`, `bakeCutscene` in `cutsceneModel.js`); the game cooker (`tools/gencutscene.py`) implements the same spec, and the Preview panel plays the baked samples exactly as the game lerps them. `node tools/cut_bake_js.js editor/maps/mapa.json` dumps the editor's bake for cross-checking the cooker.

@@ -1805,3 +1805,23 @@ body.font-dragging,
 body.font-dragging * {
   cursor: grabbing !important;
 }
+
+/* Cutscene tab */
+.cut-transport {
+  flex: 0 0 auto;
+  margin-top: 0.5rem;
+}
+
+.cut-transport[hidden] {
+  display: none !important;
+}
+
+.cut-issues {
+  margin-top: 0.5rem;
+}
+
+.cut-issue {
+  margin: 0.2rem 0;
+  font-size: 0.8rem;
+  color: #e8a0a0;
+}

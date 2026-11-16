@@ -858,7 +858,6 @@ barrel_bit
 	!byte $01, $02, $04, $08, $10, $20, $40, $80
 
 draw_rockets
-	jsr draw_rockets_red
 	ldx #0
 .dgr
 	cpx #RKT_MAX
@@ -869,42 +868,15 @@ draw_rockets
 	jsr load_view_trig
 	ldx obj_i
 	jsr rkt_draw_one
-	jmp .dgr_ld
-.dgr_ld
 	ldx obj_i
 .dgr_n
 	inx
 	bne .dgr
 .dgr_rts
-	jmp rkt_red_off
-
-; Every projectile draws red. Restore ora before return so later lines stay paper.
-draw_rockets_red
-	lda #$49
-	bne rkt_red_ops
-rkt_red_off
-	lda #$09
-rkt_red_ops
-	sta esd0+2
-	sta esd1+2
-	sta esd2+2
-	sta esd3+2
-	sta esu0+2
-	sta esu1+2
-	sta esu2+2
-	sta esu3+2
-	sta etd0+2
-	sta etd1+2
-	sta etd2+2
-	sta etd3+2
-	sta etu0+2
-	sta etu1+2
-	sta etu2+2
-	sta etu3+2
 	rts
 
-; One projected centre, then a screen triangle of half-extent RKT_R.
-; Edges are clipped; off-screen corners are not pulled onto the border.
+; One projected centre, drawn as a red sphere (sph_draw, item_xf.asm) of world radius RKT_R.
+; Clipped like any circle; a far one shrinks to a 1px ring instead of vanishing.
 rkt_draw_one
 	stx obj_i
 	lda gr_xl,x
@@ -923,116 +895,28 @@ rkt_draw_one
 	jsr xform_world_vert88
 	jsr cam0_proj_xy
 	bcc .gdo_rts
+	clc
 	lda ox0l
-	sta gdo_cx
+	adc #SCREEN_CX
+	sta sph_b
 	lda ox0h
-	sta gdo_cxh
-	lda oy0l
-	sta gdo_cy
-	lda oy0h
-	sta gdo_cyh
+	adc #0
+	sta sph_b+1
+	sec
+	lda #63
+	sbc oy0l
+	sta sph_b+2
+	lda #0
+	sbc oy0h
+	sta sph_b+3
 	lda #RKT_R
 	sta ylo
 	lda #0
 	sta yhi
-	jsr persp88
-	sta gdo_r
-	jsr .gdo_tl
-	jsr .gdo_lr
-	jmp .gdo_rt
+	lda #1
+	sta sph_red
+	jmp sph_draw
 .gdo_rts
 	rts
-
-; Centered space: top (cx, cy+r), left (cx−r, cy−r), right (cx+r, cy−r).
-.gdo_tl
-	lda gdo_cx
-	sta ox0l
-	lda gdo_cxh
-	sta ox0h
-	clc
-	lda gdo_cy
-	adc gdo_r
-	sta oy0l
-	lda gdo_cyh
-	adc #0
-	sta oy0h
-	sec
-	lda gdo_cx
-	sbc gdo_r
-	sta ox1l
-	lda gdo_cxh
-	sbc #0
-	sta ox1h
-	sec
-	lda gdo_cy
-	sbc gdo_r
-	sta oy1l
-	lda gdo_cyh
-	sbc #0
-	sta oy1h
-	jmp clip_draw_xy
-.gdo_lr
-	sec
-	lda gdo_cx
-	sbc gdo_r
-	sta ox0l
-	lda gdo_cxh
-	sbc #0
-	sta ox0h
-	sec
-	lda gdo_cy
-	sbc gdo_r
-	sta oy0l
-	lda gdo_cyh
-	sbc #0
-	sta oy0h
-	clc
-	lda gdo_cx
-	adc gdo_r
-	sta ox1l
-	lda gdo_cxh
-	adc #0
-	sta ox1h
-	sec
-	lda gdo_cy
-	sbc gdo_r
-	sta oy1l
-	lda gdo_cyh
-	sbc #0
-	sta oy1h
-	jmp clip_draw_xy
-.gdo_rt
-	clc
-	lda gdo_cx
-	adc gdo_r
-	sta ox0l
-	lda gdo_cxh
-	adc #0
-	sta ox0h
-	sec
-	lda gdo_cy
-	sbc gdo_r
-	sta oy0l
-	lda gdo_cyh
-	sbc #0
-	sta oy0h
-	lda gdo_cx
-	sta ox1l
-	lda gdo_cxh
-	sta ox1h
-	clc
-	lda gdo_cy
-	adc gdo_r
-	sta oy1l
-	lda gdo_cyh
-	adc #0
-	sta oy1h
-	jmp clip_draw_xy
-
-gdo_cx	!byte 0
-gdo_cxh	!byte 0
-gdo_cy	!byte 0
-gdo_cyh	!byte 0
-gdo_r	!byte 0
 
 rocket_end = *

@@ -165,21 +165,6 @@ sph_one
 	lda #0
 	sbc PROJ_YH,x
 	sta sph_b+3
-	; Coarse reject (R <= PERSP_MAX): x centre within -256..511, y within -256..255
-	lda sph_b+1
-	clc
-	adc #1
-	cmp #3
-	bcc +
-	rts
-+
-	lda sph_b+3
-	clc
-	adc #1
-	cmp #2
-	bcc +
-	rts
-+
 	lda CAM_Z,x
 	sta z_eye
 	lda CAM_ZH,x
@@ -205,11 +190,38 @@ sph_one
 	lda #$ff
 	sta ylo
 .so_proj
+	lda #0
+	sta sph_red				; ink, sub-pixel circles are skipped
+
+; Shared circle core (items above, projectiles in rocket.asm). In: sph_b = centre (hires x lo/hi,
+; screen y lo/hi), z_eye/z_eye_h, ylo:yhi = world radius 8.8, sph_red = 0 ink / 1 red.
+; Red forces pixel %10 (a circle cannot eor: its mirrors coincide at y = 0 and x = y) and is
+; never culled for size: a far projectile stays a 1px ring.
+sph_draw
+	; Coarse reject (R <= PERSP_MAX): x centre within -256..511, y within -256..255
+	lda sph_b+1
+	clc
+	adc #1
+	cmp #3
+	bcc +
+	rts
++
+	lda sph_b+3
+	clc
+	adc #1
+	cmp #2
+	bcc +
+	rts
++
 	jsr persp88
 	cmp #1
-	bcs +
+	bcs .sd_r
+	ldx sph_red
+	bne .sd_one
 	rts						; sub-pixel
-+
+.sd_one
+	lda #1
+.sd_r
 	sta sph_r
 	; Bounding-box reject (Elite's CHKON, on our 192 x 128 view): skip when no part can show.
 	clc
@@ -246,6 +258,15 @@ sph_one
 	cpx #128
 	bcs .so_rj				; cy - R > 127
 .so_yok
+	lda #<sph_plot8			; ink or red plot stage for this circle
+	ldx #>sph_plot8
+	ldy sph_red
+	beq +
+	lda #<sph_plot8r
+	ldx #>sph_plot8r
++
+	sta sph_p8+1
+	stx sph_p8+2
 	lda #PORTB_MAIN			; bitmaps are main RAM under the bank window: one switch for the whole circle
 	sta $d301
 	jsr sph_bres
@@ -356,7 +377,8 @@ sph_bres
 	sbc #0
 	sta sph_dh
 .sb_loop
-	jsr sph_plot8
+sph_p8
+	jsr sph_plot8				; operand patched by sph_draw (ink or red)
 	inc sph_iy
 	clc						; y++: R0 += 32, R1 -= 32
 	lda sph_pl
@@ -509,6 +531,45 @@ sph_plot8
 	+sph_row 3, 2, 3
 	rts
 
+; Red stage: same walk, pixel forced to %10 = (bg | M) & ~(M & $55).
+!macro sph_red_px .c {
+	lda sph_cm+.c
+	and #$55
+	eor #$ff
+	tax
+	lda sph_cm+.c
+	ora (colptr),y
+	stx sph_rm
+	and sph_rm
+	sta (colptr),y
+}
+
+!macro sph_row_red .k, .ca, .cb {
+	lda sph_ph+.k
+	cmp bmp_hi
+	bcc .sk
+	cmp sph_bend
+	bcs .sk
+	sta colptr+1
+	lda sph_pl+.k
+	sta colptr
+	ldy sph_cb+.ca
+	bmi .c2
+	+sph_red_px .ca
+.c2
+	ldy sph_cb+.cb
+	bmi .sk
+	+sph_red_px .cb
+.sk
+}
+
+sph_plot8r
+	+sph_row_red 0, 0, 1
+	+sph_row_red 1, 0, 1
+	+sph_row_red 2, 2, 3
+	+sph_row_red 3, 2, 3
+	rts
+
 ; Pixel masks by (hires x & 6): pixels 0..3 of a mode E byte, MSB first (a8_pair).
 sph_mt
 	!byte $c0,0,$30,0,$0c,0,$03
@@ -518,6 +579,8 @@ item_slot_cur	!byte 0			; slot fill_item_verts last chose
 item_scale_shl	!byte 0			; its thing scale shift 0..3
 sph_dl		!byte 0			; Bresenham decision variable (16-bit signed)
 sph_dh		!byte 0
+sph_red		!byte 0			; 0 ink item sphere, 1 red projectile
+sph_rm		!byte 0			; red plot scratch: ~(M & $55)
 sph_n		!byte 0			; spheres left
 sph_i		!byte 0			; item_sv / item_sr index
 sph_v		!byte 0
