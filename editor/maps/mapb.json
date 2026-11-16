@@ -304,6 +304,19 @@
         "item": "tree",
         "scale": 2,
         "yaw": 60
+      },
+      {
+        "id": "0a0f5e7d-1e59-473d-ba9b-df21ee244f3c",
+        "kind": "item",
+        "x": 205,
+        "y": 58,
+        "z": 48,
+        "path": [],
+        "facing": "fixed",
+        "ease": "linear",
+        "item": "barrel",
+        "scale": 1,
+        "yaw": 0
       }
     ]
   }

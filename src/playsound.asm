@@ -4,8 +4,8 @@
 ; that channel is idle.
 ; Enemy envelopes ride pose PRGs; sound_table (BSS, SOUND_TABLE)
 ; hi=0 until rebind_streamed_sfx.
-; Layout: N, AD|voice, priority, fnhi[0..N-1]. AD (low nibble masked) written on
-; commit. Sustain is full. Stepped once per mid-split raster (~50/60 Hz).
+; Layout: N, AD|noise|voice, priority, fnhi[0..N-1]. AD (low nibble masked) written on
+; commit; bit 2 selects poly17 noise instead of pure tone. Sustain is full. Stepped once per mid-split raster (~50/60 Hz).
 ; SID Fn lo fixed at $80; the data bytes are Fn hi already (gensounds bakes them).
 
 !zone playsound
@@ -31,6 +31,8 @@ sfx_ptr_h
 	!byte 0, 0, 0
 sfx_sr
 	!byte 0				; AD / SR nibble scratch (IRQ)
+sfx_dist
+	!byte $a0, $a0, $a0		; per-channel AUDC distortion: $a0 tone / $80 noise
 
 ; Main stages here; mid-split IRQ flushes via play_sound_commit.
 sfx_q
@@ -137,6 +139,14 @@ play_sound_commit
 	ldy #0
 	lda (sfx_zp_l),y			; N
 	sta sfx_max,x
+	pla
+	pha
+	and #4					; bit 2: noise
+	asl
+	asl
+	asl
+	eor #$a0				; $a0 pure tone / $80 poly17 noise
+	sta sfx_dist,x
 	pla
 	and #$f0				; attack<<4, decay 0
 	sta sfx_sr
@@ -249,7 +259,7 @@ sfx_write_tone
 	sta $d200,y
 	lda effects_vol
 	and #$0f
-	ora #$a0				; pure tone
+	ora sfx_dist,x				; $a0 pure tone / $80 noise
 	sta $d201,y
 	rts
 

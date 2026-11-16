@@ -1041,6 +1041,8 @@ update_fall
 	sta fall_vh
 	sta fall_vf
 	sta fall_acc
+	lda #SOUND_LAND
+	jsr play_sound			; A clobbered only
 	sec
 	lda fall_y0
 	sbc cam_yh			; eye drop
@@ -1619,6 +1621,8 @@ air_heading
 	sta fall_y0
 	lda #1
 	sta pl_falling
+	lda #SOUND_JUMP
+	jmp play_sound
 .dj_rts
 	rts
 

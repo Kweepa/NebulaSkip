@@ -10,7 +10,7 @@
 ; room_idx, the camera actor drives cam_* / yaw, draw_world strokes the room, then every item
 ; actor is drawn through cut_draw_item (loader.asm: the e_enter / e_leave bracket has to sit in
 ; resident code, the window shows main RAM inside it). No enemies, rockets, weapon or input.
-; Fire (a fresh press, not the one that started the game) skips. On the way out room_idx, the
+; The cutscene always plays to its full duration (fire does not skip). On the way out room_idx, the
 ; camera and the room palette go back to the spawn view world_init built.
 ;
 ; Baked data (cut_data, offsets CD_*; gencutscene.py writes it, actor 0 is the camera):
@@ -68,7 +68,6 @@ cut_run
 	sta pitch
 	sta cu_tl
 	sta cu_th
-	sta cu_arm
 	sta in_fire
 	lda vbi_count_l			; the load took a while: dt starts from here
 	sta vbi_last_l
@@ -114,18 +113,8 @@ cut_run
 	lda cu_th
 	adc dt_msh
 	sta cu_th
-	lda in_fire			; read and clear; held fire keeps re-latching it
-	ldx #0
-	stx in_fire
-	cmp #0
-	bne .fire
-	inx
-	stx cu_arm			; fire seen released: the next press skips
-	bne .tcheck
-.fire
-	lda cu_arm
-	bne .done
-.tcheck
+	lda #0
+	sta in_fire			; no skip: fire is dropped so a press here does not shoot on return
 	lda cu_th
 	cmp cut_data+CD_DUR+1
 	bcc .again
@@ -537,7 +526,6 @@ cu_room		!byte 0
 cu_sv		!fill 7, 0
 cu_tl		!byte 0
 cu_th		!byte 0
-cu_arm		!byte 0
 cu_frac		!byte 0
 cu_idx		!byte 0
 cu_a		!byte 0

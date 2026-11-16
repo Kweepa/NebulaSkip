@@ -12,14 +12,27 @@ editor's map inspector). tools/genmap.py packs that tune into the map
 the library for the editor (editor/js/tunesData.js: picker + preview player).
 
 Tune bytes: tick_ms, dist|peak, atk, rel, rel_ticks, vib_delay, vib_speed,
-vib_depth, glide, then (AUDF, len) pairs. len 1..127 ticks, bit 7 = rest,
+vib_depth, glide, hold, then (AUDF, len) pairs. len 1..127 ticks, bit 7 = rest,
 len 0 = loop. Level is 4.4 per VBI. Vibrato and glide move AUDF in divider
 steps (src/ambient.asm): one step is about 8 cents at C3, 28 at C5.
 
 Voicing: the envelope is the instrument. atk is level per VBI toward
 peak * 16 (atk 2, peak 6 = 0.8 s swell); the vibrato triple is (delay VBIs,
 VBIs per quarter cycle, depth in steps); glide = steps per VBI for a note
-that starts while the last one still sounds.
+that starts while the last one still sounds. rel 0 is the slowest fall, one
+level every other VBI (peak 5 to hold 2 in about 1.8 s). hold (volume 0..15) is the level
+the voice falls to and stays at instead of going silent: the last note of a
+group carries on quietly through the rest, and with glide set the next group
+bends up or down from it. At effects volume v it sounds as hold * (v+1) / 16,
+so hold 1 is only heard at full volume.
+
+rel_ticks is how many ticks before its end a note starts to fall, and it only
+matters between two notes (a rest releases anyway): 0 = legato, the level
+holds across the change (what glide needs; repeated pitches merge), 1 = a dip
+that re-articulates. The fall must not reach volume 0 before the next note,
+and a note must be longer than rel_ticks or it never sounds; pack() checks
+both. No vibrato on poly4: one step off a clean divider changes the pattern
+(pitch jumps a twelfth or more, or the channel goes silent).
 
 Score strings: "D3:4 A3 C4 E4:8 -:8". NAME[:ticks]; "-" is a rest; ticks
 carry over from the previous token.
@@ -49,77 +62,65 @@ TUNE_MAX_BYTES = 1024           # per map; not counted against MAP_MAX_BYTES
 TONE, POLY4 = 0xA0, 0xC0
 R = None                        # rest
 
-HDR = 9
+HDR = 10
 NOVIB = (0, 1, 0)
 
-# name, about, tick_ms, dist, peak 1..15, atk, rel, rel_ticks, (vib delay, speed, depth), glide, score
+# name, about, tick_ms, dist, peak 1..15, atk, rel, rel_ticks, (vib delay, speed, depth), glide, hold, score
 TUNES = [
-    ("Dockside", "D dorian, slow rising figures, long gaps", 250, TONE, 6, 3, 3, 2, (24, 3, 1), 0, """
+    ("Dockside", "D dorian, slow rising figures, long gaps", 250, TONE, 6, 3, 0, 0, (30, 8, 1), 2, 2, """
         D3:4 A3 C4 E4:8 -:8   D3:4 A3 B3 F4:8 -:8   C3:4 G3 B3 D4:8 -:8   G3:4 D4 E4 A3:12 -:12
         F3:4 C4 E4 A4:8 -:8   E3:4 B3 D4 G4:8 -:8   D3:4 A3 C4 F4:8 G4:4 E4:12 -:16
         D3:4 A3 C4 E4:8 -:8   D3:4 A3 B3 F4:8 -:8   C3:4 G3 B3 D4:8 -:8   G3:4 D4 E4 D4:4 D3:16 -:16
     """),
-    ("Canopy", "A major pentatonic, 6/8 lilt, bright", 180, TONE, 6, 6, 4, 1, (16, 3, 1), 0, """
-        A3:2 E4:1 C#4:2 E4:1 F#4:3 E4:3   B3:2 F#4:1 E4:2 C#4:1 B3:6 -:6
-        F#3:2 C#4:1 A3:2 C#4:1 E4:3 A4:3   F#4:2 E4:1 C#4:2 B3:1 A3:6 -:12
-        E3:2 B3:1 A3:2 C#4:1 E4:6   F#4:2 A4:1 B4:2 A4:1 F#4:3 E4:3 C#4:6 -:12
-        E4:3 F#4 A4:6 F#4:3 E4 C#4:6 -:6   B3:3 C#4 E4:6 C#4:3 B3 A3:6 -:12
-        A3:2 E4:1 C#4:2 E4:1 F#4:3 E4:3   B3:2 F#4:1 E4:2 C#4:1 B3:6 -:6
-        F#3:2 C#4:1 A3:2 C#4:1 E4:3 A4:3   F#4:2 E4:1 C#4:2 B3:1 A3:12 -:18
+    ("Canopy", "A lydian, slow airy phrases over a held, bending tone", 240, TONE, 5, 2, 0, 0, (30, 8, 1), 2, 2, """
+        A3:10 E4:14 -:8   C#4:8 B3:16 -:10   F#3:10 C#4:8 E4:16 -:8   D#4:8 C#4 A3:20 -:14
+        E3:12 B3:10 F#4:16 -:8   E4:8 C#4:18 -:10   A3:10 E4:8 G#4:18 -:6   F#4:8 E4:22 -:16
     """),
-    ("Deep Shaft", "poly4 drone: E, the semitone above, the tritone below", 200, POLY4, 5, 1, 1, 10, (60, 6, 1), 0, """
+    ("Deep Shaft", "poly4 drone: E, the semitone above, the tritone below", 200, POLY4, 5, 1, 0, 0, NOVIB, 0, 2, """
         E2:28 -:12 F2:20 -:8 E2:24 -:16 D2:20 -:8 A#1:28 -:20 E1:32 -:24
         E2:28 -:12 F#2:20 -:8 E2:24 -:16 D2:20 -:8 A1:28 -:20 E1:32 -:32
     """),
-    ("Drift", "F# minor 9, wide arpeggio, gliding", 150, TONE, 5, 3, 2, 2, (20, 3, 1), 3, """
+    ("Drift", "F# minor 9, wide arpeggio, gliding", 150, TONE, 5, 3, 0, 0, (30, 8, 1), 2, 2, """
         F#3:6 C#4 E4 G#4:12 -:6   A3:6 E4 G#4 C#4:12 -:6
         E3:6 B3 E4 F#4:12 -:6   C#3:6 G#3 C#4 E4:18 -:18
         D3:6 A3 C#4 F#4:12 -:6   E3:6 B3 D4 G#4:12 -:6
         F#3:6 C#4 E4 A4:12 -:6   G#4:6 E4 C#4 F#3:18 -:18
     """),
-    ("Signal", "relay beacon: soft high pings, shimmering tails", 200, TONE, 6, 8, 2, 0, (6, 2, 1), 0, """
+    ("Signal", "relay beacon: soft high pings, shimmering tails", 200, TONE, 6, 8, 0, 0, (30, 8, 1), 2, 2, """
         B4:1 -:7 F#4:1 -:11 B4:1 -:3 E4:1 -:15 A4:1 -:7 F#4:1 -:3 C#4:1 -:19 B4:1 -:1 C#5:1 -:21
         E4:1 -:7 B4:1 -:11 A4:1 -:3 F#4:1 -:15 C#5:1 -:3 B4:1 -:23 F#4:1 -:1 E4:1 -:25
     """),
-    ("Night Watch", "E minor, low and slow, theremin-like", 220, TONE, 5, 3, 2, 1, (24, 3, 1), 2, """
+    ("Night Watch", "E minor, low and slow, theremin-like", 220, TONE, 5, 3, 0, 0, (30, 8, 1), 2, 2, """
         E3:8 G3:4 B3 A3:8 F#3 -:8   E3:8 G3:4 B3 D4:8 B3:12 -:12
         C4:8 B3:4 A3 G3:8 F#3 -:8   E3:6 F#3 G3:4 E3:16 -:20
         G3:8 B3:4 D4 E4:8 D4 -:8   C4:8 A3:4 C4 B3:8 G3:12 -:12
         A3:8 G3:4 F#3 E3:8 D3 -:8   E3:6 G3 F#3:4 E3:20 -:24
     """),
-    ("Cold Storage", "whole-tone, eerie, very sparse", 240, TONE, 5, 1, 1, 4, (40, 5, 2), 1, """
+    ("Cold Storage", "whole-tone, eerie, very sparse", 240, TONE, 5, 2, 0, 0, (30, 8, 1), 2, 2, """
         C4:10 -:6 F#4:10 -:10 E4:8 G#4 -:14   A#3:10 -:6 E4:10 -:10 D4:8 F#4 -:14
         G#3:12 -:4 D4:12 -:8 C4:6 A#3 F#3:16 -:24
     """),
-    ("Outpost", "G mixolydian, steady quiet march", 200, TONE, 5, 5, 4, 1, (12, 3, 1), 0, """
-        G3:2 G3 D4 G3 F4:4 E4:2 D4   G3:2 G3 D4 G3 C4:4 B3
-        G3:2 G3 D4 G3 F4:4 G4:2 F4 E4:4 D4 -:8
-        C4:2 C4 G4 C4 A4:4 G4:2 F4   C4:2 C4 G4 C4 E4:4 D4
-        G3:2 G3 D4 G3 F4:4 E4:2 D4 G3:12 -:12
+    ("Outpost", "G mixolydian, low and sparse, held tones", 230, TONE, 5, 2, 0, 0, (30, 8, 1), 2, 2, """
+        G3:16 -:8 D4:12 F4:16 -:16   G3:12 C4:10 B3:18 -:14
+        F3:16 -:6 C4:12 D4:8 G3:24 -:20   D3:14 A3:10 F4:8 E4:16 D4:20 -:28
     """),
-    ("Undertow", "poly4 bass ostinato, restless", 170, POLY4, 4, 4, 4, 1, NOVIB, 0, """
+    ("Undertow", "poly4 bass ostinato, restless", 170, POLY4, 4, 8, 3, 1, NOVIB, 0, 2, """
         D2:3 D2 F2:2 D2:3 D2 E2:2 D2:3 D2 F2:2 F#2:4 E2
         D2:3 D2 F2:2 D2:3 D2 E2:2 D2:3 D2 F2:2 F#2:4 E2
         A#1:3 A#1 D2:2 A#1:3 A#1 F2:2 A1:6 A1:2 E2:4 D2:8 -:8
         D2:3 D2 F2:2 D2:3 D2 E2:2 D2:3 D2 F2:2 G#2:4 F#2 E2:8 D2:12 -:12
     """),
-    ("Music Box", "C major, soft high chimes", 190, TONE, 5, 8, 3, 0, (4, 2, 1), 0, """
-        C5:1 -:1 G4:1 -:1 E4:1 -:1 G4:1 -:1 A4:1 -:1 G4:1 -:3 E4:1 -:3
-        B4:1 -:1 G4:1 -:1 D4:1 -:1 G4:1 -:1 A4:1 -:1 F4:1 -:3 D4:1 -:3
-        C5:1 -:1 A4:1 -:1 F4:1 -:1 A4:1 -:1 G4:1 -:1 E4:1 -:3 C4:1 -:3
-        D4:1 -:1 F4:1 -:1 A4:1 -:1 B4:1 -:1 C5:1 -:15
-        E4:1 -:1 G4:1 -:1 C5:1 -:1 G4:1 -:1 F4:1 -:1 A4:1 -:3 C5:1 -:3
-        D4:1 -:1 G4:1 -:1 B4:1 -:1 G4:1 -:1 E4:1 -:1 G4:1 -:3 C5:1 -:3
-        A4:1 -:1 F4:1 -:1 D4:1 -:1 F4:1 -:1 G4:1 -:1 B4:1 -:3 G4:1 -:3
-        C5:1 -:1 G4:1 -:1 E4:1 -:1 G4:1 -:1 C4:1 -:23
+    ("Thin Air", "glassy high tones, wide gaps, unsettled", 220, TONE, 4, 3, 0, 0, (30, 8, 1), 2, 2, """
+        C5:6 -:10 G4:8 -:14 E4:6 A4:10 -:18   B4:6 -:8 F4:10 -:12 G#4:6 E4:12 -:22
+        A4:8 -:10 C5:6 F4:12 -:16 E4:8 C4:16 -:28
     """),
-    ("Long Dark", "low minor-second drone, slow swells", 250, TONE, 5, 1, 1, 6, (50, 6, 1), 1, """
+    ("Long Dark", "low minor-second drone, slow swells", 250, TONE, 5, 1, 0, 0, (30, 8, 1), 2, 2, """
         C3:20 -:4 C#3:16 -:8 C3:20 -:12 D#3:12 D3 C3:24 -:20
         G3:16 -:4 F#3:16 -:8 C3:28 -:24
     """),
-    ("Harbor Lights", "F lydian waltz", 210, TONE, 5, 5, 3, 1, (14, 3, 1), 0, """
-        F3:2 C4 A4   F3 C4 G4   E3 B3 G4   E3 B3 E4   D3 A3 F4   D3 A3 E4   C3 G3 E4 D4:6 -:6
-        F3:2 C4 A4   G3 D4 B4   A3 E4 C5 B4:6   G3:2 D4 B4 A4:6   F3:2 C4 A4 G4:6 F4:12 -:12
+    ("Harbor Lights", "F lydian, slow gliding arcs", 250, TONE, 5, 2, 0, 0, (30, 8, 1), 2, 2, """
+        F3:12 C4 B3:16 -:12   A3:10 E4:14 -:10 G4:8 E4:18 -:16
+        D3:12 A3:10 B3:8 F4:18 -:14   C3:14 G3:10 E4:20 -:24
     """),
 ]
 
@@ -153,14 +154,16 @@ def parse_score(name: str, score: str):
 
 
 def pack(tune) -> bytes:
-    name, _about, tick_ms, dist, peak, atk, rel, relt, (vdelay, vspeed, vdep), glide, score = tune
+    name, _about, tick_ms, dist, peak, atk, rel, relt, (vdelay, vspeed, vdep), glide, hold, score = tune
     if not max(SAMPLE_MS) <= tick_ms <= 255:
         die(f"{name}: tick_ms {tick_ms} out of range")     # one tick per VBI at most, 8-bit
-    if not (1 <= peak <= 15 and 1 <= atk <= 255 and 1 <= rel <= 255 and 0 <= relt <= 126):
+    if not (1 <= peak <= 15 and 1 <= atk <= 255 and 0 <= rel <= 255 and 0 <= relt <= 126):
         die(f"{name}: bad envelope")
     if not (0 <= vdelay <= 255 and 1 <= vspeed <= 255 and 0 <= vdep <= 8 and 0 <= glide <= 255):
         die(f"{name}: bad vibrato / glide")
-    out = bytearray((tick_ms, dist | peak, atk, rel, relt, vdelay, vspeed, vdep, glide))
+    if not 0 <= hold < peak:
+        die(f"{name}: hold {hold} must be under peak {peak}")
+    out = bytearray((tick_ms, dist | peak, atk, rel, relt, vdelay, vspeed, vdep, glide, hold << 4))
     for m, ln in parse_score(name, score):
         if not 1 <= ln <= 127:
             die(f"{name}: length {ln} out of range")
@@ -173,12 +176,41 @@ def pack(tune) -> bytes:
                 die(f"{name}: tone note {m} is outside C3..C#5")
             out += bytes((mt.tone_div(m), ln))
     out += bytes((0, 0))
+    if dist == POLY4 and vdep:
+        die(f"{name}: vibrato on poly4 leaves the clean dividers")
     for k in range(HDR, len(out) - 2, 2):
         if not out[k + 1] & 0x80 and not vdep <= out[k] <= 255 - vdep:
             die(f"{name}: divider {out[k]} +- vibrato {vdep} leaves 0..255")
     if len(out) > TUNE_MAX_BYTES:
         die(f"{name}: {len(out)} bytes (max {TUNE_MAX_BYTES})")
+    check_levels(name, bytes(out))
     return bytes(out)
+
+
+def check_levels(name: str, blob: bytes) -> None:
+    """Every note is heard, and a note that runs into another note has not
+    faded to volume 0 by then (PAL and NTSC)."""
+    ticks = sum(blob[k + 1] & 0x7F for k in range(HDR, len(blob) - 2, 2))
+    for std, ms in enumerate(SAMPLE_MS):
+        at = []
+        vbis = play(blob, std, ticks * blob[0] // ms + 2, at=at)
+        k = 0
+        while k < len(at) and at[k] == HDR:     # before the first fetch
+            k += 1
+        while k < len(at):
+            j = k
+            while j < len(at) and at[j] == at[k]:
+                j += 1
+            cur = at[k] - 2                     # the pair being played
+            if not blob[cur + 1] & 0x80:
+                vols = [v & 15 for _f, v in vbis[k:j]]
+                nxt = at[k] if blob[at[k] + 1] else HDR
+                what = f"{name}: note {(cur - HDR) // 2 + 1} ({('PAL', 'NTSC')[std]})"
+                if not max(vols):
+                    die(f"{what} is silent (shorter than rel_ticks, or attack too slow)")
+                if j < len(at) and not blob[nxt + 1] & 0x80 and not vols[-1]:
+                    die(f"{what} fades to 0 before the next note (rel * rel_ticks too large)")
+            k = j
 
 
 def tune_names() -> list[str]:
@@ -200,12 +232,13 @@ def map_block(name: str | None, map_key: str = "") -> bytes:
     return struct.pack("<H", len(blob) + 2) + blob
 
 
-def play(blob: bytes, std: int, nvbi: int, effects_vol: int = 15):
-    """Replica of amb_init + nvbi calls of amb_tick: [(AUDF4, AUDC4)]."""
-    tick_ms, dp, atk, rel, relt, vdelay, vspeed, vdep, glide = blob[:HDR]
+def play(blob: bytes, std: int, nvbi: int, effects_vol: int = 15, at: list | None = None):
+    """Replica of amb_init + nvbi calls of amb_tick: [(AUDF4, AUDC4)].
+    at, when given, gets the read offset per VBI (which pair is playing)."""
+    tick_ms, dp, atk, rel, relt, vdelay, vspeed, vdep, glide, hold = blob[:HDR]
     dist, peak = dp & 0xF0, (dp << 4) & 0xFF
     start = rd = HDR
-    acc = lvl = gate = f = tgt = vt = vc = vph = 0
+    acc = lvl = gate = f = tgt = vt = vc = vph = half = 0
     left = 1
     ms = SAMPLE_MS[std]
     out = []
@@ -230,8 +263,12 @@ def play(blob: bytes, std: int, nvbi: int, effects_vol: int = 15):
                     vt = vc = vph = 0
         if gate and relt < left:
             lvl = min(lvl + atk, peak)
-        else:
-            lvl = max(lvl - rel, 0)
+        elif lvl > hold:                    # under it only before the first note
+            if rel:
+                lvl = max(lvl - rel, hold)
+            else:                           # rel 0: one level every other VBI
+                half += 1
+                lvl -= half & 1
         v = lvl >> 4
         if effects_vol & 15 != 15:
             v = (v * ((effects_vol & 15) + 1)) >> 4
@@ -250,6 +287,8 @@ def play(blob: bytes, std: int, nvbi: int, effects_vol: int = 15):
                     vph = (vph + 1) & 255
                 off = (0, vdep, 0, -vdep)[vph & 3]
         out.append(((f + off) & 255, v | dist))     # before the first note f is 0 (volume 0 too)
+        if at is not None:
+            at.append(rd)
     return out
 
 

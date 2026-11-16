@@ -5,15 +5,18 @@
 ; for the one read and puts PORTB back, whatever the interrupted code had.
 ;
 ; Tune: tick_ms, dist|peak, atk, rel, rel_ticks, vib_delay, vib_speed,
-; vib_depth, glide, then (AUDF, len) pairs.
+; vib_depth, glide, hold, then (AUDF, len) pairs.
 ;   len 1..127 ticks. Bit 7 = rest (gate off, AUDF ignored). len 0 = loop.
 ;   Level is 4.4: rises by atk per VBI to peak<<4, falls by rel per VBI once
 ;   rel_ticks or fewer ticks are left (rel_ticks 0 = legato) and in rests.
+;   rel 0 = one level every other VBI.
 ;   Vibrato: vib_delay VBIs after a note starts, AUDF goes 0, +depth, 0,
 ;   -depth, vib_speed VBIs each (depth 0 = off). Divider steps, so the
 ;   width in cents grows with pitch.
 ;   Glide: a note that starts while the last one still sounds slides there,
 ;   glide divider steps per VBI (0 = jump).
+;   Hold (4.4): the level stops falling there instead of at 0, so the last
+;   note of a group carries on quietly through the rest (0 = silence).
 ; Ticks are counted in sample_ms, so PAL and NTSC keep the same tempo.
 ;
 ; amb_tick runs in the VBI: no ZP, X/Y free (a8_nmi saved them). Segment A.
@@ -34,6 +37,8 @@ amb_lvl		!byte 0			; 4.4
 amb_f		!byte 0			; divider now (glides to amb_tgt)
 amb_tgt		!byte 0
 amb_glide	!byte 0
+amb_hold	!byte 0			; 4.4
+amb_half	!byte 0			; rel 0: falls on odd counts
 amb_vdelay	!byte 0
 amb_vspeed	!byte 0
 amb_vdep	!byte 0
@@ -47,12 +52,14 @@ amb_start_h	!byte 0
 
 ; This map's tune, from the top (after bind_map). Channel silent until the
 ; first tick, and for good when the map has no tune.
+.ai_no
+	rts
 amb_init
 	lda #0
 	sta amb_on
 	sta $d207
 	lda map_tune + 1
-	beq .ai_rts
+	beq .ai_no
 	sta amb_rd + 2
 	lda map_tune
 	sta amb_rd + 1
@@ -82,6 +89,8 @@ amb_init
 	sta amb_vdep
 	jsr amb_get
 	sta amb_glide
+	jsr amb_get
+	sta amb_hold
 	lda amb_rd + 1
 	sta amb_start_l
 	lda amb_rd + 2
@@ -95,6 +104,7 @@ amb_init
 	sta amb_vt
 	sta amb_vc
 	sta amb_vph
+	sta amb_half
 	lda #1
 	sta amb_left				; first tick fetches the first pair
 	sta amb_on
@@ -167,11 +177,26 @@ amb_tick
 	lda amb_peak
 	bcs .set
 .fall
-	sec
 	lda amb_lvl
-	sbc amb_rel
+	cmp amb_hold
+	bcc .set				; under the hold level only before the first note
+	beq .set
+	ldx amb_rel				; C = 1 from here on
+	bne .fr
+	inc amb_half
+	lda amb_half
+	lsr
+	lda amb_lvl
+	bcc .set
+	sbc #1					; lvl > hold >= 0: no borrow
 	bcs .set
-	lda #0
+.fr
+	sbc amb_rel
+	bcc .floor
+	cmp amb_hold
+	bcs .set
+.floor
+	lda amb_hold
 .set
 	sta amb_lvl
 	lsr

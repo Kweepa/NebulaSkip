@@ -45,7 +45,7 @@
 
 ## Ambient tune
 * The map inspector (Maps tab, nothing selected) has a **Tune** list and a **Play** button. The list is the library in `tools/genambient.py` (generated into `editor/js/tunesData.js`, so rerun the build or `python tools/genambient.py` and rebundle after adding a tune). The pick is saved as `"tune"` in the map JSON; none = silence.
-* Each tune carries its own voicing (swell, release, delayed vibrato, pitch glide) set next to its score in `tools/genambient.py`; the editor only picks the tune.
+* Each tune carries its own voicing (swell, release, delayed vibrato, pitch glide, hold level through rests) set next to its score in `tools/genambient.py`; the editor only picks the tune.
 * Play renders the tune exactly as the game steps it (same per-VBI state machine as `src/ambient.asm`, `editor/js/tunePlayer.js`) through a simple POKEY square / poly4 model, looped. Changing the pick while it plays swaps the tune.
 * The game cooker packs the picked tune into the map (not counted against the 4096-byte map cap; shown as `tune N` in the map load title). An unknown name fails the build.
 

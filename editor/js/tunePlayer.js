@@ -11,7 +11,11 @@ const TUNE_SAMPLE_MS = 17;
 const TUNE_POLY4 = [1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 0, 1, 1];
 const TUNE_GAIN = 0.035; // per volume step; peak volumes are 4..6 of 15
 
-/** One loop of the tune as per-VBI [AUDF, AUDC] pairs (full effects volume). */
+/**
+ * One loop of the tune as per-VBI [AUDF, AUDC] pairs (full effects volume). It is the second
+ * pass, not the first: pass one starts from silence, pass two starts the way every later loop
+ * does in the game (held tone, bend into the first note), so the looped buffer has no seam.
+ */
 export function tuneVbis(data) {
   const tickMs = data[0];
   const dist = data[1] & 0xf0;
@@ -23,7 +27,8 @@ export function tuneVbis(data) {
   const vspeed = data[6];
   const vdep = data[7];
   const glide = data[8];
-  const start = 9;
+  const hold = data[9];
+  const start = 10;
   let rd = start;
   let acc = 0;
   let lvl = 0;
@@ -33,12 +38,12 @@ export function tuneVbis(data) {
   let vt = 0;
   let vc = 0;
   let vph = 0;
+  let half = 0;
   let left = 1;
   let wraps = 0;
   const out = [];
-  // Stops when the stream wraps for the second time: the first wrap ends pass one, and the
-  // tail of the last note / rest belongs to the loop. 20 minutes is a runaway guard.
-  for (let n = 0; n < 72000; n++) {
+  // Records from the first wrap to the second. 40 minutes is a runaway guard.
+  for (let n = 0; n < 144000; n++) {
     acc += TUNE_SAMPLE_MS;
     if (acc >= tickMs) {
       acc -= tickMs;
@@ -54,8 +59,9 @@ export function tuneVbis(data) {
           rd = start;
           wraps++;
           if (rd + 1 >= data.length || !data[rd + 1]) return out; // empty tune
+          if (wraps === 2) return out;
+          out.length = 0; // pass two starts here
         }
-        if (wraps) return out;
         if (ln & 0x80) {
           left = ln & 0x7f;
           gate = 0;
@@ -69,7 +75,10 @@ export function tuneVbis(data) {
       }
     }
     if (gate && relt < left) lvl = Math.min(lvl + atk, peak);
-    else lvl = Math.max(lvl - rel, 0);
+    else if (lvl > hold) {
+      if (rel) lvl = Math.max(lvl - rel, hold);
+      else lvl -= ++half & 1; // rel 0: one level every other VBI
+    }
     if (f > tgt) f = Math.max(f - glide, tgt);
     else if (f < tgt) f = Math.min(f + glide, tgt);
     let off = 0;
