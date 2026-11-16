@@ -260,11 +260,22 @@
         "id": "ba2f3bef-29db-4857-a245-60d8bc543db9",
         "kind": "camera",
         "x": 203,
-        "y": 63,
+        "y": 65,
         "z": 43,
-        "path": [],
+        "path": [
+          {
+            "x": 203,
+            "y": 65,
+            "z": 43
+          },
+          {
+            "x": 203,
+            "y": 63,
+            "z": 43
+          }
+        ],
         "facing": "fixed",
-        "ease": "linear",
+        "ease": "out",
         "yaw": 248,
         "target": null
       },

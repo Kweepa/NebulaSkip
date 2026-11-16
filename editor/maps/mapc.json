@@ -3314,7 +3314,7 @@
   ],
   "cutscene": {
     "roomId": "9fed29f6-53ea-47ba-ab55-24985fa30c86",
-    "duration": 3,
+    "duration": 3.5,
     "starfield": true,
     "hideRoom": true,
     "actors": [
@@ -3324,9 +3324,20 @@
         "x": 218,
         "y": 79,
         "z": 74,
-        "path": [],
+        "path": [
+          {
+            "x": 218,
+            "y": 79,
+            "z": 74
+          },
+          {
+            "x": 219,
+            "y": 79,
+            "z": 74
+          }
+        ],
         "facing": "fixed",
-        "ease": "linear",
+        "ease": "out",
         "yaw": 0,
         "target": null
       },
@@ -3362,7 +3373,7 @@
           },
           {
             "x": 219,
-            "y": 76,
+            "y": 77,
             "z": 101
           }
         ],
