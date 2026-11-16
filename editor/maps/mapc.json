@@ -3314,7 +3314,7 @@
   "cutscene": {
     "roomId": "9fed29f6-53ea-47ba-ab55-24985fa30c86",
     "duration": 3,
-    "starfield": false,
+    "starfield": true,
     "actors": [
       {
         "id": "4e2bc137-8e3c-430f-94d6-29eaa450c2b6",
