@@ -38,7 +38,7 @@ for _i in range(3):
 
 def load_sprites() -> dict[str, dict]:
     if not SPRITES_JSON.is_file():
-        raise SystemExit(f"missing {SPRITES_JSON}; run tools/seed_sprites.py once")
+        raise SystemExit(f"missing {SPRITES_JSON}; restore it from git or open the editor Sprites tab and save")
     data = json.loads(SPRITES_JSON.read_text(encoding="utf-8"))
     return {s["id"]: s for s in data.get("sprites", [])}
 

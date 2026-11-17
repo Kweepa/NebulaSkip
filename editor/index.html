@@ -2128,7 +2128,6 @@ body.font-dragging * {
           <canvas id="preview-canvas"></canvas>
         </div>
         <p class="muted" id="preview-hint">Drag L/R to rotate · U/D to walk</p>
-      <img id="preview-pistol-png" width="24" height="32" hidden alt="" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAgCAMAAAA/gEgKAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAGUExURQAAAP///6XZn90AAAAJcEhZcwAADsAAAA7AAWrWiQkAAAAZdEVYdFNvZnR3YXJlAFBhaW50Lk5FVCA1LjEuMTITAUd0AAAAuGVYSWZJSSoACAAAAAUAGgEFAAEAAABKAAAAGwEFAAEAAABSAAAAKAEDAAEAAAACAAAAMQECABEAAABaAAAAaYcEAAEAAABsAAAAAAAAAL92AQDoAwAAv3YBAOgDAABQYWludC5ORVQgNS4xLjEyAAADAACQBwAEAAAAMDIzMAGgAwABAAAAAQAAAAWgBAABAAAAlgAAAAAAAAACAAEAAgAEAAAAUjk4AAIABwAEAAAAMDEwMAAAAAAJh7SBOIx0IwAAAFxJREFUOE+1kdsOwCAIQ+X/f9oEZLR4GclmEyX0FHmwNZAIdo9ElV1N+6kDrAuQUGHiI4iVhwlC1vohOaqC7fLNDjToVzANISu8Q++FxcDeh1CA0G9gOPfBbL+ADh/9ALWQkUrzAAAAAElFTkSuQmCC" />
       </div>
       <div id="overhead-panel" class="preview-panel panel">
         <div class="toolbar-actions ortho-tabs" role="group" aria-label="Ortho view">
@@ -13552,13 +13551,6 @@ const PREVIEW_SY = PREVIEW_H / GAME_VIEW_H;
 const PREVIEW_FX = GAME_FOCAL * PREVIEW_SX;
 const PREVIEW_FY = GAME_FOCAL * PREVIEW_SY;
 
-/** pistol_lines.png is 24×32, pasted at x=10 on the 48-wide weapon cell. */
-const PISTOL_W = 24;
-const PISTOL_H = 32;
-/** Viewport-relative top-left: sprite (160, 224) plus the x=10 paste. */
-const PISTOL_VX = 82;
-const PISTOL_VY = 102;
-
 /** FACE_PZ/MZ/PX/MX â†’ yaw so local +Z points out of the door face (door_face_rot). */
 const PV_DOOR_YAW = {
   "+z": 0,
@@ -13768,7 +13760,6 @@ class PreviewView {
    *   onEditStart?: () => void,
    *   onEditEnd?: () => void,
    *   onChange?: () => void,
-   *   pistolImg?: HTMLImageElement | null,
    *   getSprites?: () => object[] | null,
    *   getSpriteSel?: () => string | null,
    * }} opts
@@ -13787,7 +13778,6 @@ class PreviewView {
     this.lastY = 0;
     this.live = null;
     this.stickyCam = null;
-    this.pistolBlack = null;
     pvDisableSmoothing(this.ctx);
     pvDisableSmoothing(this.dctx);
 
@@ -13798,14 +13788,6 @@ class PreviewView {
 
     this._ro = new ResizeObserver(() => this.draw());
     if (this.frame) this._ro.observe(this.frame);
-
-    const pistol = opts.pistolImg;
-    if (pistol && !pistol.complete) {
-      pistol.addEventListener("load", () => {
-        this.pistolBlack = null;
-        this.draw();
-      });
-    }
   }
 
   #editSpawn() {
@@ -13999,54 +13981,10 @@ class PreviewView {
     }
   }
 
-  #pistolBlack() {
-    if (this.pistolBlack) return this.pistolBlack;
-    const img = this.opts.pistolImg;
-    if (!img?.complete || !img.naturalWidth) return null;
-    const c = document.createElement("canvas");
-    c.width = PISTOL_W;
-    c.height = PISTOL_H;
-    const ctx = c.getContext("2d");
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(img, 0, 0, PISTOL_W, PISTOL_H);
-    const data = ctx.getImageData(0, 0, PISTOL_W, PISTOL_H);
-    const px = data.data;
-    for (let i = 0; i < px.length; i += 4) {
-      if (px[i] > 16 || px[i + 1] > 16 || px[i + 2] > 16) {
-        px[i] = 0;
-        px[i + 1] = 0;
-        px[i + 2] = 0;
-        px[i + 3] = 255;
-      } else {
-        px[i + 3] = 0;
-      }
-    }
-    ctx.putImageData(data, 0, 0);
-    this.pistolBlack = c;
-    return c;
-  }
-
-  #drawPistol(ctx) {
-    const img = this.#pistolBlack();
-    if (!img) return;
-    const dx = PISTOL_VX * PREVIEW_SX;
-    const dy = PISTOL_VY * PREVIEW_SY;
-    const dw = PISTOL_W * PREVIEW_SX;
-    const dh = PISTOL_H * PREVIEW_SY;
-    const clipH = Math.min(dh, PREVIEW_H - dy);
-    if (clipH <= 0) return;
-    const srcH = PISTOL_H * (clipH / dh);
-    pvDisableSmoothing(ctx);
-    ctx.drawImage(img, 0, 0, PISTOL_W, srcH, dx, dy, dw, clipH);
-  }
-
   /** Pistol (always) plus the sprite selected in the Sprites tab, from doc.sprites. */
   #drawSprites(ctx) {
     const sprites = this.opts.getSprites?.();
-    if (!sprites) {
-      this.#drawPistol(ctx);
-      return;
-    }
+    if (!sprites) return;
     const sel = this.opts.getSpriteSel?.() || null;
     pvDisableSmoothing(ctx);
     for (const sp of sprites) {
@@ -19603,7 +19541,6 @@ const previewView = new PreviewView(document.getElementById("preview-canvas"), {
   getEditSpawn: () => selectedSpawn(),
   getCutscene: () => cutPreviewState(),
   getRoomsOnlyMode: () => roomsOnlyDraw,
-  pistolImg: document.getElementById("preview-pistol-png"),
   getSprites: () => doc.sprites || null,
   getSpriteSel: () => (editorMode === "sprites" ? spriteView.selId : null),
   onRotate: (yaw) => {

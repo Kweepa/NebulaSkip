@@ -435,7 +435,6 @@ const previewView = new PreviewView(document.getElementById("preview-canvas"), {
   getEditSpawn: () => selectedSpawn(),
   getCutscene: () => cutPreviewState(),
   getRoomsOnlyMode: () => roomsOnlyDraw,
-  pistolImg: document.getElementById("preview-pistol-png"),
   getSprites: () => doc.sprites || null,
   getSpriteSel: () => (editorMode === "sprites" ? spriteView.selId : null),
   onRotate: (yaw) => {

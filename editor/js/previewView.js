@@ -45,13 +45,6 @@ const PREVIEW_SY = PREVIEW_H / GAME_VIEW_H;
 const PREVIEW_FX = GAME_FOCAL * PREVIEW_SX;
 const PREVIEW_FY = GAME_FOCAL * PREVIEW_SY;
 
-/** pistol_lines.png is 24×32, pasted at x=10 on the 48-wide weapon cell. */
-const PISTOL_W = 24;
-const PISTOL_H = 32;
-/** Viewport-relative top-left: sprite (160, 224) plus the x=10 paste. */
-const PISTOL_VX = 82;
-const PISTOL_VY = 102;
-
 /** FACE_PZ/MZ/PX/MX â†’ yaw so local +Z points out of the door face (door_face_rot). */
 const PV_DOOR_YAW = {
   "+z": 0,
@@ -261,7 +254,6 @@ export class PreviewView {
    *   onEditStart?: () => void,
    *   onEditEnd?: () => void,
    *   onChange?: () => void,
-   *   pistolImg?: HTMLImageElement | null,
    *   getSprites?: () => object[] | null,
    *   getSpriteSel?: () => string | null,
    * }} opts
@@ -280,7 +272,6 @@ export class PreviewView {
     this.lastY = 0;
     this.live = null;
     this.stickyCam = null;
-    this.pistolBlack = null;
     pvDisableSmoothing(this.ctx);
     pvDisableSmoothing(this.dctx);
 
@@ -291,14 +282,6 @@ export class PreviewView {
 
     this._ro = new ResizeObserver(() => this.draw());
     if (this.frame) this._ro.observe(this.frame);
-
-    const pistol = opts.pistolImg;
-    if (pistol && !pistol.complete) {
-      pistol.addEventListener("load", () => {
-        this.pistolBlack = null;
-        this.draw();
-      });
-    }
   }
 
   #editSpawn() {
@@ -492,54 +475,10 @@ export class PreviewView {
     }
   }
 
-  #pistolBlack() {
-    if (this.pistolBlack) return this.pistolBlack;
-    const img = this.opts.pistolImg;
-    if (!img?.complete || !img.naturalWidth) return null;
-    const c = document.createElement("canvas");
-    c.width = PISTOL_W;
-    c.height = PISTOL_H;
-    const ctx = c.getContext("2d");
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(img, 0, 0, PISTOL_W, PISTOL_H);
-    const data = ctx.getImageData(0, 0, PISTOL_W, PISTOL_H);
-    const px = data.data;
-    for (let i = 0; i < px.length; i += 4) {
-      if (px[i] > 16 || px[i + 1] > 16 || px[i + 2] > 16) {
-        px[i] = 0;
-        px[i + 1] = 0;
-        px[i + 2] = 0;
-        px[i + 3] = 255;
-      } else {
-        px[i + 3] = 0;
-      }
-    }
-    ctx.putImageData(data, 0, 0);
-    this.pistolBlack = c;
-    return c;
-  }
-
-  #drawPistol(ctx) {
-    const img = this.#pistolBlack();
-    if (!img) return;
-    const dx = PISTOL_VX * PREVIEW_SX;
-    const dy = PISTOL_VY * PREVIEW_SY;
-    const dw = PISTOL_W * PREVIEW_SX;
-    const dh = PISTOL_H * PREVIEW_SY;
-    const clipH = Math.min(dh, PREVIEW_H - dy);
-    if (clipH <= 0) return;
-    const srcH = PISTOL_H * (clipH / dh);
-    pvDisableSmoothing(ctx);
-    ctx.drawImage(img, 0, 0, PISTOL_W, srcH, dx, dy, dw, clipH);
-  }
-
   /** Pistol (always) plus the sprite selected in the Sprites tab, from doc.sprites. */
   #drawSprites(ctx) {
     const sprites = this.opts.getSprites?.();
-    if (!sprites) {
-      this.#drawPistol(ctx);
-      return;
-    }
+    if (!sprites) return;
     const sel = this.opts.getSpriteSel?.() || null;
     pvDisableSmoothing(ctx);
     for (const sp of sprites) {

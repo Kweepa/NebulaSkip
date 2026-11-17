@@ -60,15 +60,6 @@ def main() -> None:
         b64 = base64.b64encode(icon_path.read_bytes()).decode("ascii")
         favicon_link = f'  <link rel="icon" type="image/png" href="data:image/png;base64,{b64}" />\n'
 
-    pistol_path = ROOT.parent / "assets" / "weapons" / "pistol_lines.png"
-    pistol_img = ""
-    if pistol_path.is_file():
-        pistol_b64 = base64.b64encode(pistol_path.read_bytes()).decode("ascii")
-        pistol_img = (
-            f'      <img id="preview-pistol-png" width="24" height="32" hidden alt="" '
-            f'src="data:image/png;base64,{pistol_b64}" />\n'
-        )
-
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -199,7 +190,7 @@ def main() -> None:
           <canvas id="preview-canvas"></canvas>
         </div>
         <p class="muted" id="preview-hint">Drag L/R to rotate · U/D to walk</p>
-{pistol_img}      </div>
+      </div>
       <div id="overhead-panel" class="preview-panel panel">
         <div class="toolbar-actions ortho-tabs" role="group" aria-label="Ortho view">
           <button type="button" id="btn-ortho-top" class="active">Top</button>
