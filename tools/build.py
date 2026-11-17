@@ -308,7 +308,8 @@ def steps(exe: str) -> list[Step]:
             lambda: [
                 TOOLS / "genenemymuzzle.py",
                 TOOLS / "sprmask.py",
-                *(ROOT / "assets" / "enemies" / f"enemy_muzzle_{i}.png" for i in range(3)),
+                TOOLS / "spritejson.py",
+                ROOT / "editor" / "sprites.json",
             ],
             lambda: [SRC / "enemy_muzzle.asm"],
             lambda: tool("genenemymuzzle.py"),
@@ -318,7 +319,8 @@ def steps(exe: str) -> list[Step]:
             lambda: [
                 TOOLS / "gensplat.py",
                 TOOLS / "sprmask.py",
-                *(ROOT / "assets" / "weapons" / f"splat_{i}.png" for i in range(3)),
+                TOOLS / "spritejson.py",
+                ROOT / "editor" / "sprites.json",
             ],
             lambda: [SRC / "splat_spr.asm"],
             lambda: tool("gensplat.py"),
@@ -377,9 +379,8 @@ def steps(exe: str) -> list[Step]:
             lambda: [
                 TOOLS / "genweapons.py",
                 TOOLS / "sprmask.py",
-                ROOT / "ui" / "crosshair.png",
-                ROOT / "assets" / "weapons" / "pistol_lines.png",
-                ROOT / "assets" / "weapons" / "muzzle_flash.png",
+                TOOLS / "spritejson.py",
+                ROOT / "editor" / "sprites.json",
             ],
             lambda: [SRC / "weapon_spr.asm"],
             lambda: tool("genweapons.py"),

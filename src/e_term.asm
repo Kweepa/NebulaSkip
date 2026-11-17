@@ -516,12 +516,19 @@ t_draw_main
 	jsr t_rbegin
 	lda #<t_s_title
 	ldy #>t_s_title
-	ldx #10
+	ldx #5					; centred in TERM_COLS (32)
 	jsr t_str
 	lda #1
 	jsr t_blit
-	jsr t_rule
+	jsr t_rbegin
+	lda #<t_s_title2
+	ldy #>t_s_title2
+	ldx #3
+	jsr t_str
 	lda #2
+	jsr t_blit
+	jsr t_rule
+	lda #3
 	jsr t_blit
 	jsr t_rbegin
 	lda #0					; greeting lines from terminal.txt, rows 4..

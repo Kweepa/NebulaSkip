@@ -2,7 +2,7 @@
 ; One rect: x_byte, y, width, height, then width*height row-major bytes.
 ; x_byte/y crop the 24×21 whose origin is tip−EMUZ_OX/EMUZ_OY.
 ; Ink %11, clear %00. Distance LOD 0 = near … 2 = far.
-; Source: assets/weapons/splat_0..2.png (ink centered for tip−12/−10)
+; Source: editor/sprites.json (splat_0..2, ink centered for tip−12/−10)
 spr_splat_0
 	!byte $00,$04,$03,$0d,$00,$0f,$00,$00,$0c,$00,$03,$cc,$00,$03,$cc,$00
 	!byte $00,$f3,$c0,$00,$33,$c0,$03,$3f,$c0,$03,$3f,$00,$00,$33,$c0,$00

@@ -1,4 +1,5 @@
 import { fontBlank, normalizeFont } from "./fontModel.js";
+import { normalizeSprites } from "./spriteModel.js";
 import { normalizeCutscene } from "./cutsceneModel.js";
 import { tuneByName, tuneBytes } from "./tunesData.js";
 import {
@@ -4526,6 +4527,7 @@ export function defaultEditorState() {
     itemOrbit: { yaw: 0.6, pitch: 0.35, dist: 16, target: { x: 0, y: 0, z: 0 } },
     fontSlots: [null, null, null, null],
     fontActive: 0,
+    spriteSel: "pistol",
   };
 }
 
@@ -4553,6 +4555,7 @@ export function parseEditorState(raw) {
     raw.mode === "layout" ||
     raw.mode === "items" ||
     raw.mode === "font" ||
+    raw.mode === "sprites" ||
     raw.mode === "cutscene" ||
     raw.mode === "build"
   ) {
@@ -4565,6 +4568,7 @@ export function parseEditorState(raw) {
     });
   }
   d.fontActive = Math.max(0, Math.min(3, num(raw.fontActive, 0) | 0));
+  if (typeof raw.spriteSel === "string" && raw.spriteSel) d.spriteSel = raw.spriteSel;
   d.localDraw = !!raw.localDraw;
   d.neighbourDraw = !!raw.neighbourDraw;
   d.roomsOnlyDraw = !!raw.roomsOnlyDraw;
@@ -4656,6 +4660,7 @@ export function createDefaultDocument() {
     customItems: [],
     itemMeta: {},
     font: fontBlank(),
+    sprites: normalizeSprites(null),
   };
 }
 
@@ -4796,6 +4801,7 @@ export function normalizeDocument(raw) {
   doc.itemMeta = itemMetaParsed;
   doc.items = parseItemMeshes(migrateItemMeshes(raw.items, fromVersion));
   doc.font = normalizeFont(raw.font);
+  doc.sprites = normalizeSprites(raw.sprites);
   doc.editor = parseEditorState(raw.editor);
   doc.enemies = (doc.enemies || []).filter((e) => DOOM_SPRITE_PREFIX[e.name]);
   if (!doc.enemies.length) {

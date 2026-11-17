@@ -7,7 +7,9 @@ t_bit
 ; Text (raw ASCII)
 ; ------------------------------------------------------------------
 t_s_title
-	!text "dna terminal",0
+	!text "deep nebula authority",0
+t_s_title2
+	!text "fugitive tracking terminal",0
 t_s_access
 	!text "Map access granted.",0
 t_s_return

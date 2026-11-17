@@ -477,10 +477,10 @@ next_menu
 }
 	!byte NM_START, NM_START, NM_START, NM_BACK, 0, 0, 0, 0
 	!byte 2, 2, NM_BACK, 0, 0, 0, 0, 0
-	!byte NM_JUKE, NM_JUKE, NM_JUKE, NM_JUKE, NM_BACK, 0, 0, 0
+	!byte NM_JUKE, NM_JUKE, NM_JUKE, NM_JUKE, NM_JUKE, NM_BACK, 0, 0
 
 menu_sizes
-	!byte 7 - (1 - JUKEBOX), 4, 3, 5
+	!byte 7 - (1 - JUKEBOX), 4, 3, 6
 
 ; --- drawing ---------------------------------------------------------------
 draw_menu
@@ -1659,7 +1659,7 @@ menu_str_lo
 	!byte <str_fx_vol, <str_mouse, <str_back, 0
 	!byte 0, 0, 0, 0
 	!byte <str_trk1, <str_trk2, <str_trk3, <str_trk4
-	!byte <str_back, 0, 0, 0
+	!byte <str_trk5, <str_back, 0, 0
 menu_str_hi
 	!byte >str_new_game, >str_sound, >str_control, >str_read_this
 !if  JUKEBOX {
@@ -1672,7 +1672,7 @@ menu_str_hi
 	!byte >str_fx_vol, >str_mouse, >str_back, 0
 	!byte 0, 0, 0, 0
 	!byte >str_trk1, >str_trk2, >str_trk3, >str_trk4
-	!byte >str_back, 0, 0, 0
+	!byte >str_trk5, >str_back, 0, 0
 
 !source "menu_title.asm"
 !source "menu_hint_spr.asm"
@@ -1683,8 +1683,8 @@ menu_str_hi
 
 !source "a8menuhw.asm"
 !source "a8music.asm"
-!if  JUKEBOX & (MUSIC_TRACKS != 4) {
-	!error "jukebox menu rows (next_menu / menu_str / menu_sizes) assume 4 tracks"
+!if  JUKEBOX & (MUSIC_TRACKS != 5) {
+	!error "jukebox menu rows (next_menu / menu_str / menu_sizes) assume 5 tracks"
 }
 
 

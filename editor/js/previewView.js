@@ -28,6 +28,7 @@ import {
 } from "./model.js";
 import { BOX_EDGES, cornerWorld, NEAR, worldToCamera } from "./math3d.js";
 import { cutStars } from "./cutsceneModel.js";
+import { spriteDef, spriteViewRect } from "./spriteModel.js";
 
 /** Game unique-char viewport (24Ã—16 chars). */
 const GAME_VIEW_W = 192;
@@ -261,6 +262,8 @@ export class PreviewView {
    *   onEditEnd?: () => void,
    *   onChange?: () => void,
    *   pistolImg?: HTMLImageElement | null,
+   *   getSprites?: () => object[] | null,
+   *   getSpriteSel?: () => string | null,
    * }} opts
    */
   constructor(canvas, opts) {
@@ -530,6 +533,46 @@ export class PreviewView {
     ctx.drawImage(img, 0, 0, PISTOL_W, srcH, dx, dy, dw, clipH);
   }
 
+  /** Pistol (always) plus the sprite selected in the Sprites tab, from doc.sprites. */
+  #drawSprites(ctx) {
+    const sprites = this.opts.getSprites?.();
+    if (!sprites) {
+      this.#drawPistol(ctx);
+      return;
+    }
+    const sel = this.opts.getSpriteSel?.() || null;
+    pvDisableSmoothing(ctx);
+    for (const sp of sprites) {
+      if (sp.id !== "pistol" && sp.id !== sel) continue;
+      if (sp.id === "pistol" && sel === "scan_rig") continue; // the rig stands in for the pistol
+      const def = spriteDef(sp.id);
+      const r = spriteViewRect(sp);
+      ctx.fillStyle = def?.black ? "#000000" : "#ffffff";
+      for (let y = 0; y < sp.h; y++) {
+        const row = sp.rows[y];
+        for (let x = 0; x < sp.w; x++) {
+          if (row[x] !== "#") continue;
+          ctx.fillRect(
+            Math.round((r.x + 2 * x) * PREVIEW_SX),
+            Math.round((r.y + y) * PREVIEW_SY),
+            Math.ceil(2 * PREVIEW_SX),
+            PREVIEW_SY,
+          );
+        }
+      }
+      if (sp.id === sel) {
+        ctx.strokeStyle = "rgba(255, 210, 80, 0.7)";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(
+          Math.round(r.x * PREVIEW_SX) + 0.5,
+          Math.round(r.y * PREVIEW_SY) + 0.5,
+          Math.round(r.w * PREVIEW_SX),
+          Math.round(r.h * PREVIEW_SY),
+        );
+      }
+    }
+  }
+
   #present() {
     const frame = this.frame || this.display;
     const rect = frame.getBoundingClientRect();
@@ -550,10 +593,10 @@ export class PreviewView {
   hint() {
     if (this.opts.getCutscene?.()) return "Cutscene camera at the timeline position";
     const room = this.opts.getRoom?.();
-    if (this.#editSpawn()) return "Spawn view â€” drag L/R to set angle Â· U/D to move";
-    if (this.stickyCam) return "Drag L/R to rotate Â· U/D to walk";
+    if (this.#editSpawn()) return "Spawn view — drag L/R to set angle · U/D to move";
+    if (this.stickyCam) return "Drag L/R to rotate · U/D to walk";
     if (this.opts.getSpawn?.()) return "Spawn view";
-    if (room) return "Drag L/R to rotate Â· U/D to walk";
+    if (room) return "Drag L/R to rotate · U/D to walk";
     return "Select a room";
   }
 
@@ -612,8 +655,8 @@ export class PreviewView {
         }
         this.#drawObject(ctx, doc, obj, cam, line, room);
       }
-      this.#drawPistol(ctx);
     }
+    if (!cut) this.#drawSprites(ctx);
 
     this.#present();
     const hint = document.getElementById("preview-hint");

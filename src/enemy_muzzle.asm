@@ -2,7 +2,7 @@
 ; One rect: x_byte, y, width, height, then width*height row-major bytes.
 ; x_byte/y crop the 24×21 whose origin is tip−EMUZ_OX/EMUZ_OY.
 ; Ink %11, clear %00. Distance LOD 0 = near … 2 = far.
-; Source: assets/enemies/enemy_muzzle_0..2.png
+; Source: editor/sprites.json (enemy_muzzle_0..2)
 spr_emuz_0
 	!byte $00,$01,$03,$13,$00,$30,$00,$00,$30,$00,$00,$3c,$00,$00,$3c,$00
 	!byte $00,$cc,$00,$fc,$cc,$00,$3f,$c3,$ff,$30,$00,$0c,$0c,$00,$3c,$0f

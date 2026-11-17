@@ -255,6 +255,29 @@ export async function writeFontFile(text) {
   await w.close();
 }
 
+const SPRITES_FILE = "sprites.json";
+
+/** Raw text of editor/sprites.json, or null when absent. */
+export async function readSpritesFile() {
+  if (!projectDirHandle) return null;
+  try {
+    const editor = await projectDirHandle.getDirectoryHandle("editor");
+    const fh = await editor.getFileHandle(SPRITES_FILE);
+    return await (await fh.getFile()).text();
+  } catch {
+    return null;
+  }
+}
+
+export async function writeSpritesFile(text) {
+  if (!projectDirHandle) return;
+  const editor = await projectDirHandle.getDirectoryHandle("editor");
+  const fh = await editor.getFileHandle(SPRITES_FILE, { create: true });
+  const w = await fh.createWritable();
+  await w.write(text);
+  await w.close();
+}
+
 export async function getStoredProjectDir() {
   return loadStoredHandle(PROJECT_KEY);
 }

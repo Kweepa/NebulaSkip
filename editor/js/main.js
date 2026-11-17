@@ -200,6 +200,8 @@ import {
   writeMapFiles,
   readFontFile,
   writeFontFile,
+  readSpritesFile,
+  writeSpritesFile,
   readProjectBytes,
 } from "./io.js";
 import { showBuildView } from "./buildView.js";
@@ -219,6 +221,7 @@ import { PreviewView } from "./previewView.js";
 import { AnimView } from "./animView.js";
 import { ItemView } from "./itemView.js";
 import { FontView } from "./fontView.js";
+import { SpriteView } from "./spriteView.js";
 import { CutsceneView } from "./cutsceneView.js";
 import {
   CUT_ACTOR_MAX,
@@ -249,6 +252,7 @@ import {
   fontStats,
   fontToJson,
 } from "./fontModel.js";
+import { spriteDef, spriteInk, spritesFromJson, spritesToJson } from "./spriteModel.js";
 
 const statusEl = document.getElementById("status");
 const titleEl = document.querySelector(".toolbar h1");
@@ -278,6 +282,8 @@ let dirty = false;
 let saving = false;
 /** editor/font.json existed but would not parse: do not overwrite it. */
 let fontFileBlocked = false;
+/** editor/sprites.json existed but would not parse: do not overwrite it. */
+let spritesFileBlocked = false;
 let autosaveTimer = null;
 let editorSaveRaf = 0;
 let editorSettingsReady = false;
@@ -430,6 +436,8 @@ const previewView = new PreviewView(document.getElementById("preview-canvas"), {
   getCutscene: () => cutPreviewState(),
   getRoomsOnlyMode: () => roomsOnlyDraw,
   pistolImg: document.getElementById("preview-pistol-png"),
+  getSprites: () => doc.sprites || null,
+  getSpriteSel: () => (editorMode === "sprites" ? spriteView.selId : null),
   onRotate: (yaw) => {
     const spawn = selectedSpawn();
     if (!spawn) return;
@@ -691,6 +699,18 @@ const fontView = new FontView({
   markDirty: () => markDirty(),
   onChange: () => renderInspector(),
   onUiChange: () => markUi(),
+  onStatus: (msg, isError) => setStatus(msg, isError),
+});
+
+const spriteView = new SpriteView({
+  left: document.getElementById("sprites-left"),
+  panel: document.getElementById("sprites-panel"),
+  getSprites: () => doc.sprites,
+  beginUndo,
+  endUndo,
+  markDirty: () => markDirty(),
+  onChange: () => renderInspector(),
+  onSelect: () => previewView.draw(),
   onStatus: (msg, isError) => setStatus(msg, isError),
 });
 
@@ -1449,6 +1469,7 @@ function collectEditorState() {
     },
     fontSlots: fontView.getState().slots,
     fontActive: fontView.getState().active,
+    spriteSel: spriteView.getState().sel,
   });
 }
 
@@ -1505,6 +1526,7 @@ function applyEditorState(ed) {
     iorb.target.y = ed.itemOrbit.target.y;
     iorb.target.z = ed.itemOrbit.target.z;
     fontView.setState({ slots: ed.fontSlots, active: ed.fontActive });
+    spriteView.setState({ sel: ed.spriteSel });
     setNeighbourDraw(ed.neighbourDraw, false);
     setRoomsOnlyDraw(ed.roomsOnlyDraw, false);
     setDrawMode(ed.localDraw);
@@ -1534,6 +1556,7 @@ async function saveNow(okMsg = "Saved") {
     const mapRecords = mapFileRecords(doc);
     await writeMapFiles(mapRecords);
     if (!fontFileBlocked) await writeFontFile(fontToJson(doc.font));
+    if (!spritesFileBlocked) await writeSpritesFile(spritesToJson(doc.sprites));
     markClean();
     persistMdlRigBackup();
     if (mapRecords.namesFilled) refreshAll();
@@ -1557,6 +1580,7 @@ function snapshot() {
     customItems: doc.customItems,
     itemMeta: doc.itemMeta,
     font: doc.font,
+    sprites: doc.sprites,
   });
 }
 
@@ -1888,6 +1912,7 @@ function setMode(mode) {
   document.getElementById("btn-mode-items")?.classList.toggle("active", mode === "items");
   document.getElementById("btn-mode-build")?.classList.toggle("active", mode === "build");
   document.getElementById("btn-mode-font")?.classList.toggle("active", mode === "font");
+  document.getElementById("btn-mode-sprites")?.classList.toggle("active", mode === "sprites");
   document.getElementById("btn-mode-cutscene")?.classList.toggle("active", mode === "cutscene");
   document.querySelector(".layout")?.classList.toggle("layout-build", mode === "build");
   const leftAside = document.querySelector(".left");
@@ -1899,9 +1924,11 @@ function setMode(mode) {
   const centerHeading = document.querySelector(".center-heading");
   if (centerHeading) centerHeading.hidden = mode === "build";
   const mapStage = document.getElementById("map-stage");
-  if (mapStage) mapStage.hidden = mode === "build" || mode === "font";
+  if (mapStage) mapStage.hidden = mode === "build" || mode === "font" || mode === "sprites";
   const fontPanel = document.getElementById("font-panel");
   if (fontPanel) fontPanel.hidden = mode !== "font";
+  const spritesPanel = document.getElementById("sprites-panel");
+  if (spritesPanel) spritesPanel.hidden = mode !== "sprites";
   const stick = mode === "anim";
   mapStage?.classList.toggle("stick-stage", stick);
   for (const id of ["stick-left", "stick-front"]) {
@@ -1920,6 +1947,8 @@ function setMode(mode) {
   if (hintEl) hintEl.hidden = mode === "build";
   const fontLeft = document.getElementById("font-left");
   if (fontLeft) fontLeft.hidden = mode !== "font";
+  const spritesLeft = document.getElementById("sprites-left");
+  if (spritesLeft) spritesLeft.hidden = mode !== "sprites";
   const cutLeft = document.getElementById("cut-left");
   if (cutLeft) cutLeft.hidden = mode !== "cutscene";
   const cutTransport = document.getElementById("cut-transport");
@@ -1935,7 +1964,7 @@ function setMode(mode) {
     if (btn) btn.disabled = mode !== "layout";
   }
   document.getElementById("overhead-panel").hidden = mode !== "layout";
-  document.getElementById("preview-panel").hidden = mode !== "layout" && mode !== "cutscene";
+  document.getElementById("preview-panel").hidden = mode !== "layout" && mode !== "cutscene" && mode !== "sprites";
   if (mode !== "layout") clearPaletteDrag();
   updateCenterChrome();
   document.getElementById("hint").textContent =
@@ -1947,10 +1976,13 @@ function setMode(mode) {
               ? "Open the repo once · Reload after a build"
               : mode === "cutscene"
                 ? "Click an actor or path point to select · gizmo moves it · Alt+LMB / RMB orbit · MMB pan · Wheel / Alt+RMB zoom · F frame room · Del removes the selected point or actor · scrub or Play the timeline; the Preview panel shows the camera"
+              : mode === "sprites"
+                ? "LMB paint · RMB erase · arrows shift · H/V flip · I invert · Del clear · Ctrl+arrows move the sprite in game (Shift = 4) · Ctrl+C/V copy/paste · sliders resize and keep the pixels centred · the viewport preview shows the sprite in place"
               : mode === "font"
                 ? "LMB paint · RMB erase · drag a glyph into a grid · arrows shift · H/V flip · I invert · Del clear · 1-4 pick grid · Ctrl+C/V copy/paste glyph"
                 : animHintText();
   fontView.enabled = mode === "font";
+  spriteView.enabled = mode === "sprites";
   layoutView.enabled = mode === "layout";
   animView.enabled = mode === "anim";
   itemView.enabled = mode === "items";
@@ -2533,6 +2565,8 @@ function updateCenterChrome() {
         ? itemMeshKey
         : editorMode === "build"
           ? "Build"
+          : editorMode === "sprites"
+            ? `Sprite — ${spriteDef(spriteView.selId)?.name ?? ""}`
           : editorMode === "font"
             ? "Font"
             : editorMode === "cutscene"
@@ -3270,6 +3304,31 @@ function fontStatRow(label, value) {
   b.textContent = value;
   row.append(a, b);
   return row;
+}
+
+function renderSpritesInspector(root) {
+  const h = document.createElement("h2");
+  h.textContent = "Sprites";
+  root.appendChild(h);
+  const sp = spriteView.selected();
+  const def = spriteDef(spriteView.selId);
+  if (sp && def) {
+    const ink = spriteInk(sp);
+    const rows = [
+      ["Sprite", def.name],
+      ["Size", `${sp.w}x${sp.h} px · ${sp.w * 2}x${sp.h} hires`],
+      ["Set pixels", String(ink ? ink.count : 0)],
+      ["Ink box", ink ? `${ink.maxX - ink.minX + 1}x${ink.maxY - ink.minY + 1} at ${ink.minX},${ink.minY}` : "blank"],
+      ["Game offset", `${sp.ox}, ${sp.oy} hires`],
+    ];
+    for (const [k, v] of rows) root.appendChild(fontStatRow(k, v));
+  }
+  const file = document.createElement("p");
+  file.className = spritesFileBlocked ? "error" : "muted";
+  file.textContent = spritesFileBlocked
+    ? "editor/sprites.json failed to parse: saving disabled until reload"
+    : "Autosaves to editor/sprites.json · run build to repack (genweapons / gensplat / genenemymuzzle)";
+  root.appendChild(file);
 }
 
 function renderFontInspector(root) {
@@ -4380,6 +4439,10 @@ function renderInspector() {
   }
   if (editorMode === "font") {
     renderFontInspector(root);
+    return;
+  }
+  if (editorMode === "sprites") {
+    renderSpritesInspector(root);
     return;
   }
   if (editorMode === "cutscene") {
@@ -5643,12 +5706,13 @@ function refreshPanels() {
   }
   syncSharewareFolderButtons();
   if (editorMode !== "build") overheadView.draw();
-  if (editorMode === "layout" || editorMode === "cutscene") previewView.draw();
+  if (editorMode === "layout" || editorMode === "cutscene" || editorMode === "sprites") previewView.draw();
   if (editorMode === "cutscene") cutView.draw();
   if (editorMode === "layout") layoutView.draw();
   if (editorMode === "anim") animView.draw();
   if (editorMode === "items") itemView.draw();
   if (editorMode === "font") fontView.refresh();
+  if (editorMode === "sprites") spriteView.refresh();
 }
 
 function refreshAll() {
@@ -5657,7 +5721,7 @@ function refreshAll() {
   if (editorMode === "layout") layoutView.draw();
   else if (editorMode === "items") itemView.draw();
   else if (editorMode === "cutscene") cutView.draw();
-  else if (editorMode !== "build" && editorMode !== "font") animView.draw();
+  else if (editorMode !== "build" && editorMode !== "font" && editorMode !== "sprites") animView.draw();
 }
 
 document.getElementById("btn-item-add")?.addEventListener("click", addCustomItem);
@@ -5687,6 +5751,9 @@ document.getElementById("btn-mode-build")?.addEventListener("click", () => {
 });
 document.getElementById("btn-mode-font")?.addEventListener("click", () => {
   setMode("font");
+});
+document.getElementById("btn-mode-sprites")?.addEventListener("click", () => {
+  setMode("sprites");
 });
 document.getElementById("btn-mode-cutscene")?.addEventListener("click", () => {
   setMode("cutscene");
@@ -5746,6 +5813,19 @@ async function applyLoadedDoc(loaded) {
       // Never overwrite a file we could not parse.
       fontFileBlocked = true;
       fontNote = `editor/font.json is not valid JSON (${err.message || err}); font saving is disabled until reload`;
+    }
+  }
+  const spritesText = await readSpritesFile();
+  spritesFileBlocked = false;
+  if (spritesText == null) {
+    fontNote += `${fontNote ? " · " : ""}editor/sprites.json not found: sprites start blank and it is created on save`;
+  } else {
+    try {
+      loaded = { ...loaded, sprites: spritesFromJson(spritesText) };
+    } catch (err) {
+      // Never overwrite a file we could not parse.
+      spritesFileBlocked = true;
+      fontNote += `${fontNote ? " · " : ""}editor/sprites.json is not valid JSON (${err.message || err}); sprite saving is disabled until reload`;
     }
   }
   doc = normalizeDocument(loaded);
@@ -5858,6 +5938,10 @@ window.addEventListener("keydown", (e) => {
     return;
   }
   if (editorMode === "font" && fontView.handleKey(e)) {
+    e.preventDefault();
+    return;
+  }
+  if (editorMode === "sprites" && spriteView.handleKey(e)) {
     e.preventDefault();
     return;
   }

@@ -35,12 +35,17 @@ e_spr_hi
 
 ; A = 1 if the world-anchored splat is on screen this frame (stamp_view in
 ; a8stamp.asm ran splat_track in bank 0 before switching the window).
-; Fire mode: the pistol and its muzzle flash. Jump / scan mode: the black crosshair at
-; the viewport centre instead. World effects (enemy muzzle, splat) draw in all.
+; Fire mode: the pistol and its muzzle flash. Scan mode: the rig where the pistol was, no
+; crosshair. Jump mode: the black crosshair at the viewport centre only. World effects (enemy muzzle, splat) draw in all.
 stamp_view_e
 	sta stamp_splat_ok
 	lda ability_cur
 	beq .sv_wpn
+	cmp #ABIL_SCAN
+	bne .sv_xh
+	jsr stamp_scanrig			; the DNA rig stands in for the pistol, no crosshair
+	jmp .sv_fx
+.sv_xh
 	lda #<spr_xhair_b
 	sta init_ptr
 	lda #>spr_xhair_b
@@ -96,6 +101,27 @@ stamp_view_e
 	jsr stamp_set_y
 	jsr stamp_splat
 .nos
+	rts
+
+; Scan mode: spr_scanrig_b at the pistol's anchor (same bob), black. A height-0 rect = none.
+stamp_scanrig
+	lda spr_scanrig_b+3
+	beq .sr_done
+	jsr wpn_y_bob
+	sec
+	sbc #VIEW_SPR_Y0
+	sta stamp_y0
+	lda #WPN_X0
+	jsr stamp_at_x
+	lda #<spr_scanrig_b
+	sta init_ptr
+	lda #>spr_scanrig_b
+	sta init_ptr+1
+	lda #0
+	sta stamp_red
+	lda #OP_AND_IY
+	jmp blit_rect
+.sr_done
 	rts
 
 ; init_ptr set. A is the phase (1 = line colour, 2 = red). X is absolute,

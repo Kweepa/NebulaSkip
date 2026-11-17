@@ -20,8 +20,10 @@ import genmenutune as tune  # noqa: E402
 
 ROOT = g.ROOT
 TMP = ROOT / "tmp"
+ORG = 0x2000            # player + every tune has to end below MUS_BSS
+MUS_BSS = 0x6F00
 
-WRAP = """\
+WRAP = f"""\
 !cpu 6502
 !to "../tmp/music_test.bin", plain
 effects_vol = $08fd
@@ -29,7 +31,7 @@ SAMPLE_MS_PAL = 20
 SAMPLE_MS_NTSC = 17
 video_ms = $08f6
 a8_pal_hue = $0680
-*= $5000
+*= ${ORG:04x}
 !source "a8music.asm"
 """
 
@@ -52,7 +54,7 @@ def main() -> None:
     code = (TMP / "music_test.bin").read_bytes()
 
     def at(name: str, k: int = 0) -> int:
-        return code[labels[name] - 0x5000 + k]
+        return code[labels[name] - ORG + k]
 
     songs = [f() for f in tune.TUNES]
     ntr = len(songs)
@@ -68,7 +70,7 @@ def main() -> None:
         if (at("mus_tok_lo", k) | at("mus_tok_hi", k) << 8) != t0:
             sys.exit(f"mus_tok_lo/hi[{k}] != mus_tok{k}")
         blobs.append(bytes((at("mus_audctl", k), (i1 - i0) // 2))
-                     + code[i0 - 0x5000:i1 - 0x5000] + code[t0 - 0x5000:t1 - 0x5000])
+                     + code[i0 - ORG:i1 - ORG] + code[t0 - ORG:t1 - ORG])
 
     from py65.devices.mpu6502 import MPU
 
@@ -85,7 +87,9 @@ def main() -> None:
             bytearray.__setitem__(self, k, v)
 
     mem = WMem(65536)
-    mem[0x5000:0x5000 + len(code)] = code
+    if ORG + len(code) > MUS_BSS:
+        sys.exit(f"test image ends at ${ORG + len(code):04x}, over the player state at ${MUS_BSS:04x}")
+    mem[ORG:ORG + len(code)] = code
     mem[0x08FD] = 0x0F
     mem[0xD014] = 0x01  # PAL: no frame skipping
     m = MPU(memory=mem)

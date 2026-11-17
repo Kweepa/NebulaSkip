@@ -3378,7 +3378,7 @@
           }
         ],
         "facing": "path",
-        "ease": "out",
+        "ease": "linear",
         "item": "ship",
         "scale": 1,
         "yaw": 0

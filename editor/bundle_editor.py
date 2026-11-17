@@ -14,6 +14,7 @@ JS_ORDER = [
     "js/tunesData.js",
     "js/roomGeom.js",
     "js/fontModel.js",
+    "js/spriteModel.js",
     "js/model.js",
     "js/cutsceneModel.js",
   "js/math3d.js",
@@ -28,6 +29,7 @@ JS_ORDER = [
     "js/animView.js",
     "js/itemView.js",
     "js/fontView.js",
+    "js/spriteView.js",
     "js/buildView.js",
     "js/wadSprites.js",
     "js/stickOrtho.js",
@@ -86,6 +88,7 @@ def main() -> None:
       <button type="button" id="btn-mode-items">Items</button>
       <button type="button" id="btn-mode-cutscene">Cutscene</button>
       <button type="button" id="btn-mode-font">Font</button>
+      <button type="button" id="btn-mode-sprites">Sprites</button>
       <button type="button" id="btn-mode-build">Build</button>
     </div>
     <div class="toolbar-actions" id="draw-mode-group" role="group" aria-label="Draw mode">
@@ -152,6 +155,7 @@ def main() -> None:
         <div id="item-mesh-list" class="palette-things item-grid"></div>
       </section>
       <section id="font-left" hidden></section>
+      <section id="sprites-left" hidden></section>
       <section id="cut-left" hidden></section>
     </aside>
 
@@ -184,6 +188,7 @@ def main() -> None:
       <div id="cut-transport" class="cut-transport" hidden></div>
       <div id="build-panel" class="build-panel" hidden></div>
       <div id="font-panel" class="font-panel" hidden></div>
+      <div id="sprites-panel" class="sprites-panel" hidden></div>
     </section>
 
     <aside class="right">

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pack assets/weapons/splat_0..2.png → src/splat_spr.asm.
+"""Pack editor/sprites.json splat_0..2 → src/splat_spr.asm.
 
 One phase-0 rect per LOD. X is the smallest multiple of 8 hires that
 covers the ink; Y is the ink span. Header x/y are the crop inside the
@@ -14,15 +14,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 
-from sprmask import (  # noqa: E402
-    SH,
-    SW,
-    bchunk,
-    load_png_1bit,
-    pack_clipped,
-)
+from sprmask import bchunk  # noqa: E402
+from spritejson import load_sprites, pack  # noqa: E402
 
-PNG_DIR = ROOT / "assets" / "weapons"
 OUT = ROOT / "src" / "splat_spr.asm"
 N = 3
 
@@ -33,14 +27,12 @@ def main() -> None:
         "; One rect: x_byte, y, width, height, then width*height row-major bytes.\n",
         "; x_byte/y crop the 24×21 whose origin is tip−EMUZ_OX/EMUZ_OY.\n",
         "; Ink %11, clear %00. Distance LOD 0 = near … 2 = far.\n",
-        "; Source: assets/weapons/splat_0..2.png (ink centered for tip−12/−10)\n",
+        "; Source: editor/sprites.json (splat_0..2, ink centered for tip−12/−10)\n",
     ]
+    sprites = load_sprites()
     sizes = []
     for i in range(N):
-        path = PNG_DIR / f"splat_{i}.png"
-        if not path.is_file():
-            raise SystemExit(f"missing {path}")
-        packed = pack_clipped(load_png_1bit(path, SW, SH), name=path.name)
+        packed = pack(sprites, f"splat_{i}")
         sizes.append(len(packed))
         parts.append(f"spr_splat_{i}\n")
         parts.append(bchunk(packed))
