@@ -818,8 +818,11 @@ TH_GRAB_R		= 3			; Chebyshev pad outside that footprint
 TH_MAX			= 128		; MAP_NTHINGS ≤ this; keep in sync with tools/genmap.py
 
 combat_armor	= $CD01 + A8_OFF			; 1 = blue (saves 1/2); 0 = green
-; $CD04-$CD1B: en_stand. $CD1C-$CD23 free (was th_taken while TH_MAX was 32).
+; $CD04-$CD1B: en_stand. $CD1C-$CD1E elev_vol/near/ride, $CD1F-$CD23 free (was th_taken while TH_MAX was 32).
 en_stand	= $CD04 + A8_OFF			; ENEMY_MAX: stand variant 0..SV_MAX-1 (0 = plain), set by init_enemies
+elev_vol	= $CD1C + A8_OFF			; elevator rumble volume 0..15, set once per frame (IRQ reads it)
+elev_near	= $CD1D + A8_OFF			; min distance attenuation over moving cars this frame ($ff none)
+elev_ride	= $CD1E + A8_OFF			; 1 = player is on a moving car this frame
 th_taken	= play_bss_free				; MAP_NTHINGS (≤ TH_MAX), main RAM below the bank window
 !if  th_taken + TH_MAX > a8_pal_hue {
 	!error "th_taken overlaps the PAL hue table: end=", th_taken + TH_MAX

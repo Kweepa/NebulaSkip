@@ -34,6 +34,7 @@ JS_ORDER = [
     "js/wadSprites.js",
     "js/stickOrtho.js",
     "js/tunePlayer.js",
+    "js/cutAudio.js",
     "js/main.js",
 ]
 
@@ -77,7 +78,7 @@ def main() -> None:
       <button type="button" id="btn-mode-layout" class="active">Maps</button>
       <button type="button" id="btn-mode-anim">Enemies</button>
       <button type="button" id="btn-mode-items">Items</button>
-      <button type="button" id="btn-mode-cutscene">Cutscene</button>
+      <button type="button" id="btn-mode-cutscene">Cutscenes</button>
       <button type="button" id="btn-mode-font">Font</button>
       <button type="button" id="btn-mode-sprites">Sprites</button>
       <button type="button" id="btn-mode-build">Build</button>

@@ -1015,6 +1015,8 @@ td_saved	!byte 0
 
 ; Tick red border; IRQ publishes vic_border.
 update_hurt_flash
+	lda player_hp
+	beq .uhf_rts			; dead: border stays red until the reload
 	lda hurt_flash_l
 	ora hurt_flash_h
 	beq .uhf_rts

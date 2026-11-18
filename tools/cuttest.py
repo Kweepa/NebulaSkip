@@ -67,7 +67,7 @@ def script(lab: dict[str, int], cut: dict[str, int], times: list[int], after: in
     # frame published just before, show_buf says which half).
     for i, t in enumerate(times):
         L += ["bc *", f'bx "pc={A("wait_draw_free")} and {cond} and dw(${cut["cu_tl"]:04x})>={t}"', "g",
-              state.replace("{tag}", f"T{t}"),
+              state.replace("{tag}", f"T{t}"), ".pokey",
               f".writemem {(OUT / f'f{i:02d}.bin').as_posix()} r:$4000 L2000"]
         if skip and i == 1:
             L += [f"e ${lab['in_fire']:04x} 01"]  # a fresh press after fire was seen released

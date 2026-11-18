@@ -178,6 +178,7 @@ elev_try_step
 ; ------------------------------------------------------------------
 elev_pu_le
 	jsr proc_add_dt
+	jsr elev_note
 .eple_lp
 	jsr elev_try_step
 	bcc .eple_go
@@ -206,6 +207,7 @@ elev_pu_le
 
 elev_pu_re
 	jsr proc_add_dt
+	jsr elev_note
 .epre_lp
 	jsr elev_try_step
 	bcc .epre_go
@@ -396,6 +398,102 @@ elev_update_floor
 	beq .euf_rts
 	jmp .euf
 .euf_rts
+	rts
+
+; ------------------------------------------------------------------
+; elev_note — X = proc slot (kept). Called per moving car each frame.
+; Riding → elev_ride; else elev_near = min(d, 15), d = (L + (M+S)/2) of |dx|,|dy|,|dz| >> 2
+; (L largest axis; y = car top vs camera)
+elev_note
+	ldy PROC_L,x
+	cpy pl_on_elev
+	bne .en_far
+	lda #1
+	sta elev_ride
+	rts
+.en_far
+	+lda_my elev_sx
+	lsr
+	clc
+	+adc_my elev_x
+	sec
+	sbc cam_xh
+	bcs .en_dx
+	eor #$ff
+	adc #1
+.en_dx
+	lsr
+	lsr
+	sta proc_tmp0			; |dx|>>2 (proc_tmp0-3 only live inside proc_update's elev handlers)
+	+lda_my elev_sz
+	lsr
+	clc
+	+adc_my elev_z
+	sec
+	sbc cam_zh
+	bcs .en_dz
+	eor #$ff
+	adc #1
+.en_dz
+	lsr
+	lsr
+	sta proc_tmp1			; |dz|>>2
+	lda elev_y,y			; car top vs eye
+	clc
+	+adc_my elev_sy
+	sec
+	sbc cam_yh
+	bcs .en_dy
+	eor #$ff
+	adc #1
+.en_dy
+	lsr
+	lsr
+	sta proc_tmp2			; |dy|>>2
+	lda proc_tmp0			; largest
+	cmp proc_tmp1
+	bcs .en_m1
+	lda proc_tmp1
+.en_m1
+	cmp proc_tmp2
+	bcs .en_m2
+	lda proc_tmp2
+.en_m2
+	sta proc_tmp3
+	lda proc_tmp0			; dist = largest + (other two)>>1
+	clc
+	adc proc_tmp1
+	adc proc_tmp2			; <= 189
+	sec
+	sbc proc_tmp3
+	lsr
+	clc
+	adc proc_tmp3
+	cmp #16
+	bcc .en_cl
+	lda #15
+.en_cl
+	cmp elev_near
+	bcs .en_rts
+	sta elev_near
+.en_rts
+	rts
+
+; end of proc_update: final rumble volume from effects_vol
+elev_vol_calc
+	lda effects_vol
+	and #$0f
+	ldx elev_ride
+	beq .evc_far
+	lsr				; on the car: half
+	jmp .evc_st
+.evc_far
+	sec
+	sbc elev_near			; $ff (none moving) clamps to 0
+	bcs .evc_st
+	lda #0
+.evc_st
+	sta elev_vol
 	rts
 
 ; ------------------------------------------------------------------

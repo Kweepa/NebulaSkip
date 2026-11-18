@@ -16,7 +16,12 @@
 ; Baked data (cut_data, offsets CD_*; gencutscene.py writes it, actor 0 is the camera):
 ;   0 room   1 nact   2,3 duration ms
 ;   4 kind[6] ($FF camera, else item slot)  10 scale[6] (shift)  16 ns[6]  22 offl[6]  28 offh[6]
-;   34.. per actor, SoA: xl[ns] xh[ns] yl[ns] yh[ns] zl[ns] zh[ns] yaw[ns]   (8.8 world, yaw 0..255)
+;   34 star count  35 hide room
+;   36 flyby AUDC distortion bits ($80 noise / $A0 tone, 0 = none)  37 flyby samples  38,39 offset of the flyby block
+;   40.. per actor, SoA: xl[ns] xh[ns] yl[ns] yh[ns] zl[ns] zh[ns] yaw[ns]   (8.8 world, yaw 0..255)
+; Flyby sound (one voice, the first flyby item): while the cutscene runs the ambient tune is held (amb_on = 0)
+; and POKEY channel 4 plays the baked curves: audf[n] vol[n] at the actors' 128 ms grid, both lerped
+; like positions (frac = (t & 127) << 1), AUDC4 = dist | (vol >> 4), AUDF4 = audf, AUDCTL 0 (64 kHz).
 ; Playback: i = t >> 7 (128 ms samples), f = (t & 127) << 1; position and shortest-arc yaw are
 ; linear between sample i and i+1. Items get ITEM_BIAS on X/Z like placed pickups; the camera
 ; position is the eye.
@@ -41,6 +46,10 @@ CD_OFFL		= 22
 CD_OFFH		= 28
 CD_STARS	= 34
 CD_HIDE		= 35
+CD_FLYD		= 36
+CD_FLYN		= 37
+CD_FLYOL	= 38
+CD_FLYOH	= 39
 
 *= CUT_BASE
 
@@ -69,12 +78,21 @@ cut_run
 	sta cu_tl
 	sta cu_th
 	sta in_fire
+	lda cut_data+CD_FLYD
+	beq .nofly
+	lda amb_on			; the flyby owns channel 4: hold the ambient tune
+	sta cu_amb
+	lda #0
+	sta amb_on
+	sta $d207
+.nofly
 	lda vbi_count_l			; the load took a while: dt starts from here
 	sta vbi_last_l
 	lda vbi_count_h
 	sta vbi_last_h
 .frame
 	jsr cut_pose
+	jsr cut_fly
 	lda #$ff
 	sta mesh_vmask
 	lda cut_data+CD_HIDE
@@ -125,6 +143,13 @@ cut_run
 .again
 	jmp .frame
 .done
+	lda cut_data+CD_FLYD
+	beq .nofly2
+	lda #0
+	sta $d207
+	lda cu_amb
+	sta amb_on			; the ambient tune carries on
+.nofly2
 	lda cu_room
 	sta room_idx
 	lda cu_sv
@@ -142,6 +167,79 @@ cut_run
 	lda cu_sv+6
 	sta yaw
 	jmp apply_room_palette		; spawn room's colours again; rts to cut_arrive's caller
+
+; Flyby voice at time cu_th:cu_tl (cu_idx / cu_frac from cut_pose): lerp the AUDF and volume samples.
+cut_fly
+	lda cut_data+CD_FLYD
+	bne .fl_go
+	rts
+.fl_go
+	clc
+	lda cut_data+CD_FLYOL
+	adc #<cut_data
+	sta cu_pl
+	lda cut_data+CD_FLYOH
+	adc #>cut_data
+	sta cu_ph
+	lda cut_data+CD_FLYN
+	sta cu_ns			; cut_adv steps the pointer by n: audf block, then vol block
+	tax
+	dex
+	stx cu_last
+	lda cu_frac
+	sta cu_f
+	lda cu_idx
+	cmp cu_last
+	bcc .fl_mid
+	lda cu_last
+	sta cu_i
+	sta cu_i1
+	lda #0
+	sta cu_f
+	beq .fl_have
+.fl_mid
+	sta cu_i
+	clc
+	adc #1
+	sta cu_i1
+.fl_have
+	jsr cut_rd2
+	jsr cut_lerp8
+	sta $d206			; AUDF4
+	jsr cut_adv
+	jsr cut_rd2
+	jsr cut_lerp8
+	lsr
+	lsr
+	lsr
+	lsr
+	ora cut_data+CD_FLYD
+	sta $d207			; AUDC4
+	rts
+
+; A = v0, X = v1 (unsigned bytes), cu_f = fraction/256: A = v0 + (v1 - v0) * f / 256.
+cut_lerp8
+	sta cu_p0
+	stx cu_fv
+	cpx cu_p0
+	bcs .lp_up
+	lda cu_p0
+	sec
+	sbc cu_fv
+	jsr cut_mul8
+	sta cu_fv
+	lda cu_p0
+	sec
+	sbc cu_fv
+	rts
+.lp_up
+	txa
+	sec
+	sbc cu_p0
+	jsr cut_mul8
+	clc
+	adc cu_p0
+	rts
 
 ; Every actor's pose at time cu_th:cu_tl into cu_tab, then actor 0 (the camera) into cam_* / yaw.
 cut_pose
@@ -523,6 +621,8 @@ cut_draw_actors
 
 ; Overlay state. It lives in the image, so every load starts it zeroed.
 cu_room		!byte 0
+cu_amb		!byte 0
+cu_fv		!byte 0
 cu_sv		!fill 7, 0
 cu_tl		!byte 0
 cu_th		!byte 0

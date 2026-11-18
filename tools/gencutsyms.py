@@ -30,6 +30,7 @@ REQUIRED = [
     "vbi_last_l",
     "vbi_last_h",
     "ITEM_BIAS",
+    "amb_on",
 ]
 
 

@@ -106,6 +106,10 @@ proc_add_dt
 ; Loop / next / work are global so elevator.asm can jmp proc_update_next
 proc_update
 	jsr door_unhide_tick
+	lda #$ff
+	sta elev_near
+	lda #0
+	sta elev_ride
 	ldx #0
 proc_update_loop
 	lda PROC_KIND,x
@@ -114,7 +118,7 @@ proc_update_next
 	inx
 	cpx #PROC_NUM
 	bcc proc_update_loop
-	rts
+	jmp elev_vol_calc
 proc_update_work
 	cmp #PROC_LOWER_ELEV
 	bne .pu_n2

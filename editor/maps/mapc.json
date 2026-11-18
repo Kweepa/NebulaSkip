@@ -8,12 +8,12 @@
     {
       "id": "2c61275c-9e6b-4cf8-950e-87d7f5606615",
       "kind": "room",
-      "x": 96,
+      "x": 94,
       "y": 96,
-      "z": 8,
-      "sx": 46,
+      "z": 4,
+      "sx": 51,
       "sy": 30,
-      "sz": 46,
+      "sz": 50,
       "face": "+z",
       "axis": "z",
       "dir": 1,
@@ -356,7 +356,7 @@
       "dir": 1,
       "roomId": "64b5e3f8-1a29-4b3b-936c-78ab3537a844",
       "lockKey": "unlocked",
-      "doorType": "Arch",
+      "doorType": "Tech",
       "doorScale": 1,
       "tag": "",
       "otherRoomId": "b98937df-ef04-4066-ade2-88f12fcb9940",
@@ -475,7 +475,7 @@
       "dir": 1,
       "roomId": "64b5e3f8-1a29-4b3b-936c-78ab3537a844",
       "lockKey": "unlocked",
-      "doorType": "Arch",
+      "doorType": "Tech",
       "doorScale": 1,
       "tag": "",
       "otherRoomId": "d08e7565-d487-4342-9c72-0603ec8602d9",
@@ -751,7 +751,7 @@
       "dir": 1,
       "roomId": "b98937df-ef04-4066-ade2-88f12fcb9940",
       "lockKey": "unlocked",
-      "doorType": "Arch",
+      "doorType": "Tech",
       "doorScale": 1,
       "tag": "",
       "otherRoomId": "504516f2-1060-45b5-bb65-e62582414d3f",
@@ -1004,10 +1004,10 @@
       "kind": "trigger",
       "x": 122,
       "y": 96,
-      "z": 103,
+      "z": 104,
       "sx": 14,
       "sy": 4,
-      "sz": 14,
+      "sz": 13,
       "face": "+z",
       "axis": "z",
       "dir": 1,
@@ -1024,7 +1024,7 @@
       "z": 103,
       "sx": 14,
       "sy": 4,
-      "sz": 14,
+      "sz": 13,
       "face": "+z",
       "axis": "z",
       "dir": 1,
@@ -1450,7 +1450,7 @@
       "dir": 1,
       "roomId": "b0773e1b-8ea5-4117-a0b9-122fca694c79",
       "lockKey": "unlocked",
-      "doorType": "Arch",
+      "doorType": "Tech",
       "doorScale": 1,
       "tag": "",
       "otherRoomId": "343c5382-621d-423a-a5fb-c6d02bd667d6",
@@ -1569,7 +1569,7 @@
       "dir": 1,
       "roomId": "4ac05557-bdca-443f-a7d7-3426f0aee715",
       "lockKey": "unlocked",
-      "doorType": "Arch",
+      "doorType": "Tech",
       "doorScale": 1,
       "tag": "",
       "otherRoomId": "343c5382-621d-423a-a5fb-c6d02bd667d6",
@@ -1695,26 +1695,6 @@
       "locked": false
     },
     {
-      "id": "cf3b5ee9-9ca9-44bb-ad4c-f62c94a4f317",
-      "kind": "doorway",
-      "x": 113,
-      "y": 72,
-      "z": 143,
-      "sx": 1,
-      "sy": 5,
-      "sz": 4,
-      "face": "-x",
-      "axis": "z",
-      "dir": 1,
-      "roomId": "2e778e78-671e-4a35-8e89-36d8133fee34",
-      "lockKey": "unlocked",
-      "doorType": "Tech",
-      "doorScale": 1,
-      "tag": "",
-      "otherRoomId": "7c8f5a44-b03c-4008-8102-87a90cffae31",
-      "locked": false
-    },
-    {
       "id": "18fde7a7-091e-4247-81f0-07cd2413872a",
       "kind": "crate",
       "x": 93,
@@ -1828,7 +1808,7 @@
       "dir": 1,
       "roomId": "4ac05557-bdca-443f-a7d7-3426f0aee715",
       "lockKey": "unlocked",
-      "doorType": "Arch",
+      "doorType": "Tech",
       "doorScale": 1,
       "tag": "",
       "otherRoomId": "22a49f27-fef4-4a54-b3d6-da5c3df5a974",
@@ -1915,7 +1895,7 @@
       "dir": 1,
       "roomId": "22a49f27-fef4-4a54-b3d6-da5c3df5a974",
       "lockKey": "unlocked",
-      "doorType": "Arch",
+      "doorType": "Tech",
       "doorScale": 1,
       "tag": "",
       "otherRoomId": "9a1e2d7b-2425-4495-b1ee-d1a700b6ec29",
@@ -2221,7 +2201,7 @@
       "dir": 1,
       "roomId": "7c8f5a44-b03c-4008-8102-87a90cffae31",
       "lockKey": "unlocked",
-      "doorType": "Arch",
+      "doorType": "Tech",
       "doorScale": 1,
       "tag": "",
       "otherRoomId": "23c47939-1f63-45bb-b437-842a423fdaf1",
@@ -2374,7 +2354,7 @@
       "dir": 1,
       "roomId": "23c47939-1f63-45bb-b437-842a423fdaf1",
       "lockKey": "unlocked",
-      "doorType": "Arch",
+      "doorType": "Tech",
       "doorScale": 1,
       "tag": "",
       "otherRoomId": "42080a20-2766-4517-86ca-07bd2aa14eb1",
@@ -2510,10 +2490,10 @@
       "kind": "trigger",
       "x": 122,
       "y": 72,
-      "z": 155,
+      "z": 156,
       "sx": 14,
       "sy": 4,
-      "sz": 14,
+      "sz": 13,
       "face": "+z",
       "axis": "z",
       "dir": 1,
@@ -2530,7 +2510,7 @@
       "z": 155,
       "sx": 14,
       "sy": 4,
-      "sz": 14,
+      "sz": 13,
       "face": "+z",
       "axis": "z",
       "dir": 1,
@@ -2677,7 +2657,7 @@
       "dir": 1,
       "roomId": "cf58e839-be4b-4684-8358-5d602408d6de",
       "lockKey": "unlocked",
-      "doorType": "Arch",
+      "doorType": "Tech",
       "doorScale": 1,
       "tag": "",
       "otherRoomId": "019a7a73-cb20-4d95-a811-e7a0b5df8375",
@@ -2695,7 +2675,7 @@
       "face": "+z",
       "axis": "z",
       "dir": 1,
-      "flags": 1,
+      "flags": 3,
       "roomId": "019a7a73-cb20-4d95-a811-e7a0b5df8375"
     },
     {
@@ -2782,7 +2762,7 @@
       "dir": 1,
       "roomId": "ec592941-c58f-4b0c-8ff9-318c004a1855",
       "lockKey": "unlocked",
-      "doorType": "Arch",
+      "doorType": "Tech",
       "doorScale": 1,
       "tag": "",
       "otherRoomId": "019a7a73-cb20-4d95-a811-e7a0b5df8375",
@@ -2791,7 +2771,7 @@
     {
       "id": "4b6bb141-d069-46ea-807b-4a4e5ce4c4dd",
       "kind": "pickup",
-      "x": 137,
+      "x": 133,
       "y": 42,
       "z": 107,
       "sx": 0.9270509831248422,
@@ -2802,7 +2782,7 @@
       "dir": 1,
       "roomId": "ec592941-c58f-4b0c-8ff9-318c004a1855",
       "pickup": "rock",
-      "scale": 4
+      "scale": 2
     },
     {
       "id": "fbeb9bdb-c264-469d-9248-7bf388faf600",
@@ -2885,7 +2865,7 @@
       "dir": 1,
       "roomId": "ec592941-c58f-4b0c-8ff9-318c004a1855",
       "lockKey": "unlocked",
-      "doorType": "Arch",
+      "doorType": "Tech",
       "doorScale": 2,
       "tag": "",
       "otherRoomId": "480666cc-4c47-407c-8c74-14f797360345",
@@ -3310,6 +3290,111 @@
       "ry": 0,
       "rz": 0,
       "cuts": []
+    },
+    {
+      "id": "cf992c14-f352-440b-8026-5fe2d5037b7a",
+      "kind": "pickup",
+      "x": 128,
+      "y": 100,
+      "z": 116,
+      "sx": 0.9270509831248422,
+      "sy": 1.5,
+      "sz": 0.8028497019894523,
+      "face": "+z",
+      "axis": "z",
+      "dir": 1,
+      "roomId": "4f7d9b08-c0f7-4e59-b315-35ecb7b2a53b",
+      "pickup": "arrow down"
+    },
+    {
+      "id": "7413f954-e4af-4b9f-aa6d-972c0814a696",
+      "kind": "pickup",
+      "x": 123,
+      "y": 96,
+      "z": 113,
+      "sx": 0.9270509831248422,
+      "sy": 1.5,
+      "sz": 0.8028497019894523,
+      "face": "+z",
+      "axis": "z",
+      "dir": 1,
+      "roomId": "4f7d9b08-c0f7-4e59-b315-35ecb7b2a53b",
+      "pickup": "rock"
+    },
+    {
+      "id": "778ee2d6-8b1b-4c11-ac32-ddc4bef6ae90",
+      "kind": "pickup",
+      "x": 128,
+      "y": 75,
+      "z": 102,
+      "sx": 0.9270509831248422,
+      "sy": 1.5,
+      "sz": 0.8028497019894523,
+      "face": "+z",
+      "axis": "z",
+      "dir": 1,
+      "roomId": "4f7d9b08-c0f7-4e59-b315-35ecb7b2a53b",
+      "pickup": "arrow up"
+    },
+    {
+      "id": "183fb7fd-1829-4cc3-96bd-e095584adfac",
+      "kind": "pickup",
+      "x": 128,
+      "y": 51,
+      "z": 154,
+      "sx": 0.9270509831248422,
+      "sy": 1.5,
+      "sz": 0.8028497019894523,
+      "face": "+z",
+      "axis": "z",
+      "dir": 1,
+      "roomId": "758062e1-8817-47ea-9731-c06ebcd2155a",
+      "pickup": "arrow up"
+    },
+    {
+      "id": "92014165-ed7a-46d6-ae3f-6e56f32b56bd",
+      "kind": "pickup",
+      "x": 128,
+      "y": 75,
+      "z": 168,
+      "sx": 0.9270509831248422,
+      "sy": 1.5,
+      "sz": 0.8028497019894523,
+      "face": "+z",
+      "axis": "z",
+      "dir": 1,
+      "roomId": "758062e1-8817-47ea-9731-c06ebcd2155a",
+      "pickup": "arrow down"
+    },
+    {
+      "id": "c407a2e2-84f4-49dd-bc5e-0c7b81fdf65d",
+      "kind": "pickup",
+      "x": 123,
+      "y": 72,
+      "z": 165,
+      "sx": 0.9270509831248422,
+      "sy": 1.5,
+      "sz": 0.8028497019894523,
+      "face": "+z",
+      "axis": "z",
+      "dir": 1,
+      "roomId": "758062e1-8817-47ea-9731-c06ebcd2155a",
+      "pickup": "lightpost"
+    },
+    {
+      "id": "9a90c2f7-c5ad-4d61-9461-494dc68b572f",
+      "kind": "pickup",
+      "x": 133,
+      "y": 72,
+      "z": 165,
+      "sx": 0.9270509831248422,
+      "sy": 1.5,
+      "sz": 0.8028497019894523,
+      "face": "+z",
+      "axis": "z",
+      "dir": 1,
+      "roomId": "758062e1-8817-47ea-9731-c06ebcd2155a",
+      "pickup": "lightpost"
     }
   ],
   "cutscene": {
@@ -3352,7 +3437,39 @@
         "ease": "linear",
         "item": "rock",
         "scale": 1,
-        "yaw": 105
+        "yaw": 105,
+        "flyby": {
+          "on": false,
+          "kind": "noise",
+          "vol": [
+            {
+              "t": 0,
+              "v": 0
+            },
+            {
+              "t": 0.5,
+              "v": 1
+            },
+            {
+              "t": 1,
+              "v": 0
+            }
+          ],
+          "pitch": [
+            {
+              "t": 0,
+              "v": 0.65
+            },
+            {
+              "t": 0.5,
+              "v": 0.5
+            },
+            {
+              "t": 1,
+              "v": 0.35
+            }
+          ]
+        }
       },
       {
         "id": "72fbc188-6454-409e-af5d-0f8eb4fe2c23",
@@ -3381,7 +3498,39 @@
         "ease": "linear",
         "item": "ship",
         "scale": 1,
-        "yaw": 0
+        "yaw": 0,
+        "flyby": {
+          "on": true,
+          "kind": "noise",
+          "vol": [
+            {
+              "t": 0,
+              "v": 0.49448958687160327
+            },
+            {
+              "t": 0.2782258064516129,
+              "v": 1
+            },
+            {
+              "t": 1,
+              "v": 0.2770982825237772
+            }
+          ],
+          "pitch": [
+            {
+              "t": 0,
+              "v": 0.48965874271116394
+            },
+            {
+              "t": 0.16532258064516128,
+              "v": 0.6828953839730525
+            },
+            {
+              "t": 1,
+              "v": 0.23362002165421192
+            }
+          ]
+        }
       },
       {
         "id": "87ae4e7c-790d-4216-9207-052985ab2dcd",
@@ -3394,7 +3543,39 @@
         "ease": "linear",
         "item": "planet",
         "scale": 1,
-        "yaw": 0
+        "yaw": 0,
+        "flyby": {
+          "on": false,
+          "kind": "noise",
+          "vol": [
+            {
+              "t": 0,
+              "v": 0
+            },
+            {
+              "t": 0.5,
+              "v": 1
+            },
+            {
+              "t": 1,
+              "v": 0
+            }
+          ],
+          "pitch": [
+            {
+              "t": 0,
+              "v": 0.65
+            },
+            {
+              "t": 0.5,
+              "v": 0.5
+            },
+            {
+              "t": 1,
+              "v": 0.35
+            }
+          ]
+        }
       },
       {
         "id": "80ba6221-240e-4119-b3fd-94dcd5729f25",
@@ -3407,7 +3588,39 @@
         "ease": "linear",
         "item": "rock",
         "scale": 1,
-        "yaw": 0
+        "yaw": 0,
+        "flyby": {
+          "on": false,
+          "kind": "noise",
+          "vol": [
+            {
+              "t": 0,
+              "v": 0
+            },
+            {
+              "t": 0.5,
+              "v": 1
+            },
+            {
+              "t": 1,
+              "v": 0
+            }
+          ],
+          "pitch": [
+            {
+              "t": 0,
+              "v": 0.65
+            },
+            {
+              "t": 0.5,
+              "v": 0.5
+            },
+            {
+              "t": 1,
+              "v": 0.35
+            }
+          ]
+        }
       },
       {
         "id": "602e781e-662d-4221-961c-38040c6c07f8",
@@ -3420,7 +3633,39 @@
         "ease": "linear",
         "item": "rock",
         "scale": 1,
-        "yaw": 0
+        "yaw": 0,
+        "flyby": {
+          "on": false,
+          "kind": "noise",
+          "vol": [
+            {
+              "t": 0,
+              "v": 0
+            },
+            {
+              "t": 0.5,
+              "v": 1
+            },
+            {
+              "t": 1,
+              "v": 0
+            }
+          ],
+          "pitch": [
+            {
+              "t": 0,
+              "v": 0.65
+            },
+            {
+              "t": 0.5,
+              "v": 0.5
+            },
+            {
+              "t": 1,
+              "v": 0.35
+            }
+          ]
+        }
       }
     ]
   }

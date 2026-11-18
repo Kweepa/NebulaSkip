@@ -82,6 +82,107 @@ export const CUT_EASES = ["linear", "out", "in", "inout"];
 
 const POS_MAX = WORLD_MAX + 255 / 256;
 
+/**
+ * Flyby sound (item actors, editor preview only). Two envelopes over the cutscene, each a list of
+ * { t, v } points, t and v both 0..1 (t = fraction of the duration, first point t 0, last t 1):
+ *   vol    volume, v = fraction of full
+ *   pitch  v is log-scaled between FLYBY_HZ_MIN and FLYBY_HZ_MAX
+ * Linear between points. The game plays the FIRST enabled item's flyby on POKEY channel 4 (the
+ * ambient tune is held for the cutscene): see bakeFlyby and the FLYBY spec in a8cutscene.asm.
+ */
+export const CUT_FLYBY_KINDS = ["noise", "tone"];
+export const FLYBY_POINT_MAX = 16;
+export const FLYBY_HZ_MIN = 125;
+export const FLYBY_HZ_MAX = 4000;
+/** POKEY 64 kHz clock: AUDCTL 0, AUDF 0..255 gives 125 Hz..32 kHz as a pure tone. */
+export const POKEY_64K = 63921;
+export function flybyHz(v) {
+  return FLYBY_HZ_MIN * (FLYBY_HZ_MAX / FLYBY_HZ_MIN) ** v;
+}
+export function defaultFlyby() {
+  return {
+    on: false,
+    kind: "noise",
+    vol: [{ t: 0, v: 0 }, { t: 0.5, v: 1 }, { t: 1, v: 0 }],
+    pitch: [{ t: 0, v: 0.65 }, { t: 0.5, v: 0.5 }, { t: 1, v: 0.35 }],
+  };
+}
+function curveIn(raw, def) {
+  if (!Array.isArray(raw)) return def;
+  const pts = raw
+    .map((p) => ({ t: Number(p?.t), v: Number(p?.v) }))
+    .filter((p) => Number.isFinite(p.t) && Number.isFinite(p.v))
+    .map((p) => ({ t: Math.min(1, Math.max(0, p.t)), v: Math.min(1, Math.max(0, p.v)) }))
+    .sort((x, y) => x.t - y.t)
+    .slice(0, FLYBY_POINT_MAX);
+  if (pts.length < 2) return def;
+  pts[0].t = 0;
+  pts[pts.length - 1].t = 1;
+  return pts;
+}
+export function normalizeFlyby(raw) {
+  const d = defaultFlyby();
+  if (!raw || typeof raw !== "object") return d;
+  return {
+    on: raw.on === true,
+    kind: CUT_FLYBY_KINDS.includes(raw.kind) ? raw.kind : d.kind,
+    vol: curveIn(raw.vol, d.vol),
+    pitch: curveIn(raw.pitch, d.pitch),
+  };
+}
+/** Value of a curve at t (0..1). */
+export function flybyCurveAt(pts, t) {
+  if (t <= pts[0].t) return pts[0].v;
+  for (let i = 1; i < pts.length; i++) {
+    if (t <= pts[i].t) {
+      const span = pts[i].t - pts[i - 1].t;
+      return span > 0 ? pts[i - 1].v + ((pts[i].v - pts[i - 1].v) * (t - pts[i - 1].t)) / span : pts[i].v;
+    }
+  }
+  return pts[pts.length - 1].v;
+}
+
+/** AUDF for a pitch in Hz (pure tone on the 64 kHz clock; for noise it is the divider all the same). */
+export function flybyAudf(hz) {
+  return Math.max(0, Math.min(255, Math.round(POKEY_64K / (2 * hz)) - 1));
+}
+
+/**
+ * FLYBY BAKE (tools/gencutscene.py the same): the first item actor with flyby.on, or null.
+ *   same samples as the actors: i = 0..ns-1 at t = i * CUT_STEP_MS, u = min(t / durMs, 1)
+ *   audf[i] = AUDF of flybyHz(pitch curve at u),  vol[i] = round(vol curve at u * 255)
+ *   dist    AUDC distortion bits: $80 noise, $A0 tone
+ * Engine playback: linear lerp of audf and vol between samples i and i+1 (frac = (t & 127) << 1),
+ * AUDC = dist | (vol >> 4).
+ */
+export function bakeFlyby(cut) {
+  const a = (cut?.actors || []).find((o) => o.kind === "item" && o.flyby?.on);
+  if (!a) return null;
+  const durMs = Math.round(clampCutDuration(cut.duration) * 1000);
+  const n = cutSampleCount(durMs);
+  const audf = [];
+  const vol = [];
+  for (let i = 0; i < n; i++) {
+    const u = Math.min((i * CUT_STEP_MS) / durMs, 1);
+    audf.push(flybyAudf(flybyHz(flybyCurveAt(a.flyby.pitch, u))));
+    vol.push(Math.round(flybyCurveAt(a.flyby.vol, u) * 255));
+  }
+  return { id: a.id, dist: a.flyby.kind === "tone" ? 0xa0 : 0x80, n, audf, vol };
+}
+
+/** Engine-style playback of a baked flyby at tMs: { audf, vol (0..15), hz }. */
+export function flybySampleAt(fly, tMs) {
+  const last = fly.n - 1;
+  const t = Math.max(0, tMs);
+  const i = Math.floor(t / CUT_STEP_MS);
+  const f = i >= last ? 0 : (t % CUT_STEP_MS) / CUT_STEP_MS;
+  const k = Math.min(i, last);
+  const k1 = Math.min(i + 1, last);
+  const audf = Math.round(fly.audf[k] + (fly.audf[k1] - fly.audf[k]) * f);
+  const v8 = Math.floor(fly.vol[k] + (fly.vol[k1] - fly.vol[k]) * f);
+  return { audf, vol: v8 >> 4, hz: POKEY_64K / (2 * (audf + 1)) };
+}
+
 function cutClampCoord(n) {
   const v = Math.round(Number(n));
   if (!Number.isFinite(v)) return WORLD_MIN;
@@ -117,7 +218,7 @@ export function createCutActor(kind, opts = {}) {
     ease: "linear",
   };
   if (kind === "camera") return { ...base, yaw: 0, target: null };
-  return { ...base, item: clampPickupType(opts.item ?? "planet"), scale: 1, yaw: 0 };
+  return { ...base, item: clampPickupType(opts.item ?? "planet"), scale: 1, yaw: 0, flyby: defaultFlyby() };
 }
 
 function normalizeActor(raw) {
@@ -135,7 +236,10 @@ function normalizeActor(raw) {
   // Items used to carry an octant `rot`; it reads as yaw = rot * 32.
   a.yaw = clampYawByte(raw.yaw ?? (kind === "item" ? clampEnemyRot(raw.rot) * 32 : 0));
   if (kind === "camera") a.target = typeof raw.target === "string" && raw.target ? raw.target : null;
-  else a.scale = clampItemScale(raw.scale);
+  else {
+    a.scale = clampItemScale(raw.scale);
+    a.flyby = normalizeFlyby(raw.flyby);
+  }
   return a;
 }
 
@@ -355,9 +459,9 @@ export function cutSampleAt(baked, tMs) {
   return { x: lerp(baked.x), y: lerp(baked.y), z: lerp(baked.z), yaw };
 }
 
-/** Bytes of the cooked data: fixed 36-byte header (4 + five 6-entry actor tables + stars + hide flag), 7 per sample. */
-export function cutsceneBytes(baked) {
-  let n = 36;
+/** Bytes of the cooked data: fixed 40-byte header (4 + five 6-entry actor tables + stars, hide, flyby), 7 per sample, 2 per flyby sample. */
+export function cutsceneBytes(baked, fly = null) {
+  let n = 40 + (fly ? 2 * fly.n : 0);
   for (const a of baked.actors) n += 7 * a.ns;
   return n;
 }
@@ -426,6 +530,7 @@ export function cutsceneIssues(doc, map = activeMap(doc)) {
   if (!cams.length) issues.push("No camera.");
   if (cams.length > 1) issues.push("More than one camera.");
   if (cut.actors.length > CUT_ACTOR_MAX) issues.push(`More than ${CUT_ACTOR_MAX} actors.`);
+  if (cut.actors.filter((a) => a.kind === "item" && a.flyby?.on).length > 1) issues.push("Only the first item's flyby sound plays in the game (one POKEY voice).");
   for (const a of cut.actors) {
     const name = cutActorLabel(a);
     if (a.kind === "item" && !itemMeshHasGeom(itemMeshFor(doc, a.item))) issues.push(`${name}: item has no mesh.`);
@@ -437,7 +542,7 @@ export function cutsceneIssues(doc, map = activeMap(doc)) {
     }
   }
   if (!issues.length || cams.length) {
-    const bytes = cutsceneBytes(bakeCutscene(cut));
+    const bytes = cutsceneBytes(bakeCutscene(cut), bakeFlyby(cut));
     if (bytes > CUT_DATA_BUDGET) issues.push(`Cutscene data is ${bytes} B (budget about ${CUT_DATA_BUDGET} B).`);
   }
   return issues;

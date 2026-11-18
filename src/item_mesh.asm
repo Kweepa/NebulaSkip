@@ -12,7 +12,7 @@ item_nv
 ; 1 = yaw-spins about box+ITEM_BIAS (editor Rotating flag)
 item_rot
 	!byte 1,1,1,1,1,1,1,1,1,0,1,1,1,0,0,0
-	!byte 0,0,0,0,0,0,1,0,0,1,1,0,0,0,0
+	!byte 0,0,0,0,0,0,1,0,0,1,0,0,0,0,0
 ; thing frustum-cull half-extent in units about box+ITEM_BIAS (th_cull_hit)
 item_cr
 	!byte 1,2,2,2,2,2,1,1,1,2,3,2,2,2,2,2

@@ -570,8 +570,7 @@ a8_noise
 	beq .off
 	lda #$30
 	sta $d204
-	lda effects_vol
-	and #$0f
+	lda elev_vol			; per-frame: halved when riding, faded by distance
 	ora #$80
 	sta $d205
 	rts

@@ -223,8 +223,17 @@ import { ItemView } from "./itemView.js";
 import { FontView } from "./fontView.js";
 import { SpriteView } from "./spriteView.js";
 import { CutsceneView } from "./cutsceneView.js";
+import { CutAudio } from "./cutAudio.js";
 import {
   CUT_ACTOR_MAX,
+  CUT_FLYBY_KINDS,
+  FLYBY_HZ_MAX,
+  FLYBY_HZ_MIN,
+  FLYBY_POINT_MAX,
+  bakeFlyby,
+  flybyCurveAt,
+  flybyHz,
+  flybySampleAt,
   CUT_DATA_BUDGET,
   CUT_DUR_MAX,
   CUT_DUR_MIN,
@@ -329,6 +338,10 @@ let cutBakeKey = "";
 let cutBakeVal = null;
 let cutSliderEl = null;
 let cutReadoutEl = null;
+let cutSound = true;
+let cutScrubTimer = 0;
+let cutFlyRedraw = null;
+const cutAudio = new CutAudio();
 
 const layoutView = new LayoutView(document.getElementById("view-canvas"), {
   stage: document.getElementById("map-stage"),
@@ -870,15 +883,38 @@ function cutAddPoint(a, afterIndex) {
   cutView.setSelection(a.id, Math.max(0, Math.min(a.path.length - 1, made)));
 }
 
+/** Flyby voices at the timeline cursor. Sounds while playing, or briefly after a scrub. */
+function cutAudioTick() {
+  const cut = cutCurrent();
+  const states = [];
+  if (cut && cutSound) {
+    const fly = bakeFlyby(cut);
+    if (fly) {
+      const smp = flybySampleAt(fly, cutTimeMs);
+      states.push({ id: fly.id, kind: fly.dist === 0xa0 ? "tone" : "noise", gain: smp.vol / 15, pitch: smp.hz });
+    }
+  }
+  cutAudio.update(states);
+}
+
 function cutSyncTimeUi() {
+  if (cutPlaying) cutAudioTick();
+  else if (cutSliderEl && cutSound) {
+    cutAudioTick();
+    clearTimeout(cutScrubTimer);
+    cutScrubTimer = setTimeout(() => cutAudio.stop(), 150);
+  }
   if (cutSliderEl) cutSliderEl.value = String(Math.round(cutTimeMs));
   if (cutReadoutEl) cutReadoutEl.textContent = `${(cutTimeMs / 1000).toFixed(2)} s`;
+  cutFlyRedraw?.();
   cutView.draw();
   previewView.draw();
 }
 
 function stopCutPlay() {
   cutPlaying = false;
+  clearTimeout(cutScrubTimer);
+  cutAudio.stop();
   cancelAnimationFrame(cutRaf);
 }
 
@@ -947,6 +983,17 @@ function renderCutsceneTransport() {
     cutLoop = !cutLoop;
     loop.classList.toggle("active", cutLoop);
   });
+  const snd = document.createElement("button");
+  snd.type = "button";
+  snd.className = "toggle";
+  snd.textContent = "Sound";
+  snd.title = "Play item flyby sounds with the timeline";
+  snd.classList.toggle("active", cutSound);
+  snd.addEventListener("click", () => {
+    cutSound = !cutSound;
+    snd.classList.toggle("active", cutSound);
+    if (!cutSound) cutAudio.stop();
+  });
   const start = document.createElement("button");
   start.type = "button";
   start.textContent = "|<";
@@ -957,7 +1004,7 @@ function renderCutsceneTransport() {
   });
   const row = document.createElement("div");
   row.className = "toolbar-actions anim-transport-btns";
-  row.append(start, play, loop, out);
+  row.append(start, play, loop, snd, out);
   const wrap = document.createElement("div");
   wrap.className = "anim-transport";
   wrap.append(slider, row);
@@ -1084,7 +1131,7 @@ function renderCutsceneLeft() {
   const info = document.createElement("div");
   info.className = "cut-issues";
   if (cut) {
-    const bytes = cutsceneBytes(cutBaked());
+    const bytes = cutsceneBytes(cutBaked(), bakeFlyby(cut));
     const line = document.createElement("p");
     line.className = "muted";
     line.textContent = `Data ${bytes} B of about ${CUT_DATA_BUDGET} B`;
@@ -1125,6 +1172,189 @@ function cutYawSlider(a) {
     },
     onChange: (v) => cutApply(() => (a.yaw = v)),
   });
+}
+
+/** Editable pitch / volume envelopes. Drag a point, click empty space to add one, double-click a point to remove it. */
+function flybyGraph(a) {
+  const fb = a.flyby;
+  const W = 260;
+  const H = 150;
+  const PAD = 6;
+  const canvas = document.createElement("canvas");
+  canvas.className = "flyby-graph";
+  canvas.width = W * 2;
+  canvas.height = H * 2;
+  canvas.style.width = `${W}px`;
+  canvas.style.height = `${H}px`;
+  const ctx = canvas.getContext("2d");
+  let which = "vol";
+  const colors = { vol: "#5fd0a0", pitch: "#e8b04a" };
+  const px = (t) => PAD + t * (W - 2 * PAD);
+  const py = (v) => H - PAD - v * (H - 2 * PAD);
+  const readout = document.createElement("div");
+  readout.className = "muted flyby-readout";
+  const label = (key, pt) => (key === "vol" ? `vol ${Math.round(pt.v * 100)}%` : `${Math.round(flybyHz(pt.v))} Hz`);
+  const draw = () => {
+    ctx.setTransform(2, 0, 0, 2, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = "rgba(128,128,128,0.12)";
+    ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = "rgba(128,128,128,0.3)";
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+      ctx.beginPath();
+      ctx.moveTo(px(i / 4), PAD);
+      ctx.lineTo(px(i / 4), H - PAD);
+      ctx.moveTo(PAD, py(i / 4));
+      ctx.lineTo(W - PAD, py(i / 4));
+      ctx.stroke();
+    }
+    for (const key of ["vol", "pitch"]) {
+      const pts = fb[key];
+      const active = key === which;
+      ctx.globalAlpha = active ? 1 : 0.35;
+      ctx.strokeStyle = colors[key];
+      ctx.lineWidth = active ? 2 : 1.5;
+      ctx.beginPath();
+      pts.forEach((p, i) => (i ? ctx.lineTo(px(p.t), py(p.v)) : ctx.moveTo(px(p.t), py(p.v))));
+      ctx.stroke();
+      if (active) {
+        ctx.fillStyle = colors[key];
+        for (const p of pts) {
+          ctx.beginPath();
+          ctx.arc(px(p.t), py(p.v), 4, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+    ctx.globalAlpha = 1;
+    const dur = cutDurMs();
+    if (dur > 0) {
+      const x = px(Math.min(1, cutTimeMs / dur));
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x, PAD);
+      ctx.lineTo(x, H - PAD);
+      ctx.stroke();
+    }
+  };
+  cutFlyRedraw = draw;
+  const pos = (e) => {
+    const r = canvas.getBoundingClientRect();
+    return {
+      t: Math.min(1, Math.max(0, (((e.clientX - r.left) / r.width) * W - PAD) / (W - 2 * PAD))),
+      v: Math.min(1, Math.max(0, 1 - (((e.clientY - r.top) / r.height) * H - PAD) / (H - 2 * PAD))),
+    };
+  };
+  const hit = (e) => {
+    const r = canvas.getBoundingClientRect();
+    const mx = ((e.clientX - r.left) / r.width) * W;
+    const my = ((e.clientY - r.top) / r.height) * H;
+    return fb[which].findIndex((p) => Math.hypot(px(p.t) - mx, py(p.v) - my) <= 8);
+  };
+  let drag = -1;
+  canvas.addEventListener("pointerdown", (e) => {
+    let i = hit(e);
+    if (i < 0 && fb[which].length < FLYBY_POINT_MAX) {
+      pushUndo();
+      const q = pos(e);
+      const pts = fb[which];
+      i = pts.findIndex((p) => p.t > q.t);
+      if (i < 0) i = pts.length - 1;
+      pts.splice(i, 0, q);
+      markDirty();
+    } else if (i >= 0) pushUndo();
+    if (i < 0) return;
+    drag = i;
+    canvas.setPointerCapture(e.pointerId);
+    draw();
+  });
+  canvas.addEventListener("pointermove", (e) => {
+    if (drag < 0) {
+      canvas.style.cursor = hit(e) >= 0 ? "grab" : "crosshair";
+      return;
+    }
+    const pts = fb[which];
+    const q = pos(e);
+    const last = pts.length - 1;
+    const lo = drag === 0 ? 0 : pts[drag - 1].t;
+    const hi = drag === last ? 1 : pts[drag + 1].t;
+    pts[drag].v = q.v;
+    if (drag !== 0 && drag !== last) pts[drag].t = Math.min(hi, Math.max(lo, q.t));
+    readout.textContent = `${label(which, pts[drag])}  @ ${((pts[drag].t * cutDurMs()) / 1000).toFixed(2)} s`;
+    if (!cutPlaying) cutAudioTick();
+    draw();
+  });
+  const end = () => {
+    if (drag < 0) return;
+    drag = -1;
+    clearTimeout(cutScrubTimer);
+    cutScrubTimer = setTimeout(() => cutAudio.stop(), 150);
+    markDirty();
+  };
+  canvas.addEventListener("pointerup", end);
+  canvas.addEventListener("pointercancel", end);
+  canvas.addEventListener("dblclick", (e) => {
+    const i = hit(e);
+    const pts = fb[which];
+    if (i <= 0 || i >= pts.length - 1) return;
+    pushUndo();
+    pts.splice(i, 1);
+    markDirty();
+    draw();
+  });
+  const tabs = document.createElement("div");
+  tabs.className = "btn-row";
+  for (const key of ["vol", "pitch"]) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "toggle";
+    b.textContent = key === "vol" ? "Volume" : "Pitch";
+    b.classList.toggle("active", key === which);
+    b.addEventListener("click", () => {
+      which = key;
+      for (const o of tabs.children) o.classList.toggle("active", o === b);
+      readout.textContent = "";
+      draw();
+    });
+    tabs.appendChild(b);
+  }
+  const wrap = document.createElement("div");
+  wrap.append(tabs, canvas, readout);
+  draw();
+  return wrap;
+}
+
+function renderFlybyControls(root, a) {
+  const fb = a.flyby;
+  cutFlyRedraw = null;
+  const hf = document.createElement("h2");
+  hf.textContent = "Flyby sound";
+  root.appendChild(hf);
+  root.appendChild(toggleField("Enabled", fb.on, () => cutApply(() => (fb.on = !fb.on))));
+  if (!fb.on) return;
+  root.appendChild(field("Sound", cutSelectField(CUT_FLYBY_KINDS, fb.kind, (v) => cutApply(() => (fb.kind = v)), (v) => (v === "tone" ? "buzz (square)" : "whoosh (noise)"))));
+  root.appendChild(flybyGraph(a));
+  const hint = document.createElement("p");
+  hint.className = "muted";
+  hint.textContent = `Time across; pitch is ${FLYBY_HZ_MIN}-${FLYBY_HZ_MAX} Hz (log). Drag points, click to add, double-click to remove.`;
+  root.appendChild(hint);
+  const test = document.createElement("button");
+  test.type = "button";
+  test.textContent = "Play from start";
+  test.addEventListener("click", () => {
+    stopCutPlay();
+    cutSound = true;
+    cutTimeMs = 0;
+    toggleCutPlay();
+    renderCutsceneTransport();
+  });
+  root.appendChild(test);
+  const note = document.createElement("p");
+  note.className = "muted";
+  note.textContent = "Plays in the game on POKEY channel 4 (first flyby item only). This preview is an approximation of the POKEY voice.";
+  root.appendChild(note);
 }
 
 function renderCutsceneInspector(root) {
@@ -1195,6 +1425,7 @@ function renderCutsceneInspector(root) {
     }
   }
   if (a.facing === "fixed") root.appendChild(cutYawSlider(a));
+  if (a.kind === "item") renderFlybyControls(root, a);
 
   if (a.path.length >= 2) {
     const easeLabel = { linear: "constant", out: "slow at end", in: "slow at start", inout: "slow at both ends" };

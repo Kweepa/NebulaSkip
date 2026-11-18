@@ -1997,3 +1997,15 @@ body.font-dragging * {
 .spr-ops {
   flex-wrap: wrap;
 }
+
+.flyby-graph {
+  display: block;
+  margin: 0.25rem 0;
+  touch-action: none;
+  border-radius: 3px;
+}
+
+.flyby-readout {
+  min-height: 1.2em;
+  font-size: 0.8rem;
+}

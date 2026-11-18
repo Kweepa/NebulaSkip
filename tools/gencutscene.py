@@ -23,7 +23,11 @@ Data (offsets are the CD_* equates in a8cutscene.asm), actor 0 is always the cam
     22 offl[6] 28 offh[6]   offset of the actor's sample block from the start of the data
     34 star count (0 = no starfield; the editor's starfield toggle writes 128)
     35 hide room (nonzero = the room box is neither transformed nor stroked)
-    36 sample blocks, per actor: xl[ns] xh[ns] yl[ns] yh[ns] zl[ns] zh[ns] yaw[ns]
+    36 flyby AUDC distortion bits ($80 noise, $A0 tone; 0 = no flyby sound)
+    37 flyby sample count   38..39 offset of the flyby block (audf[n] vol[n]) from the start of the data
+    40 sample blocks, per actor: xl[ns] xh[ns] yl[ns] yh[ns] zl[ns] zh[ns] yaw[ns]
+The flyby block follows the actor sample blocks: audf[n] vol[n], n samples on the same 128 ms grid;
+the game lerps both and plays AUDC = dist | (vol >> 4), AUDF on POKEY channel 4.
 Positions are 8.8 world units, camera = eye, items as the editor places them (the game adds
 ITEM_WORLD_BIAS on X/Z). Yaw is the game byte, 0 = +Z, 64 = +X.
 """
@@ -60,13 +64,24 @@ CUT_PATH_MAX = 16
 WORLD_MAX = 255
 POS_MAX = WORLD_MAX + 255 / 256
 ITEM_SCALES = (1, 2, 4, 8)
+FLYBY_POINT_MAX = 16
+FLYBY_HZ_MIN = 125.0
+FLYBY_HZ_MAX = 4000.0
+POKEY_64K = 63921
+DEFAULT_FLYBY = {
+    "on": False,
+    "kind": "noise",
+    "vol": [{"t": 0.0, "v": 0.0}, {"t": 0.5, "v": 1.0}, {"t": 1.0, "v": 0.0}],
+    "pitch": [{"t": 0.0, "v": 0.65}, {"t": 0.5, "v": 0.5}, {"t": 1.0, "v": 0.35}],
+}
 
 # Data layout (a8cutscene.asm CD_*).
 CD_ROOM, CD_NACT, CD_DUR = 0, 1, 2
 CD_KIND, CD_SCALE, CD_NS, CD_OFFL, CD_OFFH = 4, 10, 16, 22, 28
 CD_STARS = 34
 CD_HIDE = 35
-CD_SAMPLES = 36
+CD_FLYD, CD_FLYN, CD_FLYOL, CD_FLYOH = 36, 37, 38, 39
+CD_SAMPLES = 40
 CUT_STAR_COUNT = 128
 KIND_CAMERA = 0xFF
 MAX_STEP_UNITS = 127  # the engine lerps a signed 8.8 delta per 128 ms sample
@@ -161,6 +176,70 @@ def clamp_yaw(n) -> int:
     return v % 256
 
 
+def _curve(raw, default):
+    if not isinstance(raw, list):
+        return default
+    pts = []
+    for p in raw:
+        try:
+            t, v = float(p.get("t")), float(p.get("v"))
+        except (AttributeError, TypeError, ValueError):
+            continue
+        if math.isfinite(t) and math.isfinite(v):
+            pts.append({"t": min(1.0, max(0.0, t)), "v": min(1.0, max(0.0, v))})
+    pts.sort(key=lambda p: p["t"])  # stable, like JS sort
+    pts = pts[:FLYBY_POINT_MAX]
+    if len(pts) < 2:
+        return default
+    pts[0]["t"] = 0.0
+    pts[-1]["t"] = 1.0
+    return pts
+
+
+def norm_flyby(raw) -> dict:
+    d = DEFAULT_FLYBY
+    if not isinstance(raw, dict):
+        return d
+    return {
+        "on": raw.get("on") is True,
+        "kind": raw.get("kind") if raw.get("kind") in ("noise", "tone") else "noise",
+        "vol": _curve(raw.get("vol"), d["vol"]),
+        "pitch": _curve(raw.get("pitch"), d["pitch"]),
+    }
+
+
+def curve_at(pts, t):
+    if t <= pts[0]["t"]:
+        return pts[0]["v"]
+    for i in range(1, len(pts)):
+        if t <= pts[i]["t"]:
+            span = pts[i]["t"] - pts[i - 1]["t"]
+            if span > 0:
+                return pts[i - 1]["v"] + (pts[i]["v"] - pts[i - 1]["v"]) * (t - pts[i - 1]["t"]) / span
+            return pts[i]["v"]
+    return pts[-1]["v"]
+
+
+def flyby_audf(hz: float) -> int:
+    return max(0, min(255, jsround(POKEY_64K / (2 * hz)) - 1))
+
+
+def bake_flyby(cut: dict) -> dict | None:
+    """First item with flyby.on -> {dist, n, audf[], vol[]} (bakeFlyby in cutsceneModel.js)."""
+    a = next((o for o in cut["actors"] if o["kind"] == "item" and o["flyby"]["on"]), None)
+    if a is None:
+        return None
+    dur_ms = jsround(cut["duration"] * 1000)
+    n = math.ceil(dur_ms / CUT_STEP_MS) + 1
+    audf, vol = [], []
+    for i in range(n):
+        u = min(i * CUT_STEP_MS / dur_ms, 1.0)
+        hz = FLYBY_HZ_MIN * (FLYBY_HZ_MAX / FLYBY_HZ_MIN) ** curve_at(a["flyby"]["pitch"], u)
+        audf.append(flyby_audf(hz))
+        vol.append(jsround(curve_at(a["flyby"]["vol"], u) * 255))
+    return {"dist": 0xA0 if a["flyby"]["kind"] == "tone" else 0x80, "n": n, "audf": audf, "vol": vol}
+
+
 def norm_actor(raw) -> dict | None:
     if not isinstance(raw, dict):
         return None
@@ -201,6 +280,7 @@ def norm_actor(raw) -> dict | None:
         except (TypeError, ValueError):
             scale = 1
         a["scale"] = scale if scale in ITEM_SCALES else 1
+        a["flyby"] = norm_flyby(raw.get("flyby"))
     return a
 
 
@@ -473,6 +553,16 @@ def pack_data(cut: dict, level: dict, key: str) -> bytes:
             body += bytes(v & 0xFF for v in a[ch])
             body += bytes((v >> 8) & 0xFF for v in a[ch])
         body += bytes(a["yaw"])
+    fly = bake_flyby(cut)
+    if fly:
+        if fly["n"] > 255:
+            raise CutError(f"{key}: too many flyby samples")
+        head[CD_FLYD] = fly["dist"]
+        head[CD_FLYN] = fly["n"]
+        off = CD_SAMPLES + len(body)
+        head[CD_FLYOL] = off & 0xFF
+        head[CD_FLYOH] = off >> 8
+        body += bytes(fly["audf"]) + bytes(fly["vol"])
     return bytes(head) + bytes(body)
 
 
