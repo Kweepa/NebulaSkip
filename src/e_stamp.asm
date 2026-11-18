@@ -39,6 +39,8 @@ e_spr_hi
 ; crosshair. Jump mode: the black crosshair at the viewport centre only. World effects (enemy muzzle, splat) draw in all.
 stamp_view_e
 	sta stamp_splat_ok
+	lda player_hp
+	beq .sv_fx				; dead: no weapon, crosshair or rig
 	lda ability_cur
 	beq .sv_wpn
 	cmp #ABIL_SCAN

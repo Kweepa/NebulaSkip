@@ -1010,7 +1010,7 @@ take_damage
 .td_death
 	lda #SOUND_PLDETH
 	jsr play_sound
-	jmp death_restart
+	jmp death_begin
 td_saved	!byte 0
 
 ; Tick red border; IRQ publishes vic_border.

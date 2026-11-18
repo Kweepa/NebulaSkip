@@ -2994,6 +2994,12 @@ function setItemIcon(key, rows) {
   markDirty();
 }
 
+/** Both left-hand lists show the icon: the Maps palette and the Items tab's mesh list. */
+function refreshIconLists() {
+  buildPalette();
+  renderItemList();
+}
+
 function buildIconEditor(root, key) {
   const h = document.createElement("h2");
   h.textContent = "Icon";
@@ -3068,6 +3074,7 @@ function buildIconEditor(root, key) {
     rows[y] = rows[y].slice(0, x) + ch + rows[y].slice(x + 1);
     setItemIcon(key, rows);
     paint();
+    refreshIconLists();
   };
   grid.addEventListener("pointerdown", (e) => {
     if (e.button !== 0 && e.button !== 2) return;
@@ -3090,7 +3097,7 @@ function buildIconEditor(root, key) {
     } catch {
       /* ignore */
     }
-    buildPalette();
+    refreshIconLists();
     renderInspector();
   };
   grid.addEventListener("pointerup", endStroke);
@@ -3114,15 +3121,54 @@ function buildIconEditor(root, key) {
       () => {
         pushUndo();
         setItemIcon(key, emptyItemIcon());
-        buildPalette();
+        refreshIconLists();
         renderInspector();
       }
     )
   );
 
+  // Four-way shift, like the sprite editor's: pixels pushed off an edge are lost.
+  const shiftIcon = (dx, dy) => {
+    const N = ITEM_ICON_SIZE;
+    const out = emptyItemIcon();
+    for (let y = 0; y < N; y++) {
+      const sy = y - dy;
+      if (sy < 0 || sy >= N) continue;
+      let s = "";
+      for (let x = 0; x < N; x++) {
+        const sx = x - dx;
+        s += sx >= 0 && sx < N ? rows[sy][sx] : ".";
+      }
+      out[y] = s;
+    }
+    if (out.join("|") === rows.join("|")) return;
+    pushUndo();
+    rows = out;
+    setItemIcon(key, rows);
+    paint();
+    refreshIconLists();
+  };
+  const cross = document.createElement("div");
+  cross.className = "spr-cross";
+  const blank = () => document.createElement("span");
+  const mid = document.createElement("span");
+  mid.className = "spr-cross-mid";
+  mid.textContent = "shift";
+  cross.append(
+    blank(),
+    mk("↑", "Shift up", () => shiftIcon(0, -1)),
+    blank(),
+    mk("←", "Shift left", () => shiftIcon(-1, 0)),
+    mid,
+    mk("→", "Shift right", () => shiftIcon(1, 0)),
+    blank(),
+    mk("↓", "Shift down", () => shiftIcon(0, 1)),
+    blank()
+  );
+
   const side = document.createElement("div");
   side.className = "icon-side";
-  side.append(prev, row);
+  side.append(prev, row, cross);
   wrap.append(grid, side);
   root.appendChild(wrap);
   root.appendChild(sw);

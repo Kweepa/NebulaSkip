@@ -531,11 +531,14 @@ STEP_UP		= 2			; max walk-up; 2 units plays SOUND_OOF
 FALL_TICK_MS	= 32			; gravity cadence (like MOTION_STEP_MS)
 ; Gravity and jump speed are per map (map_grav / map_jump_v, map_bss.asm). The
 ; editor sets them in units/s and units/s^2; genmap.py packs them for this tick.
-FALL_SAFE	= 8			; no damage if eye-drop <= this
+DEATH_G		= 16			; death cam gravity, 8.8 per tick^2 (= map_grav 64)
+DEATH_V_MIN	= $18			; 8.8 per tick: bounce speed below this and the cam settles
+FALL_SAFE	= 8		; no damage if eye-drop <= this
 FALL_DAMAGE	= 15			; HP on hard landing
 ABIL_FIRE	= 0			; joystick button ability (space toggles)
 ABIL_JUMP	= 1
 ABIL_SCAN	= 2			; DNA rig (shop item): fire near a bounty corpse opens the scan screen
+ABIL_DEAD	= 3			; HUD string index only: hud_ability shows it while player_hp = 0
 ROOM_NOCOMBAT	= 1			; room_bg bit 0 (unused by the paper byte): no fire mode, enemies stand
 ROOM_OPEN_SKY	= 1			; room_flags bit 0: no ceiling, a jump rises past room_y+room_sy
 HURT_FLASH_MS	= 300			; red border duration

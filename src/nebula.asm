@@ -97,6 +97,11 @@ main
 	eor #1
 	sta draw_buf
 	jsr set_draw_ptrs
+	lda player_hp
+	bne .md_alive
+	jsr death_tick				; dead: world keeps running, no input / movement
+	jmp .md_hud
+.md_alive
 	jsr read_input
 	jsr term_poll				; inside a terminal volume fire opens it, never shoots
 	jsr rig_poll				; scan gear near a bounty corpse: prompt / scan screen
@@ -114,6 +119,7 @@ main
 	jsr update_status
 	jsr update_triggers
 	jsr enemies_update
+.md_hud
 !if  PROFILE = 1 {
 	ldy #PROF_UPDATE
 	jsr prof_add_bucket

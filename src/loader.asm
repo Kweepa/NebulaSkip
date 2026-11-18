@@ -1038,40 +1038,61 @@ game_zp_init
 	sta edge_b+1
 	rts
 
-; Player died: freeze, wait for scream + 1s, starting loadout, reload this map.
+; Player died (take_damage, hp = 0): main keeps running the world (enemies, rockets, fx) but
+; skips input, movement and triggers; the eye drops to the floor and bounces (death_cam). Once
+; the scream has finished and the bounce has settled, hold 1s, then restart the map.
+; stamp_view and hud_ability key off player_hp = 0 (no gear drawn, HUD "dead").
 PL_DEATH_WAIT_MS	= 1000
+
+; Called once from take_damage. Airborne: the eye keeps its vertical velocity (fall_v*).
+death_begin
+	lda #0
+	sta death_wait_l
+	sta death_wait_h
+	lda pl_falling
+	bne .db_rts
+	sta fall_vl			; A = 0
+	sta fall_vh
+	sta fall_acc
+	lda #1
+	sta pl_falling			; death cam in motion; 0 = settled on the floor
+.db_rts
+	rts
+
+; Main's update half while dead.
+death_tick
+	jsr proc_update
+	jsr update_rockets
+	jsr update_barrel_chain
+	jsr update_status
+	jsr enemies_update
+	jsr tick_all_fx
+	jsr death_cam
+	lda sfx_q_len
+	bne .dt_rts
+	lda sfx_index
+	bpl .dt_rts
+	lda pl_falling			; bounce still going
+	bne .dt_rts
+	clc
+	lda death_wait_l
+	adc dt_ms
+	sta death_wait_l
+	lda death_wait_h
+	adc dt_msh
+	sta death_wait_h
+	cmp #>PL_DEATH_WAIT_MS
+	bcc .dt_rts
+	bne death_restart
+	lda death_wait_l
+	cmp #<PL_DEATH_WAIT_MS
+	bcs death_restart
+.dt_rts
+	rts
 
 death_restart
 	ldx #$ff
 	txs
-.dw_q
-	lda sfx_q_len
-	bne .dw_q
-.dw_sfx
-	lda sfx_index
-	bpl .dw_sfx
-	lda #0
-	sta death_wait_l
-	sta death_wait_h
-.dw_hold
-	lda frame_flag
-.dw_hold_f
-	cmp frame_flag
-	beq .dw_hold_f
-	clc
-	lda death_wait_l
-	adc sample_ms
-	sta death_wait_l
-	lda death_wait_h
-	adc #0
-	sta death_wait_h
-	cmp #>PL_DEATH_WAIT_MS
-	bcc .dw_hold
-	bne .dw_go
-	lda death_wait_l
-	cmp #<PL_DEATH_WAIT_MS
-	bcc .dw_hold
-.dw_go
 	sei
 	jsr reset_loadout
 	jsr restart_level
@@ -1079,6 +1100,76 @@ death_restart
 	jmp load_fail_hang
 .dw_ok
 	jmp main
+
+; Eye falls to floor_y + 1 and bounces: DEATH_G per FALL_TICK_MS tick, each landing keeps half
+; the speed, settled below DEATH_V_MIN. fall_vl/vh = 8.8 velocity (+ = down), fall_acc = ms left over.
+death_cam
+	lda pl_falling
+	beq .dc_rts
+	clc
+	lda fall_acc
+	adc dt_ms
+	sta proc_tmp0
+	lda #0
+	adc dt_msh
+	sta proc_tmp1
+.dc_tick
+	sec
+	lda proc_tmp0
+	sbc #FALL_TICK_MS
+	tax
+	lda proc_tmp1
+	sbc #0
+	bcc .dc_done
+	sta proc_tmp1
+	stx proc_tmp0
+	clc
+	lda fall_vl
+	adc #DEATH_G
+	sta fall_vl
+	lda fall_vh
+	adc #0
+	sta fall_vh
+	sec
+	lda cam_yl
+	sbc fall_vl
+	sta cam_yl
+	lda cam_yh
+	sbc fall_vh
+	sta cam_yh
+	lda fall_vh
+	bmi .dc_tick			; rising
+	ldx floor_y
+	cpx cam_yh
+	bcc .dc_tick			; eye still above floor + 1
+	inx
+	stx cam_yh			; land at floor_y + 1.0
+	lda #0
+	sta cam_yl
+	lsr fall_vh			; v = -v / 2
+	ror fall_vl
+	lda fall_vh
+	bne .dc_bounce
+	lda fall_vl
+	cmp #DEATH_V_MIN
+	bcs .dc_bounce
+	lda #0
+	sta pl_falling			; settled
+.dc_rts
+	rts
+.dc_bounce
+	sec
+	lda #0
+	sbc fall_vl
+	sta fall_vl
+	lda #0
+	sbc fall_vh
+	sta fall_vh
+	jmp .dc_tick
+.dc_done
+	lda proc_tmp0
+	sta fall_acc
+	rts
 
 ; In-play reload: keep HP / ammo / weapons. C=0 ok.
 restart_level

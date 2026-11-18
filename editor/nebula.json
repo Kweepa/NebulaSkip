@@ -2725,7 +2725,7 @@
       ]
     },
     "viper": {
-      "rotating": false,
+      "rotating": true,
       "pickup": false,
       "icon": [
         "...e3...",

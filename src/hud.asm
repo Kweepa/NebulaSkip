@@ -357,6 +357,10 @@ hud_print
 ; Current joystick-button ability, 4 chars. Absolute stores (hi $02 sentinel).
 hud_ability
 	lda ability_cur
+	ldx player_hp
+	bne +
+	lda #ABIL_DEAD				; dead: "dead"
++
 	asl
 	asl
 	tax
@@ -890,7 +894,7 @@ hud_str_remote_req	!text "This door is opened elsewhere",0
 ; ASCII (UI charset), not PETSCII
 hud_str_title	!text "Nebula Skip",0
 hud_str_entering	!text "entering",0
-hud_str_abil	!text "weapjumpscan"		; ABIL_* x 4
+hud_str_abil	!text "weapjumpscandead"	; ABIL_* x 4
 hud_str_health	!text "health",0
 hud_str_armour	!text "shield",0
 hud_str_bits	!text "bits",0
