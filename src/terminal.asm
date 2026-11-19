@@ -55,7 +55,8 @@ term_poll
 	beq .tp_rts
 	lda #0
 	sta term_arm
-	jmp terminal_enter
+	jsr terminal_enter
+	jmp bty_apply				; accepted a bounty: open its remote door now
 .tp_rts
 	rts
 

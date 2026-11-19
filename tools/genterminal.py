@@ -2,7 +2,8 @@
 """shop.csv + bounties.csv -> src/terminal_data.asm (DNA terminal text).
 
 shop.csv      name, description, price           (no header)
-bounties.csv  name, description, difficulty, map (no header; map is mapa..mapz)
+bounties.csv  name, description, difficulty, map[, remote door tag] (no header; map is mapa..mapz;
+              the door tag is baked by genmap.py: accepting unlocks that remote door on that map)
 
 Descriptions are word-wrapped here to <= DESC_LINES lines of DESC_COLS chars
 and stored as NUL-terminated lines followed by an empty line, so the runtime
@@ -73,7 +74,7 @@ def rows(path, ncols):
             r = [c.strip() for c in r]
             if not any(r):
                 continue
-            if len(r) != ncols:
+            if len(r) not in ((ncols, ncols + 1) if path == BOUNTIES else (ncols,)):
                 die(f"{path.name} line {n}: expected {ncols} fields, got {len(r)}")
             out.append((n, r))
     if not out:
@@ -275,7 +276,7 @@ def main():
     p.append(f"BTY_N\t= {len(bty)}\n")
     names, descs, diffs, maps = [], [], [], []
     body = []
-    for i, (n, (name, desc, diff, mp)) in enumerate(bty):
+    for i, (n, (name, desc, diff, mp, *_door)) in enumerate(bty):
         text(BOUNTIES, n, "name", name, NAME_MAX)
         d = DIFF_ALIAS.get(diff.lower(), diff.lower())
         if d not in DIFFS:

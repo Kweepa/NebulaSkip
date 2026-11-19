@@ -389,12 +389,12 @@
       "axis": "z",
       "dir": 1,
       "roomId": "e51d4c40-59cd-4848-b6b2-b7a01b69c7f2",
-      "lockKey": "unlocked",
+      "lockKey": "remote",
       "doorType": "Tech",
       "doorScale": 1,
-      "tag": "",
+      "tag": "belowdecks",
       "otherRoomId": "5b17f1fc-9520-41de-9e0e-259351c66c77",
-      "locked": false
+      "locked": true
     },
     {
       "id": "59b55358-3e5f-44de-98e1-6a843c5d4bfd",
@@ -2051,6 +2051,54 @@
       "text": "Access denied",
       "tag": "",
       "roomId": "a332164c-ce1a-4e8d-9cbe-e03e03ff0541"
+    },
+    {
+      "id": "7f4ee8e9-a2ef-4cf0-a76a-079dafbae979",
+      "kind": "pickup",
+      "x": 163,
+      "y": 70,
+      "z": 107,
+      "sx": 0.9270509831248422,
+      "sy": 1.5,
+      "sz": 0.8028497019894523,
+      "face": "+z",
+      "axis": "z",
+      "dir": 1,
+      "roomId": "e51d4c40-59cd-4848-b6b2-b7a01b69c7f2",
+      "pickup": "arrow down",
+      "rot": 2
+    },
+    {
+      "id": "1cdc5d2f-111f-421b-9ae1-c696e181b5a5",
+      "kind": "pickup",
+      "x": 171,
+      "y": 40,
+      "z": 107,
+      "sx": 0.9270509831248422,
+      "sy": 1.5,
+      "sz": 0.8028497019894523,
+      "face": "+z",
+      "axis": "z",
+      "dir": 1,
+      "roomId": "8ee1da8a-b717-4116-84dd-bf37c1b52136",
+      "pickup": "arrow up",
+      "rot": 2
+    },
+    {
+      "id": "651e59fd-5a90-4446-a3d2-a0da997b0a7d",
+      "kind": "pickup",
+      "x": 185,
+      "y": 37,
+      "z": 107,
+      "sx": 0.9270509831248422,
+      "sy": 1.5,
+      "sz": 0.8028497019894523,
+      "face": "+z",
+      "axis": "z",
+      "dir": 1,
+      "roomId": "5b17f1fc-9520-41de-9e0e-259351c66c77",
+      "pickup": "arrow up",
+      "rot": 2
     }
   ],
   "cutscene": {

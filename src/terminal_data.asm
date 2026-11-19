@@ -136,15 +136,11 @@ btn1
 	!text "Bob Kyllin's Band"
 	!byte 0
 btd1
-	!text "Bob is a troubadour with a"
+	!text "Bob is a troubadour with"
 	!byte 0
-	!text "heart of black. Don't stare"
+	!text "penchant for heists. His band"
 	!byte 0
-	!text "into the vacuum of his eyes."
-	!byte 0
-	!text "His band are counting bits on"
-	!byte 0
-	!text "Verdan."
+	!text "are counting bits on Verdan."
 	!byte 0
 	!byte 0
 btn2

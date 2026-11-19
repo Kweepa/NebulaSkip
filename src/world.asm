@@ -85,7 +85,7 @@ init_things
 	sta doom_anim_ph
 	sta barrel_ch_l
 	sta barrel_ch_h
-	ldx #3
+	ldx #TH_MAX/8-1
 .ib_pend
 	sta barrel_pend,x
 	dex

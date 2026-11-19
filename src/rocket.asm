@@ -815,7 +815,13 @@ barrel_pop
 	bcs .bpop_none
 	jsr barrel_mask
 	and barrel_pend,y
-	bne .bpop_got
+	beq .bpop_n
+	lda th_taken,x
+	bne .bpop_n
+	+lda_mx th_type
+	cmp #TH_BARREL
+	beq .bpop_got
+.bpop_n
 	inx
 	bne .bpop
 .bpop_none

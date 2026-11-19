@@ -195,7 +195,7 @@ BITS_MAX	= 9999			; 4 HUD digits; tools/genterminal.py caps prices the same
 BITS_WALLET_MIN	= 5			; bit wallet: 5..20 (min + rnd8 & BITS_SPAN)
 BITS_SAFE_MIN	= 27			; bit safe: 27..42
 BITS_SPAN	= 15			; mask: both ranges are 16 wide
-TERM_LUM_N	= $0c			; terminal ink luminance (PF1)
+TERM_LUM_N	= $0a			; terminal ink luminance (PF1)
 TERM_LUM_HI	= $0f			; the highlighted row
 TERM_PAPER_DNA	= $84			; DNA terminal paper: blue (NTSC byte, PAL-corrected at entry)
 TERM_PAPER_SHIP	= $44			; ship chart paper: dark red, ink is the same hue at lum $0c = pink
@@ -824,8 +824,9 @@ elev_vol	= $CD1C + A8_OFF			; elevator rumble volume 0..15, set once per frame (
 elev_near	= $CD1D + A8_OFF			; min distance attenuation over moving cars this frame ($ff none)
 elev_ride	= $CD1E + A8_OFF			; 1 = player is on a moving car this frame
 th_taken	= play_bss_free				; MAP_NTHINGS (≤ TH_MAX), main RAM below the bank window
-!if  th_taken + TH_MAX > a8_pal_hue {
-	!error "th_taken overlaps the PAL hue table: end=", th_taken + TH_MAX
+barrel_pend	= th_taken + TH_MAX			; TH_MAX/8 bytes, bit = thing index
+!if  barrel_pend + TH_MAX/8 > a8_pal_hue {
+	!error "th_taken/barrel_pend overlap the PAL hue table: end=", barrel_pend + TH_MAX/8
 }
 player_hp	= $CD24 + A8_OFF			; 0..PLAYER_HP_MAX
 player_armour	= $CD25 + A8_OFF			; 0..PLAYER_ARMOUR_MAX
@@ -947,8 +948,8 @@ stream_room	= $CF42 + A8_OFF
 ; Explosion particle vel — FX_N × vx/vy s8 (integrated at draw)
 fx_vx		= $CF43 + A8_OFF			; 24
 fx_vy		= $CF5B + A8_OFF			; 24
-; Barrel chain ($CF73–$CF79), splat anchor ($CF7B–$CF81). Do not slide splat_src.
-barrel_pend	= $CF73 + A8_OFF		; 4 bytes, bit = thing index
+; Barrel chain ($CF77–$CF79), splat anchor ($CF7B–$CF81). Do not slide splat_src.
+; barrel_pend (TH_MAX/8 bytes, bit = thing index) lives after th_taken.
 barrel_ch_l	= $CF77 + A8_OFF
 barrel_ch_h	= $CF78 + A8_OFF
 shot_th		= $CF79 + A8_OFF		; hitscan barrel winner, $ff = none
@@ -961,9 +962,6 @@ splat_jy	= $CF7F + A8_OFF
 splat_anch	= $CF80 + A8_OFF			; 1 = world-anchored, 0 = fixed in screen space
 splat_trk	= $CF81 + A8_OFF			; 1 = splat_track re-placing (start_world_spr must not re-arm)
 splat_src	= $CF83 + A8_OFF			; clipped splat rect
-!if barrel_pend != fx_vy + FX_N {
-	!error "barrel_pend must follow fx_vy"
-}
 !if shot_th >= splat_src {
 	!error "barrel chain state overlaps splat_src"
 }

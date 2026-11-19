@@ -1204,6 +1204,7 @@ play_up1
 play_up2
 	jsr mulset_init
 	jsr world_init
+	jsr bty_apply
 	jsr maybe_stream_room
 	jsr init_hud
 	jsr hud_ammo

@@ -82,3 +82,45 @@ b5_pw_lo
 	!byte <10000, <1000, <100, <10
 b5_pw_hi
 	!byte >10000, >1000, >100, >10
+
+; ------------------------------------------------------------------
+; bty_apply — unlock the remote door of every accepted bounty whose map is the
+; current one (bounties.csv 5th column, baked by genmap.py into bty_door.asm).
+; Idempotent. Needs the map bound, so it runs after world_init and after the
+; terminal closes (segment E cannot read the map). Clobbers A, X, Y.
+; ------------------------------------------------------------------
+bty_apply
+	ldx #0
+.ba_l
+	cpx #BTY_DOOR_N
+	bcs .ba_rts
+	lda bty_door_tag,x
+	beq .ba_n
+	lda bty_door_map,x
+	cmp level_num
+	bne .ba_n
+	txa
+	and #7
+	tay
+	lda barrel_bit,y			; 1 << n (rocket.asm)
+	cpx #8
+	bcs .ba_h
+	and bounty_acc
+	jmp .ba_t
+.ba_h
+	and bounty_acc_h
+.ba_t
+	beq .ba_n
+	txa
+	pha
+	lda bty_door_tag,x
+	jsr door_unlock_tag			; clobbers X, Y
+	pla
+	tax
+.ba_n
+	inx
+	bne .ba_l
+.ba_rts
+	rts
+
+!source "bty_door.asm"

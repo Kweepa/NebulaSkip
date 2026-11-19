@@ -374,9 +374,15 @@ try_door_wish
 	jsr door_other_room
 	cmp #$ff
 	beq .tdw_n
+	+lda_mx door_key		; keycard used? (0 = unlocked door)
+	pha
 	jsr .tdw_snap
 	jsr door_other_room
-	jsr set_room_idx
+	jsr set_room_idx		; blanks the message row, so flash after it
+	pla
+	beq +
+	jsr hud_key_used
++
 	lda #0
 	sta door_blk		; transit ate the bump; not a switch use
 	sec

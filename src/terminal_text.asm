@@ -27,7 +27,7 @@ t_s_h_bounty
 t_s_h_bits
 	!text "  bits",0
 t_s_h_diff
-	!text "danger",0
+	!text "risk",0
 t_paper
 	!byte TERM_PAPER_DNA, TERM_PAPER_SHIP, TERM_PAPER_RIG	; indexed by term_kind
 ; DNA rig scan (rig.asm)

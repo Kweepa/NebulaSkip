@@ -856,6 +856,15 @@ hud_key_req
 	sta status_ms_h
 	rts
 
+; A = DOOR_KEY_YELLOW / DOOR_KEY_BLUE / DOOR_KEY_RED. "<glyph> used" for STATUS_MS.
+hud_key_used
+	tay
+	lda hud_used_lo,y
+	sta src_ptr
+	lda hud_used_hi,y
+	sta src_ptr+1
+	jmp .hkr_show
+
 ; Tick status line; blank and clear msg_on when the timer expires.
 update_status
 	lda status_ms_l
@@ -889,6 +898,15 @@ hud_str_red_req	!text "You need a "
 	!byte HUD_CH_KEY_RED
 	!text " keycard",0
 hud_str_remote_req	!text "This door is opened elsewhere",0
+hud_str_yellow_used	!byte HUD_CH_KEY_YEL
+	!text " used",0
+hud_str_blue_used	!byte HUD_CH_KEY_BLU
+	!text " used",0
+hud_str_red_used	!byte HUD_CH_KEY_RED
+	!text " used",0
+; indexed by DOOR_KEY_* (0..4); 0 and 3 never reach hud_key_used
+hud_used_lo	!byte <hud_str_yellow_used, <hud_str_yellow_used, <hud_str_blue_used, <hud_str_yellow_used, <hud_str_red_used
+hud_used_hi	!byte >hud_str_yellow_used, >hud_str_yellow_used, >hud_str_blue_used, >hud_str_yellow_used, >hud_str_red_used
 ; th_name_lo/hi + thn_* strings: generated from the editor item names (item_mesh.asm, tools/genitems.py)
 
 ; ASCII (UI charset), not PETSCII

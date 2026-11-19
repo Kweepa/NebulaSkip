@@ -30,7 +30,7 @@ credits1_text
 	!scr " ",0
 	!scr "Thanks y'all!",0
 	!scr " ",0
-	!scr "Nebula Skip v1.0, built 18 Nov 2026",0
+	!scr "Nebula Skip v1.0, built 19 Nov 2026",0
 	!byte 0
 
 credits_lo
@@ -54,7 +54,7 @@ readthis2_text
 	!scr "--priority hadron blip // 1042.3--",0
 	!scr " ",0
 	!scr "source: deep neb auth // dept of",0
-	!scr "civic sanitation & maritime order",0
+	!scr "orbital sanitation and order",0
 	!scr " ",0
 	!scr "subject: edict 451-f. unrestricted",0
 	!scr "fugitive reclamation",0
@@ -63,10 +63,11 @@ readthis2_text
 readthis3_text
 	!scr "attention: effective immediately,",0
 	!scr "the dna has deregulated fugitive",0
-	!scr "extraction. if a space rogue, pirate,",0
-	!scr "or wing commander wannabe has an",0
-	!scr "active warrant, their head is now",0
-	!scr "public tender.",0
+	!scr "extraction. if any space rogue,",0
+	!scr "ensign seventh class, or wing",0
+	!scr "commander wannabe has an active",0
+	!scr "warrant, their head is now public",0
+	!scr "tender.",0
 	!scr " ",0
 	!scr "let's be frank. we don't have the",0
 	!scr "brig space and you don't have the",0
