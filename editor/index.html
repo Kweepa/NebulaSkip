@@ -19304,7 +19304,7 @@ class StickOrtho {
 // renders POKEY channel 4 at 64 kHz into an AudioBuffer: pure tone = square at
 // clk / (2 * (AUDF + 1)), poly4 = the 15-step pattern clocked at clk / (AUDF + 1).
 
-const POKEY_64K = 63921;
+const TUNE_POKEY_64K = 63921;
 const TUNE_VBI_HZ = 59.92; // NTSC; tempo is the same on PAL (ticks are counted in ms)
 const TUNE_SAMPLE_MS = 17;
 const TUNE_POLY4 = [1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 0, 1, 1];
@@ -19410,7 +19410,7 @@ function renderTune(ctx, data) {
   for (let i = 0; i < vbis.length; i++) {
     const end = Math.min(total, Math.round((i + 1) * perVbi));
     const [f, audc] = vbis[i];
-    const step = POKEY_64K / (f + 1) / rate;
+    const step = TUNE_POKEY_64K / (f + 1) / rate;
     const vol = (audc & 15) * TUNE_GAIN;
     const poly = (audc & 0xe0) === 0xc0;
     for (; pos < end; pos++) {
