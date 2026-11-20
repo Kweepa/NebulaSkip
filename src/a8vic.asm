@@ -82,7 +82,8 @@ dl_top	!byte $70				; 8
 ; PAL keeps the extra black below.
 enter_dl
 	!byte $70,$70,$70,$70,$70,$70,$70,$70,$70,$70,$70,$70
-	!byte $70
+enter_dl_rem
+	!byte $70				; enter_card rewrites it: 1..8 blank lines for the scroll-up
 	!byte $42				; mode 2 LMS, "entering"
 	!word HUD_SCR
 	!byte $02				; map name, HUD_SCR+40

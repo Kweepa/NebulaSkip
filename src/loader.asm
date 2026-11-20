@@ -1308,6 +1308,8 @@ ENTER_HOLD_MS	= 2000
 enter_card
 	jsr cut_arrive
 	jsr hud_enter_rows
+	lda #$70
+	sta enter_dl_rem
 	lda #<enter_dl
 	sta dl_top+2
 	lda #>enter_dl
@@ -1336,6 +1338,57 @@ enter_card
 	cmp #<ENTER_HOLD_MS
 	bcc .ec_hold
 .ec_blank
+	; Scroll the card up to the HUD's top two rows. Blank lines left after dl_top's 8
+	; are R (104 -> 8, 4 per frame): enter_dl_rem holds ((R-1) & 7) + 1 of them and the
+	; JMP enters the run of $70s (R-1)/8 bytes from its end. enter_wait_l = R, _h = scratch.
+	lda #104
+	sta enter_wait_l
+.ec_sc
+	lda frame_flag
+.ec_sw
+	cmp frame_flag
+	beq .ec_sw
+	lda enter_wait_l
+	sec
+	sbc #4
+	cmp #8
+	bcs .ec_rok
+	lda #8
+.ec_rok
+	sta enter_wait_l
+	sec
+	sbc #1
+	pha
+	and #7
+	asl
+	asl
+	asl
+	asl
+	sta enter_dl_rem
+	pla
+	lsr
+	lsr
+	lsr
+	sta enter_wait_h
+	lda #<enter_dl_rem
+	sec
+	sbc enter_wait_h
+	sta dl_top+2
+	lda #>enter_dl_rem
+	sbc #0
+	sta dl_top+3
+	lda enter_wait_l
+	cmp #8
+	bne .ec_sc
+	jsr init_hud			; row 0 verb -> "Nebula Skip"; row 1 map name stays
+	ldx #10
+.ec_ns
+	lda frame_flag
+.ec_nw
+	cmp frame_flag
+	beq .ec_nw
+	dex
+	bne .ec_ns
 	lda #1
 	sta den_arm
 	lda frame_flag
