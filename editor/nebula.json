@@ -2302,18 +2302,6 @@
         ]
       ]
     },
-    "planet": {
-      "verts": [],
-      "lines": [],
-      "spheres": [
-        {
-          "x": 0,
-          "y": 0,
-          "z": 0,
-          "r": 1
-        }
-      ]
-    },
     "viper": {
       "verts": [
         {
@@ -2588,6 +2576,18 @@
           5
         ]
       ]
+    },
+    "sphere": {
+      "verts": [],
+      "lines": [],
+      "spheres": [
+        {
+          "x": 0,
+          "y": 0,
+          "z": 0,
+          "r": 1
+        }
+      ]
     }
   },
   "customItems": [
@@ -2603,7 +2603,7 @@
     "bird",
     "arrow up",
     "arrow down",
-    "planet",
+    "sphere",
     "viper",
     "locked door",
     "brace"
@@ -2735,6 +2735,7 @@
     "dna sign": {
       "rotating": false,
       "pickup": false,
+      "rides": false,
       "icon": [
         "........",
         "66666666",
@@ -2777,6 +2778,7 @@
     "greeble": {
       "rotating": false,
       "pickup": false,
+      "rides": false,
       "icon": [
         "........",
         "........",
@@ -2866,6 +2868,7 @@
     "arrow up": {
       "rotating": false,
       "pickup": false,
+      "rides": false,
       "icon": [
         "........",
         "........",
@@ -2880,6 +2883,7 @@
     "arrow down": {
       "rotating": false,
       "pickup": false,
+      "rides": false,
       "icon": [
         "........",
         "........",
@@ -2889,20 +2893,6 @@
         "........",
         "........",
         "........"
-      ]
-    },
-    "planet": {
-      "rotating": true,
-      "pickup": false,
-      "icon": [
-        "..7755..",
-        ".777755.",
-        "77777555",
-        "77777555",
-        "77777555",
-        "77777555",
-        ".777555.",
-        "..5555.."
       ]
     },
     "viper": {
@@ -2946,6 +2936,20 @@
         "99ee....",
         "99e.....",
         "99......"
+      ]
+    },
+    "sphere": {
+      "rotating": true,
+      "pickup": false,
+      "icon": [
+        "..7755..",
+        ".777755.",
+        "77777555",
+        "77777555",
+        "77777555",
+        "77777555",
+        ".777555.",
+        "..5555.."
       ]
     }
   }

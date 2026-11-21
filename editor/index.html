@@ -5388,10 +5388,10 @@ function itemNameProblem(name, except = null) {
 /** Built-in flags. Lightpost / barrel are still props. */
 function builtinItemMeta(key) {
   if (DOOR_MESH_KEYS.includes(key)) {
-    return { rotating: false, pickup: false, door: DOOR_TYPES.includes(key), icon: BUILTIN_ITEM_ICONS[key] ?? null };
+    return { rotating: false, pickup: false, rides: false, door: DOOR_TYPES.includes(key), icon: BUILTIN_ITEM_ICONS[key] ?? null };
   }
   const prop = key === "lightpost" || key === "barrel";
-  return { rotating: !prop, pickup: !prop, door: false, icon: BUILTIN_ITEM_ICONS[key] ?? null };
+  return { rotating: !prop, pickup: !prop, rides: true, door: false, icon: BUILTIN_ITEM_ICONS[key] ?? null };
 }
 
 /** Colodore. Same palette the shipped thingicons were drawn in. */
@@ -5441,7 +5441,7 @@ function parseItemIcon(raw) {
 
 function baseItemMeta(key) {
   return isCustomItem(key)
-    ? { rotating: true, pickup: false, door: false, icon: null, label: key }
+    ? { rotating: true, pickup: false, rides: true, door: false, icon: null, label: key }
     : { ...builtinItemMeta(key), label: defaultItemLabel(key) };
 }
 
@@ -5461,6 +5461,8 @@ function itemMeta(doc, key) {
     // A door (or the bump crack) is a static face: it never spins and is never a pickup.
     rotating: door || fixed ? false : o.rotating == null ? base.rotating : !!o.rotating,
     pickup: door || fixed ? false : isCustomItem(key) ? (o.pickup == null ? base.pickup : !!o.pickup) : base.pickup,
+    // Rides elevator cars (default on, as before the flag existed). Doors / the bump crack never.
+    rides: door || fixed ? false : o.rides == null ? base.rides : !!o.rides,
     door,
     icon: parseItemIcon(o.icon) ?? base.icon,
     label: isCustomItem(key) ? key : clampItemName(o.label) || base.label,
@@ -5481,6 +5483,7 @@ function setItemMeta(doc, key, patch) {
   doc.itemMeta[key] = {
     rotating: door || fixed ? false : !!next.rotating,
     pickup: door || fixed ? false : !!next.pickup,
+    ...(!door && !fixed && !next.rides ? { rides: false } : {}),
     ...(door !== baseItemMeta(key).door ? { door } : {}),
     ...(icon && !same ? { icon } : {}),
     ...(label && label !== defaultItemLabel(key) ? { label } : {}),
@@ -5498,7 +5501,7 @@ function parseItemMetaMap(raw, customList) {
     const o = raw[key];
     if (!o || typeof o !== "object") continue;
     const custom = customList.includes(key);
-    const base = custom ? { rotating: true, pickup: false, door: false } : builtinItemMeta(key);
+    const base = custom ? { rotating: true, pickup: false, rides: true, door: false } : builtinItemMeta(key);
     const icon = parseItemIcon(o.icon);
     const label = custom ? "" : clampItemName(o.label);
     const fixed = DOOR_MESH_KEYS.includes(key);
@@ -5506,6 +5509,7 @@ function parseItemMetaMap(raw, customList) {
     out[key] = {
       rotating: door || fixed ? false : o.rotating == null ? base.rotating : !!o.rotating,
       pickup: door || fixed ? false : custom ? !!o.pickup : base.pickup,
+      ...(!door && !fixed && o.rides === false ? { rides: false } : {}),
       ...(door !== base.door ? { door } : {}),
       ...(icon ? { icon } : {}),
       ...(label && label !== defaultItemLabel(key) ? { label } : {}),
@@ -9625,7 +9629,7 @@ function createCutActor(kind, opts = {}) {
     ease: "linear",
   };
   if (kind === "camera") return { ...base, yaw: 0, target: null };
-  return { ...base, item: clampPickupType(opts.item ?? "planet"), scale: 1, yaw: 0, flyby: defaultFlyby() };
+  return { ...base, item: clampPickupType(opts.item ?? "sphere"), scale: 1, yaw: 0, flyby: defaultFlyby() };
 }
 
 function normalizeActor(raw) {
@@ -20142,7 +20146,7 @@ function cutAddActor(kind) {
   if (cut && cut.actors.length >= CUT_ACTOR_MAX) return;
   if (kind === "camera" && cut?.actors.some((a) => a.kind === "camera")) return;
   const keys = placeableItemKeys();
-  const item = keys.includes("planet") ? "planet" : keys[0];
+  const item = keys.includes("sphere") ? "sphere" : keys[0];
   const actor = createCutActor(kind, { ...cutSpawnPos(kind), item });
   cutApply((c) => c.actors.push(actor));
   cutView.setSelection(actor.id, -1);
@@ -22403,6 +22407,7 @@ function itemUseCount(name) {
       if (o.kind === "pickup" && o.pickup === name) n++;
       if (o.kind === "doorway" && o.doorType === name) n++;
     }
+    for (const a of m.cutscene?.actors || []) if (a.kind === "item" && a.item === name) n++;
   }
   return n;
 }
@@ -22464,6 +22469,12 @@ function renameItem(raw) {
       }
       if (o.kind === "doorway" && o.doorType === old) {
         o.doorType = name;
+        moved++;
+      }
+    }
+    for (const a of m.cutscene?.actors || []) {
+      if (a.kind === "item" && a.item === old) {
+        a.item = name;
         moved++;
       }
     }
@@ -22739,7 +22750,7 @@ function toggleItemDoor(key) {
   }
   pushUndo();
   const base = defaultItemMeta(key);
-  setItemMeta(doc, key, want ? { door: true } : { door: false, rotating: base.rotating, pickup: base.pickup });
+  setItemMeta(doc, key, want ? { door: true } : { door: false, rotating: base.rotating, pickup: base.pickup, rides: base.rides });
   markDirty();
   buildPalette();
   refreshAll();
@@ -22752,38 +22763,38 @@ function buildItemFlags(root, key) {
   const door = meta.door;
   const shippedDoor = DOOR_MESH_KEYS.includes(key);
   const bump = !door && shippedDoor;
-  const flag =(label, active, locked, title, onToggle) => {
-    const f = toggleField(label, active, onToggle);
-    const b = f.querySelector("button");
+  const row = document.createElement("div");
+  row.className = "btn-row";
+  const flag = (label, active, locked, title, onToggle) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "toggle";
+    b.textContent = label;
+    b.classList.toggle("active", !!active);
     b.disabled = locked;
-    f.title = title;
     b.title = title;
-    return f;
+    b.addEventListener("click", () => onToggle(b));
+    row.appendChild(b);
   };
-  root.appendChild(
-    flag(
-      "Door",
-      door,
-      shippedDoor,
-      bump
-        ? "Not a door: the game's wall-hit crack (shipped mesh slot)"
-        : shippedDoor
-        ? "Shipped door style"
-        : "Door type: appears under Doors in the Maps picker and in the doorway Type list. Mesh origin = bottom-centre of the face, X across, Z out.",
-      () => toggleItemDoor(key)
-    )
+  flag(
+    "Door",
+    door,
+    shippedDoor,
+    bump
+      ? "Not a door: the game's wall-hit crack (shipped mesh slot)"
+      : shippedDoor
+      ? "Shipped door style"
+      : "Door type: appears under Doors in the Maps picker and in the doorway Type list. Mesh origin = bottom-centre of the face, X across, Z out.",
+    () => toggleItemDoor(key)
   );
-  if (door || bump) return;
-  root.appendChild(
+  if (!door && !bump) {
     flag("Rotating", meta.rotating, false, "Yaw-spins in the editor and in game", () => {
       pushUndo();
       setItemMeta(doc, key, { rotating: !meta.rotating });
       markDirty();
       renderInspector();
       itemView.draw();
-    })
-  );
-  root.appendChild(
+    });
     flag(
       "Pickup",
       meta.pickup,
@@ -22797,8 +22808,22 @@ function buildItemFlags(root, key) {
         markDirty();
         renderInspector();
       }
-    )
-  );
+    );
+    flag(
+      "Rides lifts",
+      meta.rides,
+      false,
+      "Moves with an elevator car it stands on top of. Off: the item stays at its height when the car leaves.",
+      () => {
+        pushUndo();
+        setItemMeta(doc, key, { rides: !meta.rides });
+        markDirty();
+        renderInspector();
+      }
+    );
+  }
+  root.appendChild(row);
+  if (door || bump) return;
   if (custom && meta.pickup) {
     const w = document.createElement("p");
     w.className = "error";

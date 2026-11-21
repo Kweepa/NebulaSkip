@@ -300,6 +300,11 @@ elev_ride_apply
 	+lda_mx th_y
 	cmp elev_ride_top
 	bne .era_n
+	+lda_mx th_type			; always an item slot (< ITEM_DOOR_BASE); door and bump slots cook as 0
+	tay
+	lda item_rot,y
+	and #ITEM_FL_RIDE		; editor "Rides lifts"
+	beq .era_n
 	+lda_mx th_x
 	sta col_x
 	+lda_mx th_z

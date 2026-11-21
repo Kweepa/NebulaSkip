@@ -4,16 +4,19 @@ ITEM_BIAS	= 1
 ITEM_DOOR_BASE	= 29
 ITEM_NSLOTS	= 33
 ITEM_NPAGES	= 2
+ITEM_FL_ROT	= 1
+ITEM_FL_RIDE	= 2
 
 ; Resident: indexed by th_cull_hit, item_pick_rot and the nv = 0 fallbacks.
 item_nv
 	!byte 12,12,5,7,10,8,5,8,7,5,7,8,8,6,10,10
 	!byte 12,12,10,9,6,10,3,5,5,1,9,8,8,4,4,3
 	!byte 10
-; 1 = yaw-spins about box+ITEM_BIAS (editor Rotating flag)
+; per-slot flags: ITEM_FL_ROT = yaw-spins about box+ITEM_BIAS (editor Rotating flag),
+; ITEM_FL_RIDE = carried by an elevator car it stands on (editor Rides lifts flag)
 item_rot
-	!byte 1,1,1,1,1,1,1,1,1,0,1,1,1,0,0,0
-	!byte 0,0,0,0,0,0,1,0,0,1,0,0,0,0,0,0
+	!byte 3,3,3,3,3,3,3,3,3,2,3,3,3,2,2,2
+	!byte 2,0,2,2,0,2,3,0,0,3,2,0,2,0,0,0
 	!byte 0
 ; thing frustum-cull half-extent in units about box+ITEM_BIAS (th_cull_hit)
 item_cr

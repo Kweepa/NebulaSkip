@@ -218,7 +218,7 @@ export function createCutActor(kind, opts = {}) {
     ease: "linear",
   };
   if (kind === "camera") return { ...base, yaw: 0, target: null };
-  return { ...base, item: clampPickupType(opts.item ?? "planet"), scale: 1, yaw: 0, flyby: defaultFlyby() };
+  return { ...base, item: clampPickupType(opts.item ?? "sphere"), scale: 1, yaw: 0, flyby: defaultFlyby() };
 }
 
 function normalizeActor(raw) {

@@ -28,6 +28,7 @@ item_big_shl
 ; negated to match the editor / enemy rot convention.
 item_pick_rot
 	lda item_rot,y
+	and #ITEM_FL_ROT
 	beq .ip_still
 	lda item_spin
 	rts

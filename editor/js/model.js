@@ -782,10 +782,10 @@ export function itemNameProblem(name, except = null) {
 /** Built-in flags. Lightpost / barrel are still props. */
 export function builtinItemMeta(key) {
   if (DOOR_MESH_KEYS.includes(key)) {
-    return { rotating: false, pickup: false, door: DOOR_TYPES.includes(key), icon: BUILTIN_ITEM_ICONS[key] ?? null };
+    return { rotating: false, pickup: false, rides: false, door: DOOR_TYPES.includes(key), icon: BUILTIN_ITEM_ICONS[key] ?? null };
   }
   const prop = key === "lightpost" || key === "barrel";
-  return { rotating: !prop, pickup: !prop, door: false, icon: BUILTIN_ITEM_ICONS[key] ?? null };
+  return { rotating: !prop, pickup: !prop, rides: true, door: false, icon: BUILTIN_ITEM_ICONS[key] ?? null };
 }
 
 /** Colodore. Same palette the shipped thingicons were drawn in. */
@@ -835,7 +835,7 @@ export function parseItemIcon(raw) {
 
 function baseItemMeta(key) {
   return isCustomItem(key)
-    ? { rotating: true, pickup: false, door: false, icon: null, label: key }
+    ? { rotating: true, pickup: false, rides: true, door: false, icon: null, label: key }
     : { ...builtinItemMeta(key), label: defaultItemLabel(key) };
 }
 
@@ -855,6 +855,8 @@ export function itemMeta(doc, key) {
     // A door (or the bump crack) is a static face: it never spins and is never a pickup.
     rotating: door || fixed ? false : o.rotating == null ? base.rotating : !!o.rotating,
     pickup: door || fixed ? false : isCustomItem(key) ? (o.pickup == null ? base.pickup : !!o.pickup) : base.pickup,
+    // Rides elevator cars (default on, as before the flag existed). Doors / the bump crack never.
+    rides: door || fixed ? false : o.rides == null ? base.rides : !!o.rides,
     door,
     icon: parseItemIcon(o.icon) ?? base.icon,
     label: isCustomItem(key) ? key : clampItemName(o.label) || base.label,
@@ -875,6 +877,7 @@ export function setItemMeta(doc, key, patch) {
   doc.itemMeta[key] = {
     rotating: door || fixed ? false : !!next.rotating,
     pickup: door || fixed ? false : !!next.pickup,
+    ...(!door && !fixed && !next.rides ? { rides: false } : {}),
     ...(door !== baseItemMeta(key).door ? { door } : {}),
     ...(icon && !same ? { icon } : {}),
     ...(label && label !== defaultItemLabel(key) ? { label } : {}),
@@ -892,7 +895,7 @@ export function parseItemMetaMap(raw, customList) {
     const o = raw[key];
     if (!o || typeof o !== "object") continue;
     const custom = customList.includes(key);
-    const base = custom ? { rotating: true, pickup: false, door: false } : builtinItemMeta(key);
+    const base = custom ? { rotating: true, pickup: false, rides: true, door: false } : builtinItemMeta(key);
     const icon = parseItemIcon(o.icon);
     const label = custom ? "" : clampItemName(o.label);
     const fixed = DOOR_MESH_KEYS.includes(key);
@@ -900,6 +903,7 @@ export function parseItemMetaMap(raw, customList) {
     out[key] = {
       rotating: door || fixed ? false : o.rotating == null ? base.rotating : !!o.rotating,
       pickup: door || fixed ? false : custom ? !!o.pickup : base.pickup,
+      ...(!door && !fixed && o.rides === false ? { rides: false } : {}),
       ...(door !== base.door ? { door } : {}),
       ...(icon ? { icon } : {}),
       ...(label && label !== defaultItemLabel(key) ? { label } : {}),

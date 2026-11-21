@@ -829,7 +829,7 @@ function cutAddActor(kind) {
   if (cut && cut.actors.length >= CUT_ACTOR_MAX) return;
   if (kind === "camera" && cut?.actors.some((a) => a.kind === "camera")) return;
   const keys = placeableItemKeys();
-  const item = keys.includes("planet") ? "planet" : keys[0];
+  const item = keys.includes("sphere") ? "sphere" : keys[0];
   const actor = createCutActor(kind, { ...cutSpawnPos(kind), item });
   cutApply((c) => c.actors.push(actor));
   cutView.setSelection(actor.id, -1);
@@ -3090,6 +3090,7 @@ function itemUseCount(name) {
       if (o.kind === "pickup" && o.pickup === name) n++;
       if (o.kind === "doorway" && o.doorType === name) n++;
     }
+    for (const a of m.cutscene?.actors || []) if (a.kind === "item" && a.item === name) n++;
   }
   return n;
 }
@@ -3151,6 +3152,12 @@ function renameItem(raw) {
       }
       if (o.kind === "doorway" && o.doorType === old) {
         o.doorType = name;
+        moved++;
+      }
+    }
+    for (const a of m.cutscene?.actors || []) {
+      if (a.kind === "item" && a.item === old) {
+        a.item = name;
         moved++;
       }
     }
@@ -3426,7 +3433,7 @@ function toggleItemDoor(key) {
   }
   pushUndo();
   const base = defaultItemMeta(key);
-  setItemMeta(doc, key, want ? { door: true } : { door: false, rotating: base.rotating, pickup: base.pickup });
+  setItemMeta(doc, key, want ? { door: true } : { door: false, rotating: base.rotating, pickup: base.pickup, rides: base.rides });
   markDirty();
   buildPalette();
   refreshAll();
@@ -3439,38 +3446,38 @@ function buildItemFlags(root, key) {
   const door = meta.door;
   const shippedDoor = DOOR_MESH_KEYS.includes(key);
   const bump = !door && shippedDoor;
-  const flag =(label, active, locked, title, onToggle) => {
-    const f = toggleField(label, active, onToggle);
-    const b = f.querySelector("button");
+  const row = document.createElement("div");
+  row.className = "btn-row";
+  const flag = (label, active, locked, title, onToggle) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "toggle";
+    b.textContent = label;
+    b.classList.toggle("active", !!active);
     b.disabled = locked;
-    f.title = title;
     b.title = title;
-    return f;
+    b.addEventListener("click", () => onToggle(b));
+    row.appendChild(b);
   };
-  root.appendChild(
-    flag(
-      "Door",
-      door,
-      shippedDoor,
-      bump
-        ? "Not a door: the game's wall-hit crack (shipped mesh slot)"
-        : shippedDoor
-        ? "Shipped door style"
-        : "Door type: appears under Doors in the Maps picker and in the doorway Type list. Mesh origin = bottom-centre of the face, X across, Z out.",
-      () => toggleItemDoor(key)
-    )
+  flag(
+    "Door",
+    door,
+    shippedDoor,
+    bump
+      ? "Not a door: the game's wall-hit crack (shipped mesh slot)"
+      : shippedDoor
+      ? "Shipped door style"
+      : "Door type: appears under Doors in the Maps picker and in the doorway Type list. Mesh origin = bottom-centre of the face, X across, Z out.",
+    () => toggleItemDoor(key)
   );
-  if (door || bump) return;
-  root.appendChild(
+  if (!door && !bump) {
     flag("Rotating", meta.rotating, false, "Yaw-spins in the editor and in game", () => {
       pushUndo();
       setItemMeta(doc, key, { rotating: !meta.rotating });
       markDirty();
       renderInspector();
       itemView.draw();
-    })
-  );
-  root.appendChild(
+    });
     flag(
       "Pickup",
       meta.pickup,
@@ -3484,8 +3491,22 @@ function buildItemFlags(root, key) {
         markDirty();
         renderInspector();
       }
-    )
-  );
+    );
+    flag(
+      "Rides lifts",
+      meta.rides,
+      false,
+      "Moves with an elevator car it stands on top of. Off: the item stays at its height when the car leaves.",
+      () => {
+        pushUndo();
+        setItemMeta(doc, key, { rides: !meta.rides });
+        markDirty();
+        renderInspector();
+      }
+    );
+  }
+  root.appendChild(row);
+  if (door || bump) return;
   if (custom && meta.pickup) {
     const w = document.createElement("p");
     w.className = "error";

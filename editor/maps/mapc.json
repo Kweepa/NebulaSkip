@@ -3488,7 +3488,7 @@
         "path": [],
         "facing": "fixed",
         "ease": "linear",
-        "item": "planet",
+        "item": "sphere",
         "scale": 1,
         "yaw": 0,
         "flyby": {

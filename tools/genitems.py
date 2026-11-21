@@ -409,13 +409,25 @@ def custom_items(doc: dict) -> list[str]:
     return out
 
 
-def item_rotates(meta: dict, key: str, custom: bool) -> int:
-    """Per-slot spin flag. Built-in props (lightpost, barrel) default still."""
+ITEM_FL_ROT = 1  # item_rot bit 0: yaw-spins
+ITEM_FL_RIDE = 2  # item_rot bit 1: moves with an elevator car it stands on
+
+
+def item_flags(meta: dict, key: str, custom: bool) -> int:
+    """Per-slot flag byte (item_rot). Spin: built-in props (lightpost, barrel) default still.
+    Rides lifts: default on (every thing rode before the flag existed)."""
     base = custom or key not in ("lightpost", "barrel")
     m = meta.get(key)
-    if isinstance(m, dict) and m.get("rotating") is not None:
-        return 1 if m["rotating"] else 0
-    return 1 if base else 0
+    rot = base
+    rides = True
+    if isinstance(m, dict):
+        if m.get("rotating") is not None:
+            rot = bool(m["rotating"])
+        if m.get("rides") is not None:
+            rides = bool(m["rides"])
+        if m.get("door") is True:  # a door face is never a thing
+            rot = rides = False
+    return (ITEM_FL_ROT if rot else 0) | (ITEM_FL_RIDE if rides else 0)
 
 
 def pack_pages(cooked: list[dict | None], names: list[str]) -> tuple[list[dict], list[int], list[tuple[int, int, int, int]]]:
@@ -568,7 +580,7 @@ def main() -> None:
     eo = [o[1] for o in offs]
     uo = [o[2] for o in offs]
     zo = [o[3] for o in offs]
-    rot = [item_rotates(meta, k, k in custom) for k in item_keys] + [0] * len(DOOR_MESH_KEY)
+    rot = [item_flags(meta, k, k in custom) for k in item_keys] + [0] * len(DOOR_MESH_KEY)
     # Thing cull radius (units, Chebyshev about box+ITEM_BIAS). Worst case over every facing/spin,
     # so draw_world needs no per-frame yaw maths. Min 1 = the old 2x2 foot box.
     def s8_abs(v: int) -> int:
@@ -609,10 +621,13 @@ def main() -> None:
         f"ITEM_DOOR_BASE	= {ntypes}",
         f"ITEM_NSLOTS	= {len(slot_names)}",
         f"ITEM_NPAGES	= {len(pages)}",
+        f"ITEM_FL_ROT	= {ITEM_FL_ROT}",
+        f"ITEM_FL_RIDE	= {ITEM_FL_RIDE}",
         "",
         "; Resident: indexed by th_cull_hit, item_pick_rot and the nv = 0 fallbacks.",
         btable("item_nv", nv).rstrip(),
-        "; 1 = yaw-spins about box+ITEM_BIAS (editor Rotating flag)",
+        "; per-slot flags: ITEM_FL_ROT = yaw-spins about box+ITEM_BIAS (editor Rotating flag),",
+        "; ITEM_FL_RIDE = carried by an elevator car it stands on (editor Rides lifts flag)",
         btable("item_rot", rot).rstrip(),
         "; thing frustum-cull half-extent in units about box+ITEM_BIAS (th_cull_hit)",
         btable("item_cr", cr).rstrip(),

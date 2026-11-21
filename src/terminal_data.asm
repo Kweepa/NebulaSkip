@@ -136,7 +136,7 @@ btn1
 	!text "Bob Kyllin's Band"
 	!byte 0
 btd1
-	!text "Bob is a troubadour with"
+	!text "Bob is a troubadour with a"
 	!byte 0
 	!text "penchant for heists. His band"
 	!byte 0
