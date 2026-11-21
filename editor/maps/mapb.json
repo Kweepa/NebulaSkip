@@ -254,6 +254,7 @@
     "roomId": "deb971b2-13cf-40c0-a1de-8a2510f9587e",
     "duration": 4,
     "starfield": false,
+    "starSeed": 44257,
     "hideRoom": false,
     "actors": [
       {

@@ -3348,6 +3348,7 @@
     "roomId": "9fed29f6-53ea-47ba-ab55-24985fa30c86",
     "duration": 3.5,
     "starfield": true,
+    "starSeed": 49082,
     "hideRoom": true,
     "actors": [
       {

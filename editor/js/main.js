@@ -241,8 +241,11 @@ import {
   CUT_EASES,
   CUT_FACING_ITEM,
   CUT_PATH_MAX,
+  CUT_STAR_SEED_DEFAULT,
   bakeCutscene,
   clampCutDuration,
+  clampStarSeed,
+  parseStarSeed,
   createCutActor,
   cutActorMoves,
   cutSampleAt,
@@ -786,7 +789,7 @@ function cutPreviewState() {
   if (editorMode !== "cutscene") return null;
   const cut = cutCurrent();
   const baked = cutBaked();
-  const out = { room: cutRoom(), cam: null, actors: [], starfield: !!cut?.starfield, hideRoom: !!cut?.hideRoom, yawByte: 0 };
+  const out = { room: cutRoom(), cam: null, actors: [], starfield: !!cut?.starfield, starSeed: cut?.starSeed, hideRoom: !!cut?.hideRoom, yawByte: 0 };
   if (!cut || !baked) return out;
   for (const a of cut.actors) {
     const b = baked.actors.find((o) => o.id === a.id);
@@ -1067,6 +1070,28 @@ function renderCutsceneLeft() {
   const stars = toggleField("Starfield", !!cut?.starfield, () => cutApply((c) => (c.starfield = !c.starfield)));
   stars.title = "A scatter of stars behind the room, fixed in the sky so they pan with the camera yaw";
   root.appendChild(stars);
+
+  if (cut?.starfield) {
+    const seedRow = document.createElement("div");
+    seedRow.className = "btn-row";
+    const seedIn = document.createElement("input");
+    seedIn.type = "text";
+    seedIn.maxLength = 6;
+    seedIn.value = (cut.starSeed ?? CUT_STAR_SEED_DEFAULT).toString(16).toUpperCase().padStart(4, "0");
+    seedIn.title = "Star scatter seed, 16-bit hex ($0001..$FFFF). Default ACE1.";
+    seedIn.addEventListener("change", () => {
+      const v = parseStarSeed(seedIn.value);
+      if (v !== cut.starSeed) cutApply((c) => (c.starSeed = v));
+      else seedIn.value = v.toString(16).toUpperCase().padStart(4, "0");
+    });
+    const roll = document.createElement("button");
+    roll.type = "button";
+    roll.textContent = "Roll";
+    roll.title = "Pick a random seed";
+    roll.addEventListener("click", () => cutApply((c) => (c.starSeed = clampStarSeed(1 + Math.floor(Math.random() * 65535)))));
+    seedRow.append(seedIn, roll);
+    root.appendChild(field("Star seed", seedRow));
+  }
 
   const hide = toggleField("Hide room", !!cut?.hideRoom, () => cutApply((c) => (c.hideRoom = !c.hideRoom)));
   hide.title = "Skip the room box: the game does not transform or draw its vertices (the room still sets the colours)";

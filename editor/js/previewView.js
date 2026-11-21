@@ -558,7 +558,7 @@ export class PreviewView {
         if (cut.starfield) {
           // One colour-clock pixel (2 hires px wide) per star, as the overlay's plot_pixel does.
           ctx.fillStyle = line;
-          for (const s of cutStars(cut.yawByte)) {
+          for (const s of cutStars(cut.yawByte, cut.starSeed)) {
             ctx.fillRect(Math.round(s.x * 2 * PREVIEW_SX), Math.round(s.y * PREVIEW_SY), Math.ceil(2 * PREVIEW_SX), PREVIEW_SY);
           }
         }

@@ -18,7 +18,8 @@
 ;   4 kind[6] ($FF camera, else item slot)  10 scale[6] (shift)  16 ns[6]  22 offl[6]  28 offh[6]
 ;   34 star count  35 hide room
 ;   36 flyby AUDC distortion bits ($80 noise / $A0 tone, 0 = none)  37 flyby samples  38,39 offset of the flyby block
-;   40.. per actor, SoA: xl[ns] xh[ns] yl[ns] yh[ns] zl[ns] zh[ns] yaw[ns]   (8.8 world, yaw 0..255)
+;   40,41 star seed (lo, hi, nonzero)
+;   42.. per actor, SoA: xl[ns] xh[ns] yl[ns] yh[ns] zl[ns] zh[ns] yaw[ns]   (8.8 world, yaw 0..255)
 ; Flyby sound (one voice, the first flyby item): while the cutscene runs the ambient tune is held (amb_on = 0)
 ; and POKEY channel 4 plays the baked curves: audf[n] vol[n] at the actors' 128 ms grid, both lerped
 ; like positions (frac = (t & 127) << 1), AUDC4 = dist | (vol >> 4), AUDF4 = audf, AUDCTL 0 (64 kHz).
@@ -50,6 +51,8 @@ CD_FLYD		= 36
 CD_FLYN		= 37
 CD_FLYOL	= 38
 CD_FLYOH	= 39
+CD_SEEDL	= 40
+CD_SEEDH	= 41
 
 *= CUT_BASE
 
@@ -450,7 +453,7 @@ cut_mul8
 	rts
 
 ; Starfield (CD_STARS = star count, 0 = off; same spec as cutStars in cutsceneModel.js). A 16-bit
-; xorshift from seed $ACE1 (cut_rng) is stepped twice per star: the first value is a fresh position
+; xorshift from the baked seed (CD_SEEDL/H, default $ACE1) (cut_rng) is stepped twice per star: the first value is a fresh position
 ; (azimuth = high byte, row = low byte >> 1), the second picks the size class and clumping. Half the
 ; stars (second low byte bit 2 clear) are instead placed near the previous star: azimuth +-8 ticks,
 ; row +-8 (mod 128), offsets from bits 3..6 of the second low / high byte. k = second high byte & 7:
@@ -463,9 +466,9 @@ cut_stars
 	rts
 .st_go
 	sta cu_sn
-	lda #$e1
+	lda cut_data+CD_SEEDL
 	sta cu_ssl
-	lda #$ac
+	lda cut_data+CD_SEEDH
 	sta cu_ssh
 	lda #0
 	sta cu_pa

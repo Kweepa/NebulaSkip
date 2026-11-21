@@ -14,7 +14,7 @@ import {
 /*
  * Cutscene data (map.cutscene) and its bake. Pure: no DOM.
  *
- * map.cutscene = { roomId, duration, starfield, hideRoom, actors[] }
+ * map.cutscene = { roomId, duration, starfield, starSeed, hideRoom, actors[] }
  *   roomId    id of the room set aside for the cutscene (null = none)
  *   duration  seconds, CUT_DUR_MIN..CUT_DUR_MAX
  *   starfield true = scatter of CUT_STAR_COUNT stars behind everything (see STARS)
@@ -46,7 +46,8 @@ import {
  *                       same sample. Same degenerate rule.
  *             byte = floor(angle / (2 pi) * 256 + 0.5) mod 256.
  *   ns per actor = full ns when the actor has a path or faces a moving target, else 1.
- * STARS    only when starfield: CUT_STAR_COUNT stars, a fixed scatter from a 16-bit xorshift, seed $ACE1
+ * STARS    only when starfield: CUT_STAR_COUNT stars, a fixed scatter from a 16-bit xorshift, seed starSeed
+ *           (1..65535, default $ACE1; header bytes 40,41 of the cooked data)
  *           (one step: x ^= x << 7;  x ^= x >> 9;  x ^= x << 8, all mod 65536). Per star, in order:
  *             step -> (h, l):   fresh position  az = h, row = l >> 1 (0..127)
  *             step -> (h2, l2): clumping and size
@@ -75,6 +76,7 @@ export const CUT_PATH_MAX = 16;
  */
 export const CUT_DATA_BUDGET = 2600;
 export const CUT_STAR_COUNT = 128;
+export const CUT_STAR_SEED_DEFAULT = 0xace1;
 export const CUT_FACING_ITEM = ["fixed", "path"];
 export const CUT_FACING_CAMERA = ["fixed", "path", "target"];
 /** Speed along the path: constant, or the distance fraction reshaped over time (see BAKE SPEC). */
@@ -201,8 +203,22 @@ function clampYawByte(n) {
   return ((v % 256) + 256) % 256;
 }
 
+/** Star scatter seed: 16-bit, nonzero (xorshift16 never leaves 0). Default is the original fixed seed. */
+export function clampStarSeed(n) {
+  const v = Math.round(Number(n));
+  if (!Number.isFinite(v)) return CUT_STAR_SEED_DEFAULT;
+  const w = ((v % 65536) + 65536) % 65536;
+  return w === 0 ? CUT_STAR_SEED_DEFAULT : w;
+}
+
+/** Hex text ("ACE1", "$ACE1", "0xACE1") to a seed; NaN-safe via clampStarSeed. */
+export function parseStarSeed(text) {
+  const s = String(text).trim().replace(/^(\$|0x)/i, "");
+  return clampStarSeed(/^[0-9a-f]+$/i.test(s) ? parseInt(s, 16) : NaN);
+}
+
 export function newCutscene() {
-  return { roomId: null, duration: CUT_DUR_DEFAULT, starfield: false, hideRoom: false, actors: [] };
+  return { roomId: null, duration: CUT_DUR_DEFAULT, starfield: false, starSeed: CUT_STAR_SEED_DEFAULT, hideRoom: false, actors: [] };
 }
 
 /** A new actor. Items start at (x,y,z) with no path; the camera starts at an eye position. */
@@ -249,7 +265,14 @@ export function normalizeCutscene(raw) {
   const actors = (Array.isArray(raw.actors) ? raw.actors : []).map(normalizeActor).filter(Boolean).slice(0, CUT_ACTOR_MAX);
   const roomId = typeof raw.roomId === "string" && raw.roomId ? raw.roomId : null;
   if (!roomId && !actors.length) return null;
-  return { roomId, duration: clampCutDuration(raw.duration), starfield: raw.starfield === true, hideRoom: raw.hideRoom === true, actors };
+  return {
+    roomId,
+    duration: clampCutDuration(raw.duration),
+    starfield: raw.starfield === true,
+    starSeed: clampStarSeed(raw.starSeed ?? CUT_STAR_SEED_DEFAULT),
+    hideRoom: raw.hideRoom === true,
+    actors,
+  };
 }
 
 /** The map's cutscene, created on first use (editing). */
@@ -459,9 +482,9 @@ export function cutSampleAt(baked, tMs) {
   return { x: lerp(baked.x), y: lerp(baked.y), z: lerp(baked.z), yaw };
 }
 
-/** Bytes of the cooked data: fixed 40-byte header (4 + five 6-entry actor tables + stars, hide, flyby), 7 per sample, 2 per flyby sample. */
+/** Bytes of the cooked data: fixed 42-byte header (4 + five 6-entry actor tables + stars, hide, flyby, star seed), 7 per sample, 2 per flyby sample. */
 export function cutsceneBytes(baked, fly = null) {
-  let n = 40 + (fly ? 2 * fly.n : 0);
+  let n = 42 + (fly ? 2 * fly.n : 0);
   for (const a of baked.actors) n += 7 * a.ns;
   return n;
 }
@@ -470,10 +493,10 @@ export function cutsceneBytes(baked, fly = null) {
  * The star pixels visible at camera yaw byte `yaw` (the STARS spec):
  * [{ x: 0..95 colour-clock column, y: 0..127 row }]. Mirrors cut_stars in src/a8cutscene.asm.
  */
-export function cutStars(yaw) {
+export function cutStars(yaw, seed = CUT_STAR_SEED_DEFAULT) {
   const out = [];
   const yb = ((Math.round(yaw) % 256) + 256) % 256;
-  let x = 0xace1;
+  let x = clampStarSeed(seed);
   const rng = () => {
     x ^= (x << 7) & 0xffff;
     x ^= x >> 9;

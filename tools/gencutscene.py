@@ -25,7 +25,8 @@ Data (offsets are the CD_* equates in a8cutscene.asm), actor 0 is always the cam
     35 hide room (nonzero = the room box is neither transformed nor stroked)
     36 flyby AUDC distortion bits ($80 noise, $A0 tone; 0 = no flyby sound)
     37 flyby sample count   38..39 offset of the flyby block (audf[n] vol[n]) from the start of the data
-    40 sample blocks, per actor: xl[ns] xh[ns] yl[ns] yh[ns] zl[ns] zh[ns] yaw[ns]
+    40..41 star seed (lo, hi; xorshift16 start value, never 0; default $ACE1)
+    42 sample blocks, per actor: xl[ns] xh[ns] yl[ns] yh[ns] zl[ns] zh[ns] yaw[ns]
 The flyby block follows the actor sample blocks: audf[n] vol[n], n samples on the same 128 ms grid;
 the game lerps both and plays AUDC = dist | (vol >> 4), AUDF on POKEY channel 4.
 Positions are 8.8 world units, camera = eye, items as the editor places them (the game adds
@@ -81,8 +82,10 @@ CD_KIND, CD_SCALE, CD_NS, CD_OFFL, CD_OFFH = 4, 10, 16, 22, 28
 CD_STARS = 34
 CD_HIDE = 35
 CD_FLYD, CD_FLYN, CD_FLYOL, CD_FLYOH = 36, 37, 38, 39
-CD_SAMPLES = 40
+CD_SEEDL, CD_SEEDH = 40, 41
+CD_SAMPLES = 42
 CUT_STAR_COUNT = 128
+CUT_STAR_SEED_DEFAULT = 0xACE1
 KIND_CAMERA = 0xFF
 MAX_STEP_UNITS = 127  # the engine lerps a signed 8.8 delta per 128 ms sample
 
@@ -284,6 +287,15 @@ def norm_actor(raw) -> dict | None:
     return a
 
 
+def clamp_star_seed(v) -> int:
+    """16-bit nonzero; same as clampStarSeed in cutsceneModel.js."""
+    try:
+        w = int(round(float(v))) % 65536
+    except (TypeError, ValueError, OverflowError):
+        return CUT_STAR_SEED_DEFAULT
+    return w or CUT_STAR_SEED_DEFAULT
+
+
 def normalize(raw) -> dict | None:
     if not isinstance(raw, dict):
         return None
@@ -295,6 +307,7 @@ def normalize(raw) -> dict | None:
         "roomId": room_id,
         "duration": clamp_duration(raw.get("duration")),
         "starfield": raw.get("starfield") is True,
+        "starSeed": clamp_star_seed(raw.get("starSeed", CUT_STAR_SEED_DEFAULT)),
         "hideRoom": raw.get("hideRoom") is True,
         "actors": actors,
     }
@@ -530,6 +543,9 @@ def pack_data(cut: dict, level: dict, key: str) -> bytes:
     head[CD_DUR + 1] = b["durMs"] >> 8
     head[CD_STARS] = CUT_STAR_COUNT if cut.get("starfield") else 0
     head[CD_HIDE] = 1 if cut.get("hideRoom") else 0
+    seed = clamp_star_seed(cut.get("starSeed", CUT_STAR_SEED_DEFAULT))
+    head[CD_SEEDL] = seed & 0xFF
+    head[CD_SEEDH] = seed >> 8
     body = bytearray()
     for i, a in enumerate(b["actors"]):
         if a["ns"] > 255:
