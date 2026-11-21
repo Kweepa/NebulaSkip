@@ -10,7 +10,7 @@ greet_lo
 	!byte <grt0,<grt1
 greet_hi
 	!byte >grt0,>grt1
-SHOP_N	= 4
+SHOP_N	= 5
 DIFF_W	= 6
 shn0
 	!text "shield recharge"
@@ -31,9 +31,18 @@ shd1
 	!byte 0
 	!byte 0
 shn2
-	!text "boost pack"
+	!text "docking fees"
 	!byte 0
 shd2
+	!text "pay docking fees to restore"
+	!byte 0
+	!text "access to the docking bay."
+	!byte 0
+	!byte 0
+shn3
+	!text "boost pack"
+	!byte 0
+shd3
 	!text "backpack that allows you to"
 	!byte 0
 	!text "'jump' while in the air. small"
@@ -41,10 +50,10 @@ shd2
 	!text "cooldown."
 	!byte 0
 	!byte 0
-shn3
+shn4
 	!text "hack squid"
 	!byte 0
-shd3
+shd4
 	!text "head mounted hack apparatus."
 	!byte 0
 	!text "open locked doors with ease."
@@ -53,17 +62,17 @@ shd3
 	!byte 0
 	!byte 0
 shop_name_lo
-	!byte <shn0,<shn1,<shn2,<shn3
+	!byte <shn0,<shn1,<shn2,<shn3,<shn4
 shop_name_hi
-	!byte >shn0,>shn1,>shn2,>shn3
+	!byte >shn0,>shn1,>shn2,>shn3,>shn4
 shop_desc_lo
-	!byte <shd0,<shd1,<shd2,<shd3
+	!byte <shd0,<shd1,<shd2,<shd3,<shd4
 shop_desc_hi
-	!byte >shd0,>shd1,>shd2,>shd3
+	!byte >shd0,>shd1,>shd2,>shd3,>shd4
 shop_price_lo
-	!byte 19,49,231,119
+	!byte 19,49,227,231,119
 shop_price_hi
-	!byte 0,0,3,5
+	!byte 0,0,0,3,5
 SHOP_RIG_MASK	= 2
 CRIME_N	= 16
 crm0

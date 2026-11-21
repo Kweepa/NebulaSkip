@@ -84,8 +84,10 @@ b5_pw_hi
 	!byte >10000, >1000, >100, >10
 
 ; ------------------------------------------------------------------
-; bty_apply — unlock the remote door of every accepted bounty whose map is the
-; current one (bounties.csv 5th column, baked by genmap.py into bty_door.asm).
+; bty_apply — unlock the remote door of every accepted bounty / bought shop item whose
+; map is the current one (bounties.csv and shop.csv 5th column, baked by genmap.py into
+; bty_door.asm). bty_door_bit is the item's bit in the 32-bit mask bounty_acc..shop_owned_h
+; (mem.asm: contiguous; bounty i = bit i, shop item i = bit 16+i).
 ; Idempotent. Needs the map bound, so it runs after world_init and after the
 ; terminal closes (segment E cannot read the map). Clobbers A, X, Y.
 ; ------------------------------------------------------------------
@@ -94,22 +96,21 @@ bty_apply
 .ba_l
 	cpx #BTY_DOOR_N
 	bcs .ba_rts
-	lda bty_door_tag,x
-	beq .ba_n
 	lda bty_door_map,x
 	cmp level_num
 	bne .ba_n
-	txa
+	lda bty_door_bit,x
 	and #7
 	tay
 	lda barrel_bit,y			; 1 << n (rocket.asm)
-	cpx #8
-	bcs .ba_h
-	and bounty_acc
-	jmp .ba_t
-.ba_h
-	and bounty_acc_h
-.ba_t
+	pha
+	lda bty_door_bit,x
+	lsr
+	lsr
+	lsr
+	tay
+	pla
+	and bounty_acc,y
 	beq .ba_n
 	txa
 	pha

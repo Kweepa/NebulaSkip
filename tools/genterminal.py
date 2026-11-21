@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """shop.csv + bounties.csv -> src/terminal_data.asm (DNA terminal text).
 
-shop.csv      name, description, price           (no header)
+shop.csv      name, description, price[, map, remote door tag] (no header; the door tag is baked by
+              genmap.py: buying the item unlocks that remote door on that map)
 bounties.csv  name, description, difficulty, map[, remote door tag] (no header; map is mapa..mapz;
               the door tag is baked by genmap.py: accepting unlocks that remote door on that map)
 
@@ -74,7 +75,7 @@ def rows(path, ncols):
             r = [c.strip() for c in r]
             if not any(r):
                 continue
-            if len(r) not in ((ncols, ncols + 1) if path == BOUNTIES else (ncols,)):
+            if len(r) not in ((ncols, ncols + 1) if path == BOUNTIES else (ncols, ncols + 2)):
                 die(f"{path.name} line {n}: expected {ncols} fields, got {len(r)}")
             out.append((n, r))
     if not out:
@@ -240,7 +241,7 @@ def main():
     p.append(f"SHOP_N\t= {len(shop)}\nDIFF_W\t= {DIFF_W}\n")
     names, descs, prices = [], [], []
     body = []
-    for i, (n, (name, desc, price)) in enumerate(shop):
+    for i, (n, (name, desc, price, *_door)) in enumerate(shop):
         text(SHOP, n, "name", name, NAME_MAX)
         try:
             pr = int(price)

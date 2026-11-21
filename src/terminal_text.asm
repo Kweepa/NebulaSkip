@@ -15,7 +15,7 @@ t_s_access
 t_s_return
 	!text "return",0
 t_s_shop
-	!text "hardware",0
+	!text "purchase",0
 t_s_bounties
 	!text "bounties",0
 t_s_quit
