@@ -157,7 +157,8 @@ t_loop						; e_ship.asm / e_rig.asm return here too
 	jsr t_draw
 	jmp .tr_loop
 .tr_buy
-	dex					; X = item index
+	dex					; X = row
+	jsr t_item				; X = item index (owned items are not listed)
 	jsr t_owned
 	bne .tr_refuse
 	sec
@@ -174,6 +175,17 @@ t_loop						; e_ship.asm / e_rig.asm return here too
 	jsr hud_bits
 	lda #SOUND_ITEMUP
 	jsr play_sound
+	jsr t_shop_n				; the bought item leaves the list
+	stx term_n
+	lda term_sel				; bought the last item: the cursor would sit on the
+	clc					; return row now, so step back to the new last item
+	adc #1					; (stays on return if the list is empty)
+	cmp term_n
+	bne .tb_ok
+	cpx #1
+	beq .tb_ok
+	dec term_sel
+.tb_ok
 	jsr t_redraw
 	jmp .tr_loop
 .tr_return
@@ -193,8 +205,8 @@ t_loop						; e_ship.asm / e_rig.asm return here too
 	beq .tr_bty
 	jmp t_leave				; quit
 .tr_shop
+	jsr t_shop_n				; X = unowned items + return (clobbers A)
 	lda #1
-	ldx #SHOP_N + 1
 	bne .tr_list
 .tr_bty
 	lda #2
@@ -609,11 +621,13 @@ t_draw_list
 	cpx term_n
 	beq .dl_ret
 	ldx term_tmp2
+	jsr t_item				; shop: row -> Nth unowned item
 	jsr t_marker
 	jsr t_nameptr
 	ldx #2
 	jsr t_puts
 	ldx term_tmp2
+	jsr t_item
 	lda term_scr
 	cmp #2
 	beq .dl_bty
@@ -652,6 +666,19 @@ t_draw_list
 	lda term_tmp2
 	cmp term_n
 	bcc .dl_i
+	jsr t_rbegin				; the list shrinks (item bought): blank the old rows
+	lda term_n				; below the return row, up to the rule
+	clc
+	adc #3
+	sta term_tmp2
+.dl_z
+	cmp #T_DESC_RULE
+	bcs .dl_zd
+	jsr t_blit
+	inc term_tmp2
+	lda term_tmp2
+	bne .dl_z				; always
+.dl_zd
 	jsr t_rule
 	lda #T_DESC_RULE
 	jsr t_blit
@@ -670,6 +697,7 @@ t_draw_list
 	cpx term_n
 	beq .dl_done				; the return row has no description
 	dex
+	jsr t_item
 	jsr t_descptr
 	lda #T_DESC_RULE + 1
 	sta term_tmp2
@@ -729,13 +757,12 @@ t_descptr
 	sta src_ptr + 1
 	rts
 
-; Row marker in the last column: shop = bought, bounties = the accepted one.
+; Row marker in the last column (bounties only: the accepted ones). Bought shop
+; items are not listed at all.
 t_marker
 	lda term_scr
 	cmp #2
 	beq .mk_b
-	jsr t_owned
-	bne .mk_set
 	rts
 .mk_b
 	txa
@@ -750,10 +777,45 @@ t_marker
 	and bounty_acc_h
 .mk_t
 	beq .mk_n
-.mk_set
 	lda #'x'
 	sta term_row + TERM_COLS - 1
 .mk_n
+	rts
+
+; X = list row -> X = item index. Bounties list every entry (identity); the shop
+; skips bought items, so row N is the Nth unowned one. Clobbers A, Y, term_tmp.
+t_item
+	lda term_scr
+	cmp #2
+	beq .ti_r
+	stx term_tmp
+	ldx #0
+.ti_l
+	jsr t_owned
+	bne .ti_s
+	lda term_tmp
+	beq .ti_r
+	dec term_tmp
+.ti_s
+	inx
+	bne .ti_l				; always (SHOP_N <= 16)
+.ti_r
+	rts
+
+; -> X = unowned shop items + 1 (the return row), Z clear. Clobbers A, Y, term_tmp.
+t_shop_n
+	lda #0
+	sta term_tmp
+	ldx #SHOP_N - 1
+.sn_l
+	jsr t_owned
+	bne .sn_s
+	inc term_tmp
+.sn_s
+	dex
+	bpl .sn_l
+	ldx term_tmp
+	inx
 	rts
 
 ; X = shop item -> A nonzero if bought. X kept.
