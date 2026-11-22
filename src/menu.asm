@@ -191,6 +191,7 @@ update_selection
 	ldx menu_item
 	stx tmp4
 	jsr draw_menu_item
+	jsr draw_skill_desc
 
 	jsr a8_stamp_cursor
 
@@ -509,6 +510,7 @@ draw_menu
 	bcc .dm_l
 
 	jsr draw_hint
+	jsr draw_skill_desc
 	lda #1
 	sta cursor_spr_en
 
@@ -539,6 +541,39 @@ draw_section_title
 	lda ui_str_l
 	ldy ui_str_h
 	jmp print_centered
+
+; Skill menu only: one line under the box saying how the highlighted level
+; differs from Freelancer. Blank on Back. Row is cleared first, so it is safe
+; to call on every cursor move.
+draw_skill_desc
+	lda menu_id
+	cmp #1
+	bne .sd_rts
+	lda box_top
+	clc
+	adc menu_size
+	adc #BOX_VGAP + BOX_VGAP + 1
+	tax
+	lda #0
+	jsr bmp_cell_addr			; sets pr_col/pr_row for the blank
+	ldy #0
+.sd_clr
+	jsr bmp_blank_cell_y
+	iny
+	cpy #40
+	bcc .sd_clr
+	lda #COL_MAIN
+	sta cell_bg
+	lda #TEXT_COL
+	sta ui_text_col
+	ldx menu_item
+	lda skill_desc_hi,x
+	tay
+	lda skill_desc_lo,x
+	ldx pr_row
+	jmp print_centered
+.sd_rts
+	rts
 
 ; Key sprites + "move / adjust / select" on HINT_ROW.
 draw_hint
@@ -1634,6 +1669,17 @@ str_mouse_bit	!scr "Off",0
 str_doofus	!scr "Doofus",0
 str_freelancer	!scr "Freelancer",0
 str_spacebast	!scr "Space Bastard",0
+
+; 40 chars max (mode 2 row). Values mirror take_damage / damage_enemy.
+str_sd_easy	!scr "Half damage taken, 50% more dealt",0
+str_sd_norm	!scr "Standard damage taken and dealt",0
+str_sd_hard	!scr "50% more damage taken",0
+str_sd_none	!byte 0
+
+skill_desc_lo
+	!byte <str_sd_easy, <str_sd_norm, <str_sd_hard, <str_sd_none
+skill_desc_hi
+	!byte >str_sd_easy, >str_sd_norm, >str_sd_hard, >str_sd_none
 
 str_sec_main	!byte 0				; main: logo only, no heading
 str_sec_skill	!scr "Skill Level",0

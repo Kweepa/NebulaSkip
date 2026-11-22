@@ -138,7 +138,9 @@ btd0
 	!byte 0
 	!text "and stripping the alpha"
 	!byte 0
-	!text "shielding."
+	!text "shielding. The chief wants"
+	!byte 0
+	!text "them gone."
 	!byte 0
 	!byte 0
 btn1
