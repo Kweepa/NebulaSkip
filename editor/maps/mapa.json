@@ -59,8 +59,8 @@
       "doorType": "Tech",
       "doorScale": 1,
       "tag": "dockfees",
-      "locked": true,
-      "otherRoomId": "dfb52cf6-6552-49d8-81a1-742dfb72fa08"
+      "otherRoomId": "dfb52cf6-6552-49d8-81a1-742dfb72fa08",
+      "locked": true
     },
     {
       "id": "062467dd-98e3-4f8e-91e0-a98e9b7d5dc7",
@@ -76,8 +76,8 @@
       "dir": 1,
       "roomId": "dfb52cf6-6552-49d8-81a1-742dfb72fa08",
       "pickup": "ship",
-      "scale": 8,
-      "rot": 2
+      "rot": 2,
+      "scale": 8
     },
     {
       "id": "12620da2-5e68-47fd-9c37-7286b2e18798",
@@ -1331,10 +1331,10 @@
       "kind": "trigger",
       "x": 140,
       "y": 64,
-      "z": 114,
+      "z": 113,
       "sx": 5,
       "sy": 4,
-      "sz": 4,
+      "sz": 6,
       "face": "+z",
       "axis": "z",
       "dir": 1,
@@ -1998,7 +1998,7 @@
       "axis": "z",
       "dir": 1,
       "purpose": "message",
-      "text": "Meditate here",
+      "text": "Press fire to meditate",
       "tag": "",
       "roomId": "18122f0a-d40d-4adf-b8ca-744255d25a9f"
     },
@@ -2113,8 +2113,8 @@
       "face": "+z",
       "axis": "z",
       "dir": 1,
-      "roomId": "dfb52cf6-6552-49d8-81a1-742dfb72fa08",
-      "playerOnly": true
+      "playerOnly": true,
+      "roomId": "dfb52cf6-6552-49d8-81a1-742dfb72fa08"
     },
     {
       "id": "bd45dbea-9399-45c5-9c14-1d8ab06ac902",
@@ -2128,8 +2128,8 @@
       "face": "+z",
       "axis": "z",
       "dir": 1,
-      "roomId": "dfb52cf6-6552-49d8-81a1-742dfb72fa08",
-      "playerOnly": true
+      "playerOnly": true,
+      "roomId": "dfb52cf6-6552-49d8-81a1-742dfb72fa08"
     },
     {
       "id": "ef8964bd-a3d8-4ae9-9e14-5dda2202db49",
