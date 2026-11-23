@@ -32,8 +32,9 @@ SOUND_FIREBALL	= 22
 SOUND_DORCLS	= 23
 SOUND_JUMP	= 24
 SOUND_LAND	= 25
-SOUND_COUNT	= 26
-SOUND_RESIDENT_N	= 26
+SOUND_BOOST	= 26
+SOUND_COUNT	= 27
+SOUND_RESIDENT_N	= 27
 !if SOUND_COUNT * 2 > SOUND_TABLE_MAX {
 	!error "sound_table does not fit its BSS window"
 }
@@ -96,8 +97,10 @@ pc_jump
 	!byte 9, 0, 30, 150, 126, 106, 90, 76, 65, 56, 48, 42
 pc_land
 	!byte 3, 4, 30, 255, 240, 220
+pc_boost
+	!byte 9, 0, 30, 106, 89, 75, 64, 54, 46, 40, 34, 30
 
-; resident sound payload 383 bytes
+; resident sound payload 395 bytes
 ; copied into sound_table[0..SOUND_RESIDENT_N-1] by play_sound_init
 sound_res_words
 	!word pc_pistol
@@ -126,3 +129,4 @@ sound_res_words
 	!word pc_dorcls
 	!word pc_jump
 	!word pc_land
+	!word pc_boost

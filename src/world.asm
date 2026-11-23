@@ -30,6 +30,7 @@ world_init
 	sta fall_acc
 	sta jump_on
 	sta jump_held
+	sta boost_used
 	sta ability_cur
 	sta hurt_flash_l
 	sta hurt_flash_h
@@ -1037,6 +1038,7 @@ update_fall
 	lda #0
 	sta pl_falling
 	sta jump_on
+	sta boost_used
 	sta fall_vl
 	sta fall_vh
 	sta fall_vf
@@ -1544,16 +1546,48 @@ step_up_ok
 	rts
 
 ; ------------------------------------------------------------------
-; do_jump — joystick button in ABIL_JUMP. Grounded only. Heading = held
+; do_jump — joystick button in ABIL_JUMP. Heading = held
 ; direction (fwd/back/strafe) relative to yaw, none held = vertical only.
 ; Rides update_fall with a negative fall_v; apply_move_world adds walk-speed XZ.
+; Airborne: with the boost pack (SHOP_BOOST_MASK) one boost per airtime, see .dj_air.
 ; ------------------------------------------------------------------
 do_jump
 	lda pl_falling
-	bne .dj_rts
+	bne .dj_air
 	jsr air_heading
 	stx jump_on
-	jmp .dj_go
+	jsr .dj_go
+	lda #SOUND_JUMP
+	jmp play_sound
+
+; Boost: same impulse as the takeoff (sound half an octave up), once until the next landing (boost_used).
+; Holding a direction re-aims the arc; otherwise the current heading is kept.
+; fall_y0 stays at the higher of the old value and the boost height, so the
+; landing check still sees the whole drop and a boost does not wash out fall damage.
+.dj_air
+	lda shop_owned
+	and #SHOP_BOOST_MASK
+	beq .dj_bdone
+	lda boost_used
+	bne .dj_bdone
+	lda #1
+	sta boost_used
+	jsr air_heading
+	cpx #2
+	bcc .dj_bkeep
+	stx jump_on
+.dj_bkeep
+	lda fall_y0
+	pha
+	jsr .dj_go
+	lda #SOUND_BOOST
+	jsr play_sound			; preserves X, Y
+	pla
+	cmp fall_y0
+	bcc .dj_bdone			; old < boost height: keep the new one
+	sta fall_y0
+.dj_bdone
+	rts
 
 ; air_heading — held direction (fwd/back/strafe) relative to yaw -> jump_yaw.
 ; Out: X = 2 heading set, X = 1 nothing held (straight up/down). Clobbers A, Y.
@@ -1621,9 +1655,6 @@ air_heading
 	sta fall_y0
 	lda #1
 	sta pl_falling
-	lda #SOUND_JUMP
-	jmp play_sound
-.dj_rts
 	rts
 
 ; yaw offset by mask fwd=1 back=2 left=4 right=8; $ff none / cancelled
@@ -2066,7 +2097,7 @@ neg_a
 	rts
 
 ; ------------------------------------------------------------------
-; Proximity: a blocked move into a use switch. Backpacks every frame.
+; Proximity: a blocked move into a use switch. Polled every frame.
 ; The block has to be on the face axis, from the air side of that face,
 ; so a door transit or an enemy beside the pad does not throw it.
 ; ------------------------------------------------------------------
@@ -2461,11 +2492,20 @@ gb_do_key
 	sec
 	rts
 
+; The boost pack pickup is the shop's boost pack too: it grants the air boost (shop_owned, so the
+; shop stops listing it) and the ammo caps. Refused only when it has nothing left to give.
 gb_do_pack
 	lda have_pack
+	beq .gp_new
+	lda shop_owned
+	and #SHOP_BOOST_MASK
 	bne gb_no
+.gp_new
 	lda #1
 	sta have_pack
+	lda shop_owned
+	ora #SHOP_BOOST_MASK
+	sta shop_owned
 	sec
 	rts
 

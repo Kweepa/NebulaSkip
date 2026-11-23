@@ -617,7 +617,7 @@ draw_plat_mesh
 	sta edge_b+1
 	jmp stroke_mesh
 
-; Pickup mesh: type in A (TH_*). nv=0 → backpack mesh.
+; Pickup mesh: type in A (TH_*). nv=0 → boost pack mesh.
 ; draw_thing_mesh latches th_ori (facing + scale shift) for fill_item_verts; draw_pickup_mesh
 ; (death drops) always sees th_draw_fl = 0 because it is cleared after every fill.
 draw_thing_mesh
@@ -645,7 +645,7 @@ fill_item_verts
 	tay
 	lda item_nv,y
 	bne +
-	ldy #TH_BACKPACK
+	ldy #TH_BOOST_PACK
 +
 	lda #0
 	sta rot1				; no door scale

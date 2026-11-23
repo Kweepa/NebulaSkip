@@ -619,7 +619,7 @@ ELEV_FLAG_SLOW	= 1			; elev_flags bit0: step every 512 ms
 DOOR_RECLOSE_MS	= 5000
 DOOR_UNHIDE_MS	= 10000		; unhide trigger, then hidden again
 ELEV_WAIT_MS	= 5000
-STATUS_MS	= 5000			; backpack / status HUD line
+STATUS_MS	= 5000			; boost pack / status HUD line
 
 ; Box / mesh draw
 BOX_NVERTS	= 8
@@ -777,8 +777,9 @@ nc_v		= $CC73 + A8_OFF			; near clip: CAM index across lerp16
 nc_s		= $CC74 + A8_OFF			; near clip: behind endpoint's ox/oy slot (0/4)
 emuz_src	= $CC75 + A8_OFF			; clipped muzzle rect
 ammo_bullets	= $CC77 + A8_OFF			; pistol reserve (not in the $CD00 block)
-have_pack	= $CC7A + A8_OFF			; 1 = backpack raised ammo caps
+have_pack	= $CC7A + A8_OFF			; 1 = boost pack raised ammo caps
 gb_cap		= $CC7B + A8_OFF			; grant_th_type effective max
+boost_used	= $CC7C + A8_OFF			; 1 = air boost spent this airtime; cleared on landing
 wpn_bob_ph	= $CC7F + A8_OFF			; walk bob index 0..127; 0 = rest
 VSX		= $CC80 + A8_OFF			; screen X/Y (front verts with outcode 0)
 VSY		= $CC90 + A8_OFF

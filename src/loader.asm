@@ -1267,7 +1267,7 @@ cut_draw_item
 	tay
 	lda item_nv,y
 	bne .cd_nv
-	ldy #TH_BACKPACK
+	ldy #TH_BOOST_PACK
 .cd_nv
 	lda #0
 	sta rot1				; no door scale (as fill_item_verts)

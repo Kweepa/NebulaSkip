@@ -38,7 +38,7 @@ BP_PICKUP_KEY = [
     "green armor",
     "blue armor",
     "ammo box",
-    "backpack",
+    "boost pack",
     "red keycard",
     "yellow keycard",
     "blue keycard",
@@ -58,7 +58,7 @@ def v(x, y, z):
 
 
 DEFAULT_MESHES = {
-    "backpack": {
+    "boost pack": {
         "verts": [v(-1, 0, -1), v(1, 0, -1), v(0, 0, 1), v(0, 2, 0)],
         "lines": [[0, 1], [1, 2], [2, 0], [3, 0], [3, 1], [3, 2]],
     },
@@ -247,10 +247,10 @@ def migrate_items(raw_items, version: int) -> dict:
             if v:
                 verts.append(v)
         out[key] = {**mesh, "verts": verts}
-    bp = out.get("backpack") or {}
+    bp = out.get("boost pack") or {}
     pts = [(int(v["x"]), int(v["y"]), int(v["z"])) for v in bp.get("verts") or []]
     if pts == [(0, 0, 0), (2, 0, 0), (1, 0, 2), (1, 2, 1)]:
-        out["backpack"] = DEFAULT_MESHES["backpack"]
+        out["boost pack"] = DEFAULT_MESHES["boost pack"]
     return out
 
 
@@ -531,12 +531,12 @@ def load_item_meshes() -> tuple[dict, list[str], dict]:
             for k, v in raw.items():
                 mesh = parse_mesh(v)
                 key = DOOR_ALIAS.get(k, k)
-                if key == "backpack" and not mesh["verts"]:
+                if key == "boost pack" and not mesh["verts"]:
                     continue
                 if key in DOOR_MESH_KEY and not mesh["verts"]:
                     continue
                 # A sphere-only item has no verts; the cooker appends the sphere origins.
-                keep = mesh["verts"] or (mesh["spheres"] and key not in DOOR_MESH_KEY and key != "backpack")
+                keep = mesh["verts"] or (mesh["spheres"] and key not in DOOR_MESH_KEY and key != "boost pack")
                 items[key] = mesh if keep else items.get(key, {"verts": [], "lines": []})
     return items, custom, meta
 

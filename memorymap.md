@@ -170,7 +170,7 @@ only changes `LoadPrg` inside `loader.asm` (26 B).
 | `$47BD`–`$4998` | 476 | `elevator.asm` | |
 | `$4999`–`$4B9B` | 515 | `door.asm` | |
 | `$4B9C`–`$5CC7` | 4396 | `world.asm` | move, collision, pickups, triggers |
-| `$5CC8`–`$609D` | 982 | `item_mesh.asm` | backpack / door meshes |
+| `$5CC8`–`$609D` | 982 | `item_mesh.asm` | boost pack / door meshes |
 | `$609E`–`$6D27` | 3210 | `mesh.asm` | rooms, slopes, world stroke |
 | `$6D28`–`$7F2B` | 4612 | `cube.asm` | enemy xform / project / clip / draw |
 | `$7F2C`–`$8F28` | 4093 | `enemy.asm` | resident AI core, hitscan, damage |

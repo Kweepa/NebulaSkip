@@ -375,7 +375,7 @@ hud_ability
 	rts
 
 ; Bits + health + shield (+ ability label); ammo is not drawn.
-; Call on init, spend, backpack, damage — not every frame.
+; Call on init, spend, boost pack, damage — not every frame.
 hud_ammo
 	jsr hud_ability
 	jsr hud_bits				; ammo is not shown; its variables and plumbing stay

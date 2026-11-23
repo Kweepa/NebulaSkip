@@ -48,6 +48,7 @@ EFFECTS = [
     ("DORCLS", "DPDORCLS", 2, 20),
     ("JUMP", None, 0, 30),
     ("LAND", None, 0, 30),
+    ("BOOST", None, 0, 30),
 ]
 
 # Hand-built effects (lump None above): name -> (POKEY AUDF per tick, noise).
@@ -57,6 +58,8 @@ SYNTH = {
     "JUMP": ([150, 126, 106, 90, 76, 65, 56, 48, 42], False),
     # Low thump: slow noise clock, 3 ticks.
     "LAND": ([255, 240, 220], True),
+    # The boost pack's air jump: JUMP's sweep half an octave up (AUDF x 0.707).
+    "BOOST": ([106, 89, 75, 64, 54, 46, 40, 34, 30], False),
 }
 
 # Cue idents for the four shipped types. melee/shoot are what a clip sound frame plays.

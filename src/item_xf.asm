@@ -61,7 +61,7 @@ th_cull_hit
 	tay
 	lda item_nv,y
 	bne .tc_r
-	ldy #TH_BACKPACK
+	ldy #TH_BOOST_PACK
 .tc_r
 	lda item_cr,y
 	asl

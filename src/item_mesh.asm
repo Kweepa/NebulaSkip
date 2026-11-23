@@ -9,7 +9,7 @@ ITEM_FL_RIDE	= 2
 
 ; Resident: indexed by th_cull_hit, item_pick_rot and the nv = 0 fallbacks.
 item_nv
-	!byte 12,12,5,7,10,8,5,8,7,5,7,8,8,6,10,10
+	!byte 12,12,5,7,10,10,5,8,7,5,7,8,8,6,10,10
 	!byte 12,12,10,9,6,10,3,5,5,1,9,8,8,4,4,3
 	!byte 10
 ; per-slot flags: ITEM_FL_ROT = yaw-spins about box+ITEM_BIAS (editor Rotating flag),
@@ -53,7 +53,7 @@ thn_3
 thn_4
 	!text "ammo box",0
 thn_5
-	!text "backpack",0
+	!text "boost pack",0
 thn_6
 	!text "keycard alpha",0
 thn_7

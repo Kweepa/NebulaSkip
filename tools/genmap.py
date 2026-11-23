@@ -564,7 +564,7 @@ def cook_one(level: dict, map_key: str) -> bytes:
     elevs = [o for o in objs if o["kind"] == "elevator"]
     enemies = [o for o in objs if o["kind"] == "enemy"]
     triggers = [o for o in objs if o["kind"] == "trigger"]
-    things = [o for o in objs if o["kind"] in ("pickup", "backpack", "key")]
+    things = [o for o in objs if o["kind"] in ("pickup", "boost_pack", "key")]
     spawns = [o for o in objs if o["kind"] == "spawn"]
 
     # Room-sorted (stable): runtime loops walk one room slice via room_*_o.
@@ -587,7 +587,7 @@ def cook_one(level: dict, map_key: str) -> bytes:
         "green armor": 2,
         "blue armor": 3,
         "ammo box": 4,
-        "backpack": 5,
+        "boost pack": 5,
         "red keycard": 6,
         "yellow keycard": 7,
         "blue keycard": 8,
@@ -1303,7 +1303,7 @@ def cook_one(level: dict, map_key: str) -> bytes:
             else:
                 bt = 7
         else:
-            name = (b.get("pickup") or b.get("backpack") or "ammo box").strip()
+            name = (b.get("pickup") or b.get("boost_pack") or "ammo box").strip()
             if name not in TH_TYPE:
                 fail(f"{map_key}: unknown item {name!r} (not a built-in or customItems entry)")
             bt = TH_TYPE[name]
@@ -1583,7 +1583,7 @@ TH_HEALTH_LG	= 1
 TH_ARMOR_G	= 2
 TH_ARMOR_B	= 3
 TH_BULLETS	= 4
-TH_BACKPACK	= 5
+TH_BOOST_PACK	= 5
 TH_KEY_RED	= 6
 TH_KEY_YELLOW	= 7
 TH_KEY_BLUE	= 8
@@ -1618,7 +1618,7 @@ ENEMY_CLASS_HUM	= 0
 # follow at TH 15... Keep in sync with genitems.py BP_MESH_KEY and the TH_* block in ENUMS.
 BUILTIN_ITEMS = [
     "small health", "large health", "green armor", "blue armor", "ammo box",
-    "backpack", "red keycard", "yellow keycard", "blue keycard", "soulsphere",
+    "boost pack", "red keycard", "yellow keycard", "blue keycard", "soulsphere",
     "radsuit", "bit wallet", "bit safe", "lightpost", "barrel",
 ]
 DOOR_ITEM_NAMES = ["tech", "arch", "tri", "crack"]
@@ -1652,7 +1652,7 @@ def item_collide_box(b: dict, items: dict, custom: list[str], meta: dict) -> tup
 
     if b.get("collide") is not True:
         return None
-    name = (b.get("pickup") or b.get("backpack") or "").strip()
+    name = (b.get("pickup") or b.get("boost_pack") or "").strip()
     if name == "barrel" or name in genitems.BP_PICKUP_KEY:
         return None
     m = meta.get(name) if isinstance(meta.get(name), dict) else {}

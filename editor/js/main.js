@@ -321,7 +321,7 @@ let framePoseClip = null;
 let clipIndex = 0;
 let frameLocal = 0;
 let mdlScale = DEFAULT_MDL_SCALE;
-let itemMeshKey = "backpack";
+let itemMeshKey = "boost pack";
 let itemSpinPreview = true;
 let itemGhostOn = false;
 let iconPaintColor = 1;
@@ -1772,7 +1772,7 @@ function applyEditorState(ed) {
     setOrthoMode(ed.orthoMode);
     collapsedRooms.clear();
     for (const id of ed.collapsedRooms) collapsedRooms.add(id);
-    itemMeshKey = allMeshKeys().includes(ed.item) ? ed.item : "backpack";
+    itemMeshKey = allMeshKeys().includes(ed.item) ? ed.item : "boost pack";
     const iorb = itemView.orbit;
     iorb.yaw = ed.itemOrbit.yaw;
     iorb.pitch = ed.itemOrbit.pitch;
@@ -1859,7 +1859,7 @@ function pushUndo() {
 
 function restore(json) {
   doc = normalizeDocument(JSON.parse(json));
-  if (!allMeshKeys().includes(itemMeshKey)) itemMeshKey = "backpack";
+  if (!allMeshKeys().includes(itemMeshKey)) itemMeshKey = "boost pack";
   deriveAllEnemyFrames();
   const have = new Set(activeMap(doc).objects.map((o) => o.id));
   selectedIds = selectedIds.filter((id) => have.has(id));
@@ -3210,7 +3210,7 @@ function removeCustomItem() {
   setCustomItemNames(doc.customItems);
   delete doc.items[old];
   if (doc.itemMeta) delete doc.itemMeta[old];
-  itemMeshKey = "backpack";
+  itemMeshKey = "boost pack";
   itemView.clearSelection();
   markDirty();
   buildPalette();
@@ -4708,12 +4708,12 @@ function renderInspector() {
     p.className = stats.over ? "error" : "muted";
     p.textContent = `${stats.nv} verts · ${stats.ne} lines · unique X ${stats.nx}/${ITEM_MAX_UNIQUE} · unique Z ${stats.nz}/${ITEM_MAX_UNIQUE} · ~${stats.bytes} B · page ${itemPagePlan(doc).pageOf[itemMeshKey] ?? 0}`;
     root.appendChild(p);
-    if (itemMeshKey !== "backpack" && !doc.items[itemMeshKey].verts.length && !doc.items[itemMeshKey].spheres?.length) {
+    if (itemMeshKey !== "boost pack" && !doc.items[itemMeshKey].verts.length && !doc.items[itemMeshKey].spheres?.length) {
       const f = document.createElement("p");
       f.className = "muted";
       f.textContent = DOOR_MESH_KEYS.includes(itemMeshKey)
         ? "Empty — falls back to Tech."
-        : "Empty — falls back to backpack.";
+        : "Empty — falls back to boost pack.";
       root.appendChild(f);
     }
     const sel = itemView.selection();

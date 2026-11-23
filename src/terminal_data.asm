@@ -43,9 +43,9 @@ shn3
 	!text "boost pack"
 	!byte 0
 shd3
-	!text "backpack that allows you to"
+	!text "pack that allows you to 'jump'"
 	!byte 0
-	!text "'jump' while in the air. small"
+	!text "while in the air. small"
 	!byte 0
 	!text "cooldown."
 	!byte 0
@@ -74,6 +74,7 @@ shop_price_lo
 shop_price_hi
 	!byte 0,0,0,3,5
 SHOP_RIG_MASK	= 2
+SHOP_BOOST_MASK	= 8
 CRIME_N	= 16
 crm0
 	!text "speeding"
@@ -144,20 +145,9 @@ btd0
 	!byte 0
 	!byte 0
 btn1
-	!text "Bob Kyllin's Band"
-	!byte 0
-btd1
-	!text "Bob is a troubadour with a"
-	!byte 0
-	!text "penchant for heists. His band"
-	!byte 0
-	!text "are counting bits on Verdan."
-	!byte 0
-	!byte 0
-btn2
 	!text "The Deepcut Crew"
 	!byte 0
-btd2
+btd1
 	!text "Miners on Gallows Rock dug too"
 	!byte 0
 	!text "deep and came back wrong. The"
@@ -165,6 +155,17 @@ btd2
 	!text "claim owners want their rock"
 	!byte 0
 	!text "back."
+	!byte 0
+	!byte 0
+btn2
+	!text "Bob Kyllin's Band"
+	!byte 0
+btd2
+	!text "Bob is a troubadour with a"
+	!byte 0
+	!text "penchant for heists. His band"
+	!byte 0
+	!text "are counting bits on Verdan."
 	!byte 0
 	!byte 0
 bty_name_lo
@@ -178,7 +179,7 @@ bty_desc_hi
 bty_diff	; offset into bty_diff_str
 	!byte 0,0,0
 bty_map
-	!byte 1,2,3
+	!byte 1,3,2
 bty_diff_str
 	!text "low   "
 	!text "medium"
@@ -191,7 +192,7 @@ smn1
 	!text "Verdan"
 	!byte 0
 smn2
-	!text "Gallows Rock"
+	!text "Peen Rock"
 	!byte 0
 sm_col
 	!byte 4,15,7

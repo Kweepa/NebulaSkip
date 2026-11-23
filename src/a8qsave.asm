@@ -184,6 +184,7 @@ qso_restore
 	sta pl_falling
 	sta jump_on
 	sta jump_held
+	sta boost_used
 	sta fall_vl
 	sta fall_vh
 	sta fall_vf

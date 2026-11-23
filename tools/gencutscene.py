@@ -92,7 +92,7 @@ MAX_STEP_UNITS = 127  # the engine lerps a signed 8.8 delta per 128 ms sample
 # Same as genmap.py: TH_* names (0..14, fixed by the asm), editor items follow at 15...
 BUILTIN_ITEMS = [
     "small health", "large health", "green armor", "blue armor", "ammo box",
-    "backpack", "red keycard", "yellow keycard", "blue keycard", "soulsphere",
+    "boost pack", "red keycard", "yellow keycard", "blue keycard", "soulsphere",
     "radsuit", "bit wallet", "bit safe", "lightpost", "barrel",
 ]
 DOOR_ITEM_NAMES = ["tech", "arch", "tri", "crack"]

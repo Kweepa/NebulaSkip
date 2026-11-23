@@ -344,7 +344,7 @@ export const KINDS = {
     id: "pickup",
     label: "Pickup",
     color: "#6ec4a8",
-    defaultSize: [1, 2, 1], // overwritten by applyBackpackProportions (1.5 tall, φ base)
+    defaultSize: [1, 2, 1], // overwritten by applyBoostPackProportions (1.5 tall, φ base)
     fixed: true,
     slope: false,
   },
@@ -616,7 +616,7 @@ export const PICKUP_TYPES = [
   "green armor",
   "blue armor",
   "ammo box",
-  "backpack",
+  "boost pack",
   "red keycard",
   "yellow keycard",
   "blue keycard",
@@ -632,7 +632,7 @@ const BUILTIN_ITEM_ICONS = {
   "green armor": ["55500555", "55555555", "055bb550", "0bb55bb0", "05b55b50", "0b5555b0", "05b55b50", "00555500"],
   "blue armor": ["eee00eee", "eeeeeeee", "0ee99ee0", "099ee990", "0e9ee9e0", "09eeee90", "0e9ee9e0", "00eeee00"],
   "ammo box": ["00000000", "00000000", "00000000", "00dddd00", "05555550", "09155190", "05999950", "05555550"],
-  "backpack": ["..88....", ".8888...", ".88899..", ".8898.9.", "89988..9", "88888..9", "88888.9.", ".88899.."],
+  "boost pack": ["..88....", ".8888...", ".88899..", ".8898.9.", "89988..9", "88888..9", "88888.9.", ".88899.."],
   "red keycard": ["000aaaaa", "00aa2a2a", "0aa7222a", "0a7a222a", "0a772a2a", "0aa72a2a", "0a7a2a2a", "0aaaaaaa"],
   "yellow keycard": ["00077777", "00775757", "07725557", "07275557", "07225757", "07725757", "07275757", "07777777"],
   "blue keycard": ["000eeeee", "00ee6e6e", "0ee3666e", "0e3e666e", "0e336e6e", "0ee36e6e", "0e3e6e6e", "0eeeeeee"],
@@ -646,7 +646,7 @@ const BUILTIN_ITEM_ICONS = {
   Crack: ["...f....", "...f....", "..f.....", "..ff....", "...f....", "....f...", "...f....", "..f....."],
 };
 /** @deprecated Use PICKUP_TYPES */
-export const BACKPACK_TYPES = PICKUP_TYPES;
+export const BOOST_PACK_TYPES = PICKUP_TYPES;
 
 export const ITEM_MESH_KEYS = PICKUP_TYPES;
 /** Shipped door styles: doorways can use these. */
@@ -971,11 +971,11 @@ export const DOOR_LOCK_LABELS = {
 export const DOOR_SCALES = [1, 1.5, 2];
 export const DOOR_SCALE_LABELS = { 1: "1.0", 1.5: "1.5", 2: "2.0" };
 
-/** Height / base-side = φ. Fixed backpack: 1.5 tall. */
+/** Height / base-side = φ. Fixed boost pack: 1.5 tall. */
 export const GOLDEN_RATIO = (1 + Math.sqrt(5)) / 2;
-export const BACKPACK_HEIGHT = 1.5;
-export const BACKPACK_SIDE = BACKPACK_HEIGHT / GOLDEN_RATIO;
-export const BACKPACK_DEPTH = (BACKPACK_SIDE * Math.sqrt(3)) / 2;
+export const BOOST_PACK_HEIGHT = 1.5;
+export const BOOST_PACK_SIDE = BOOST_PACK_HEIGHT / GOLDEN_RATIO;
+export const BOOST_PACK_DEPTH = (BOOST_PACK_SIDE * Math.sqrt(3)) / 2;
 
 const PICKUP_ALIAS = {
   "health 25%": "small health",
@@ -999,7 +999,7 @@ export function clampPickupType(s) {
 }
 
 /** @deprecated Use clampPickupType */
-export function clampBackpackType(s) {
+export function clampBoostPackType(s) {
   return clampPickupType(s);
 }
 
@@ -1061,10 +1061,10 @@ function meshOf(verts, lines) {
   return { verts: verts.map((p) => v3(p[0], p[1], p[2])), lines: lines.map((p) => [p[0], p[1]]) };
 }
 
-/** Seeded meshes that obey 6 unique X / 6 unique Z. Empty types fall back to backpack. */
+/** Seeded meshes that obey 6 unique X / 6 unique Z. Empty types fall back to boost pack. */
 export function defaultItemMeshes() {
   return {
-    backpack: meshOf(
+    "boost pack": meshOf(
       [
         [-1, 0, -1],
         [1, 0, -1],
@@ -1473,7 +1473,7 @@ export function parseItemMeshes(raw) {
       continue;
     }
     const mesh = parseItemMesh(src[key]);
-    if (!mesh.verts.length && (key === "backpack" || DOOR_MESH_KEYS.includes(key))) continue;
+    if (!mesh.verts.length && (key === "boost pack" || DOOR_MESH_KEYS.includes(key))) continue;
     d[key] = mesh;
   }
   return d;
@@ -1508,14 +1508,14 @@ export function migrateItemMeshes(rawItems, fromVersion) {
     });
     out[key] = { ...mesh, verts };
   }
-  const bp = out.backpack;
+  const bp = out["boost pack"];
   if (bp && vertsMatch(bp.verts, [
     [0, 0, 0],
     [2, 0, 0],
     [1, 0, 2],
     [1, 2, 1],
   ])) {
-    out.backpack = defaultItemMeshes().backpack;
+    out["boost pack"] = defaultItemMeshes()["boost pack"];
   }
   return out;
 }
@@ -1527,10 +1527,10 @@ export function itemMeshHasGeom(mesh) {
 
 export function itemMeshFor(doc, type) {
   const items = doc?.items || defaultItemMeshes();
-  if (type === "backpack") {
-    const mesh = items.backpack;
+  if (type === "boost pack") {
+    const mesh = items["boost pack"];
     if (itemMeshHasGeom(mesh)) return mesh;
-    return defaultItemMeshes().backpack;
+    return defaultItemMeshes()["boost pack"];
   }
   if (isDoorMeshKey(type)) {
     const key = clampDoorType(type);
@@ -1541,7 +1541,7 @@ export function itemMeshFor(doc, type) {
   const key = clampPickupType(type);
   const mesh = items[key];
   if (itemMeshHasGeom(mesh)) return mesh;
-  return items.backpack || defaultItemMeshes().backpack;
+  return items["boost pack"] || defaultItemMeshes()["boost pack"];
 }
 
 export function itemUniqueXZ(verts) {
@@ -1706,7 +1706,7 @@ export function enemyGhostItemSegs(doc, enemy) {
 }
 
 export function itemMeshWorldSegs(obj, mesh, yaw = 0) {
-  const m = mesh && itemMeshHasGeom(mesh) ? mesh : defaultItemMeshes().backpack;
+  const m = mesh && itemMeshHasGeom(mesh) ? mesh : defaultItemMeshes()["boost pack"];
   const c = Math.cos(yaw);
   const s = Math.sin(yaw);
   const k = clampItemScale(obj.scale ?? (obj.big ? 8 : 1));
@@ -1778,10 +1778,10 @@ export function sphereCircle(R) {
 }
 
 /** Fixed equilateral tetra: height 1.5, base side = height/φ. */
-export function applyBackpackProportions(obj) {
-  obj.sx = BACKPACK_SIDE;
-  obj.sy = BACKPACK_HEIGHT;
-  obj.sz = BACKPACK_DEPTH;
+export function applyBoostPackProportions(obj) {
+  obj.sx = BOOST_PACK_SIDE;
+  obj.sy = BOOST_PACK_HEIGHT;
+  obj.sz = BOOST_PACK_DEPTH;
   return obj;
 }
 
@@ -2384,7 +2384,7 @@ export function clampObject(obj) {
   if (obj.kind === "doorway" || obj.kind === "switch") {
     applyFaceSize(obj);
   } else if (obj.kind === "pickup") {
-    applyBackpackProportions(obj);
+    applyBoostPackProportions(obj);
   } else if (obj.kind === "slope") {
     obj.sx = clampSize(obj.x, obj.sx);
     obj.sy = clampSize(obj.y, obj.sy);
@@ -4332,9 +4332,9 @@ function migrateDoorLock(o) {
 function migrateLoadedObject(o) {
   if (!o || typeof o !== "object") return o;
   const out = { ...o };
-  if (out.kind === "backpack") {
+  if (out.kind === "boost_pack") {
     out.kind = "pickup";
-    out.pickup = out.pickup || out.backpack;
+    out.pickup = out.pickup || out.boost_pack;
   }
   if (out.kind === "key") {
     out.kind = "pickup";
@@ -4384,7 +4384,7 @@ function parseObjects(list) {
       elevHigh: o.elevHigh,
       elevSlow: o.elevSlow,
       pickup: o.pickup,
-      backpack: o.backpack,
+      boost_pack: o.boost_pack,
       big: o.big,
       scale: o.scale,
       order: o.order,
@@ -4473,8 +4473,8 @@ function parseObjects(list) {
       else delete obj.elevSlow;
       delete obj.elevType;
     }
-    if (o.kind === "pickup" || o.kind === "backpack") {
-      obj.pickup = clampPickupType(o.pickup || o.backpack);
+    if (o.kind === "pickup" || o.kind === "boost_pack") {
+      obj.pickup = clampPickupType(o.pickup || o.boost_pack);
       if (o.collide === true) obj.collide = true;
     }
     if (o.kind === "doorway") {
@@ -4527,7 +4527,7 @@ export function defaultEditorState() {
     collapsedRooms: [],
     activeLevel: null,
     layoutCameras: {},
-    item: "backpack",
+    item: "boost pack",
     itemOrbit: { yaw: 0.6, pitch: 0.35, dist: 16, target: { x: 0, y: 0, z: 0 } },
     fontSlots: [null, null, null, null],
     fontActive: 0,
