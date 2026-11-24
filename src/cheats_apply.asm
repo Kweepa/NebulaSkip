@@ -61,7 +61,7 @@ apply_bit
 	jmp play_sound
 
 ; Y = level 1..26 (map letter). Out of range = ignored. Message after
-; play_up2 (inside restart).
+; enter_card (cutscene, docking card).
 apply_map
 	cpy #1
 	bcc .am_rts
@@ -70,6 +70,9 @@ apply_map
 	sty level_num
 	jsr restart_level
 	bcs .am_fail
+	lda #1
+	sta den_arm				; as next_level: cutscene + docking card
+	jsr enter_card
 	lda #<cheat_msg_map
 	ldy #>cheat_msg_map
 	jmp cheat_show

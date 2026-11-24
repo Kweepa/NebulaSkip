@@ -128,7 +128,7 @@ crime_lo
 	!byte <crm0,<crm1,<crm2,<crm3,<crm4,<crm5,<crm6,<crm7,<crm8,<crm9,<crm10,<crm11,<crm12,<crm13,<crm14,<crm15
 crime_hi
 	!byte >crm0,>crm1,>crm2,>crm3,>crm4,>crm5,>crm6,>crm7,>crm8,>crm9,>crm10,>crm11,>crm12,>crm13,>crm14,>crm15
-BTY_N	= 3
+BTY_N	= 4
 btn0
 	!text "The Batty Boys"
 	!byte 0
@@ -168,23 +168,36 @@ btd2
 	!text "are counting bits on Verdan."
 	!byte 0
 	!byte 0
+btn3
+	!text "The Zuzax Reavers"
+	!byte 0
+btd3
+	!text "Smugglers and poachers have"
+	!byte 0
+	!text "dug in across the caverns of"
+	!byte 0
+	!text "Zuzax. The planetary board"
+	!byte 0
+	!text "wants the whole crew gone."
+	!byte 0
+	!byte 0
 bty_name_lo
-	!byte <btn0,<btn1,<btn2
+	!byte <btn0,<btn1,<btn2,<btn3
 bty_name_hi
-	!byte >btn0,>btn1,>btn2
+	!byte >btn0,>btn1,>btn2,>btn3
 bty_desc_lo
-	!byte <btd0,<btd1,<btd2
+	!byte <btd0,<btd1,<btd2,<btd3
 bty_desc_hi
-	!byte >btd0,>btd1,>btd2
+	!byte >btd0,>btd1,>btd2,>btd3
 bty_diff	; offset into bty_diff_str
-	!byte 0,0,0
+	!byte 0,0,0,12
 bty_map
-	!byte 1,3,2
+	!byte 1,3,2,4
 bty_diff_str
 	!text "low   "
 	!text "medium"
 	!text "high  "
-SHIP_N	= 3
+SHIP_N	= 4
 smn0
 	!text "Port Perihelion"
 	!byte 0
@@ -194,11 +207,14 @@ smn1
 smn2
 	!text "Peen Rock"
 	!byte 0
+smn3
+	!text "Zuzax"
+	!byte 0
 sm_col
-	!byte 4,15,7
+	!byte 4,15,7,20
 sm_row
-	!byte 5,9,12
+	!byte 5,9,12,7
 sm_name_lo
-	!byte <smn0,<smn1,<smn2
+	!byte <smn0,<smn1,<smn2,<smn3
 sm_name_hi
-	!byte >smn0,>smn1,>smn2
+	!byte >smn0,>smn1,>smn2,>smn3

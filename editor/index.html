@@ -7293,7 +7293,7 @@ function objectLabel(obj) {
     return obj.name ? `Room  ${obj.name}` : "Room";
   }
   if (obj.kind === "enemy") return obj.enemy || "Enemy";
-  if (obj.kind === "pickup") return `Pickup (${itemLabel(clampPickupType(obj.pickup))})`;
+  if (obj.kind === "pickup") return itemLabel(clampPickupType(obj.pickup));
   if (obj.kind === "doorway") return `Doorway (${itemLabel(clampDoorType(obj.doorType))})`;
   if (obj.kind === "spawn" && !obj.enabled) return "Spawn (off)";
   return KINDS[obj.kind].label;
