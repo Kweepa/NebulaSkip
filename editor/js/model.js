@@ -2705,7 +2705,9 @@ export function layoutSearchTerms(query) {
 /** Kind, list label, and the text fields that distinguish a placed object. */
 export function layoutSearchHaystack(obj) {
   if (!obj || !KINDS[obj.kind]) return "";
-  const parts = [obj.kind, KINDS[obj.kind].label, objectLabel(obj)];
+  // Items aren't all pickups, so a pickup is found by its item name, not the kind word.
+  const parts =
+    obj.kind === "pickup" ? [objectLabel(obj)] : [obj.kind, KINDS[obj.kind].label, objectLabel(obj)];
   if (obj.kind === "doorway") {
     const lock = clampDoorLock(obj.lockKey);
     parts.push(lock, DOOR_LOCK_LABELS[lock]);

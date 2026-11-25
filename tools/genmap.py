@@ -467,7 +467,7 @@ def btable(name: str, vals: list[int]) -> str:
 
 
 def bounty_doors() -> list[tuple[int, str, str, str]]:
-    """bounties.csv (name, desc, difficulty, map[, door tag]) and shop.csv (name, desc, price[, map, door tag])
+    """bounties.csv (name, desc, issuer, difficulty, map[, door tag]) and shop.csv (name, desc, price[, map, door tag])
     -> one entry per row that names a door: (mask bit, map key, tag, where).
     The bit indexes the 32-bit mask bounty_acc..shop_owned_h (mem.asm): bounty i is bit i, shop item i is
     bit 16+i. Row order is the item index (genterminal.py uses the same order)."""
@@ -476,7 +476,7 @@ def bounty_doors() -> list[tuple[int, str, str, str]]:
 
     out = []
     # (file, bit base, field count without the door columns)
-    for path, base, nbase in ((BOUNTIES, 0, 4), (SHOP, 16, 3)):
+    for path, base, nbase in ((BOUNTIES, 0, 5), (SHOP, 16, 3)):
         i = -1
         with open(path, newline="", encoding="utf-8") as f:
             for n, r in enumerate(csv.reader(f, skipinitialspace=True), 1):
@@ -489,9 +489,10 @@ def bounty_doors() -> list[tuple[int, str, str, str]]:
                     raise SystemExit(f"{path.name} line {n}: expected {' or '.join(map(str, nok))} fields, got {len(r)}")
                 tag = r[-1] if len(r) > nbase else ""
                 if path == BOUNTIES or tag:  # a shop row without a door has no map field
-                    m = re.fullmatch(r"map([a-z])", r[3].lower())
+                    mi = 4 if path == BOUNTIES else 3
+                    m = re.fullmatch(r"map([a-z])", r[mi].lower())
                     if not m:
-                        raise SystemExit(f"{path.name} line {n}: bad map {r[3]!r}")
+                        raise SystemExit(f"{path.name} line {n}: bad map {r[mi]!r}")
                 if tag:
                     out.append((base + i, "MAP" + m.group(1).upper(), tag, f"{path.name} line {n}"))
     return out

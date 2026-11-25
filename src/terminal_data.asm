@@ -139,22 +139,20 @@ btd0
 	!byte 0
 	!text "and stripping the alpha"
 	!byte 0
-	!text "shielding. The chief wants"
+	!text "shielding."
 	!byte 0
-	!text "them gone."
+	!text "issuer: Station chief"
 	!byte 0
 	!byte 0
 btn1
 	!text "The Deepcut Crew"
 	!byte 0
 btd1
-	!text "Miners on Gallows Rock dug too"
+	!text "Miners on Syzygy Rock rebelled"
 	!byte 0
-	!text "deep and came back wrong. The"
+	!text "and murdered the foreman."
 	!byte 0
-	!text "claim owners want their rock"
-	!byte 0
-	!text "back."
+	!text "issuer: Claim owners"
 	!byte 0
 	!byte 0
 btn2
@@ -167,6 +165,8 @@ btd2
 	!byte 0
 	!text "are counting bits on Verdan."
 	!byte 0
+	!text "issuer: Nebula authority"
+	!byte 0
 	!byte 0
 btn3
 	!text "The Zuzax Reavers"
@@ -176,9 +176,9 @@ btd3
 	!byte 0
 	!text "dug in across the caverns of"
 	!byte 0
-	!text "Zuzax. The planetary board"
+	!text "Zuzax."
 	!byte 0
-	!text "wants the whole crew gone."
+	!text "issuer: Planetary board"
 	!byte 0
 	!byte 0
 bty_name_lo
@@ -205,7 +205,7 @@ smn1
 	!text "Verdan"
 	!byte 0
 smn2
-	!text "Peen Rock"
+	!text "Syzygy Rock"
 	!byte 0
 smn3
 	!text "Zuzax"

@@ -3,7 +3,7 @@
 
 shop.csv      name, description, price[, map, remote door tag] (no header; the door tag is baked by
               genmap.py: buying the item unlocks that remote door on that map)
-bounties.csv  name, description, difficulty, map[, remote door tag] (no header; map is mapa..mapz;
+bounties.csv  name, description, issuer, difficulty, map[, remote door tag] (no header; map is mapa..mapz;
               the door tag is baked by genmap.py: accepting unlocks that remote door on that map)
 
 Descriptions are word-wrapped here to <= DESC_LINES lines of DESC_COLS chars
@@ -100,9 +100,11 @@ def asm_str(s):
     return f'\t!text "{s}"\n\t!byte 0\n'
 
 
-def desc_block(path, n, s):
+def desc_block(path, n, s, last=None):
     text(path, n, "description", s)
     lines = textwrap.wrap(s, DESC_COLS)
+    if last:
+        lines.append(last)
     if len(lines) > DESC_LINES:
         die(f"{path.name} line {n}: description wraps to {len(lines)} lines (max {DESC_LINES} x {DESC_COLS})")
     return "".join(asm_str(l) for l in lines) + "\t!byte 0\n"
@@ -275,12 +277,13 @@ def main():
     CONSTS.write_text(consts, encoding="utf-8")
     p.append(crimes())
 
-    bty = rows(BOUNTIES, 4)
+    bty = rows(BOUNTIES, 5)
     p.append(f"BTY_N\t= {len(bty)}\n")
     names, descs, diffs, maps = [], [], [], []
     body = []
-    for i, (n, (name, desc, diff, mp, *_door)) in enumerate(bty):
+    for i, (n, (name, desc, issuer, diff, mp, *_door)) in enumerate(bty):
         text(BOUNTIES, n, "name", name, NAME_MAX)
+        text(BOUNTIES, n, "issuer", issuer, DESC_COLS - len("issuer: "))
         d = DIFF_ALIAS.get(diff.lower(), diff.lower())
         if d not in DIFFS:
             die(f"bounties.csv line {n}: difficulty {diff!r} must be one of {DIFFS}")
@@ -292,7 +295,7 @@ def main():
         descs.append(f"btd{i}")
         diffs.append(DIFFS.index(d) * DIFF_W)
         maps.append(idx)
-        body.append(f"btn{i}\n" + asm_str(name) + f"btd{i}\n" + desc_block(BOUNTIES, n, desc))
+        body.append(f"btn{i}\n" + asm_str(name) + f"btd{i}\n" + desc_block(BOUNTIES, n, desc, f"issuer: {issuer}"))
     p.append("".join(body))
     p.append(table("bty_name", names))
     p.append(table("bty_desc", descs))

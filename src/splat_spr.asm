@@ -9,7 +9,7 @@ spr_splat_0
 	!byte $ff,$00,$00,$ff,$00,$00,$00,$00,$00,$0c,$00
 
 spr_splat_1
-	!byte $01,$08,$01,$06,$cf,$fc,$fc,$3c,$cf,$f3
+	!byte $01,$08,$01,$06,$cf,$3c,$fc,$3c,$cf,$f3
 
 spr_splat_2
 	!byte $01,$08,$01,$05,$c0,$30,$0c,$30,$cc
