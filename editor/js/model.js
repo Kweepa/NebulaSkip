@@ -116,7 +116,7 @@ export const DEFAULT_MDL_SCALE = 0.7;
 const OLD_DEFAULT_MDL_SCALE = 0.57;
 export const ANIM_ORBIT_DIST_MIN = 4;
 export const ANIM_ORBIT_DIST_MAX = 400;
-export const ITEM_ORBIT_DIST_MIN = 8;
+export const ITEM_ORBIT_DIST_MIN = 2;
 export const ITEM_ORBIT_DIST_MAX = 80;
 export const DOC_VERSION = 11;
 

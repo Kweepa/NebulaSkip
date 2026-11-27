@@ -19,7 +19,6 @@
       "dir": 1,
       "name": "Landing Ridge",
       "a8Bg": 180,
-      "noCombat": true,
       "openSky": true,
       "shape": "L",
       "rx": 0,
@@ -2226,9 +2225,9 @@
       "dir": 1,
       "roomId": "11a110b0-c075-51d9-bb1f-03209499f6c2",
       "pickup": "mushroom stem",
+      "rot": 3,
       "scale": 4,
-      "collide": true,
-      "rot": 3
+      "collide": true
     },
     {
       "id": "00cd114d-faeb-4d7c-a112-12f7beeced24",
